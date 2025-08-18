@@ -85,11 +85,11 @@ func (c *Checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 	// Set user agent
 	req.Header.Set("User-Agent", "ddup/1.0")
 
-	// If there's a specific host, we need to set it in the host header
+	// If there's a specific host, we need to set it in the request's host
 	// For TLS requests, we set it the TLS client for SNI in the TLS handshake to work too
 	client := c.client
 	if endpoint.Host != "" {
-		req.Header.Set("Host", endpoint.Host)
+		req.Host = endpoint.Host
 
 		if req.URL.Scheme == "https" {
 			var transport *http.Transport
@@ -120,7 +120,7 @@ func (c *Checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 			Duration: time.Since(start),
 		}
 	}
-	defer resp.Body.Close() //nolint:errcheck
+	_ = resp.Body.Close() //nolint:errcheck
 
 	// Check if status code indicates health
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

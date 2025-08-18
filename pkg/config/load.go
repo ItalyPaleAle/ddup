@@ -56,7 +56,7 @@ func loadConfigFile(dst any, filePath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open config file '%s': %w", filePath, err)
 	}
-	defer f.Close()
+	defer f.Close() //nolint:errcheck
 
 	yamlDec := yaml.NewDecoder(f)
 	yamlDec.KnownFields(true)

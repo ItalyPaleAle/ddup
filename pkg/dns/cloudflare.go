@@ -36,9 +36,7 @@ func NewCloudflareProvider(cfg *config.CloudflareConfig, recordType string, ttl 
 		zoneID:     cfg.ZoneID,
 		recordType: recordType,
 		ttl:        ttl,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient: http.DefaultClient,
 	}, nil
 }
 
