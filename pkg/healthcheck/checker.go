@@ -12,20 +12,20 @@ import (
 
 // Checker performs health checks on configured endpoints
 type Checker struct {
-	endpoints []config.EndpointConfig
+	endpoints []config.ConfigEndpoint
 	client    *http.Client
 }
 
 // Result represents the result of a health check
 type Result struct {
-	Endpoint config.EndpointConfig
+	Endpoint config.ConfigEndpoint
 	Healthy  bool
 	Error    error
 	Duration time.Duration
 }
 
 // New creates a new health checker
-func New(endpoints []config.EndpointConfig) *Checker {
+func New(endpoints []config.ConfigEndpoint) *Checker {
 	return &Checker{
 		endpoints: endpoints,
 		client: &http.Client{
@@ -41,7 +41,7 @@ func (c *Checker) CheckAll(ctx context.Context) []Result {
 
 	for i, endpoint := range c.endpoints {
 		wg.Add(1)
-		go func(i int, endpoint config.EndpointConfig) {
+		go func(i int, endpoint config.ConfigEndpoint) {
 			defer wg.Done()
 			results[i] = c.checkEndpoint(ctx, endpoint)
 		}(i, endpoint)
@@ -52,7 +52,7 @@ func (c *Checker) CheckAll(ctx context.Context) []Result {
 }
 
 // checkEndpoint performs a health check on a single endpoint
-func (c *Checker) checkEndpoint(ctx context.Context, endpoint config.EndpointConfig) Result {
+func (c *Checker) checkEndpoint(ctx context.Context, endpoint config.ConfigEndpoint) Result {
 	start := time.Now()
 
 	// Create a context with timeout for this specific endpoint

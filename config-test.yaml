@@ -18,10 +18,10 @@ endpoints:
 
 # DNS Provider Configuration (for testing - use fake values)
 dns:
-  provider: "cloudflare"
-  cloudflare:
-    apiToken: "fake-token-for-testing"
-    zoneId: "fake-zone-id"
-    recordName: "test.example.com"
-    recordType: "A"
-    ttl: 300
+  recordName: "test.example.com"
+  recordType: "A"
+  ttl: 300
+  provider:
+    cloudflare:
+      apiToken: "fake-token-for-testing"
+      zoneId: "fake-zone-id"

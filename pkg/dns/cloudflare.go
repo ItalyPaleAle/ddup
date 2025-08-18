@@ -23,7 +23,7 @@ type CloudflareProvider struct {
 }
 
 // NewCloudflareProvider creates a new Cloudflare DNS provider
-func NewCloudflareProvider(cfg config.CloudflareConfig, recordType string, ttl int) (*CloudflareProvider, error) {
+func NewCloudflareProvider(cfg *config.CloudflareConfig, recordType string, ttl int) (*CloudflareProvider, error) {
 	if cfg.APIToken == "" {
 		return nil, errors.New("API token is required")
 	}

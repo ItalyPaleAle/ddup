@@ -20,10 +20,10 @@ endpoints:
 
 # DNS Provider Configuration
 dns:
-  provider: "cloudflare"
-  cloudflare:
-    apiToken: "your-cloudflare-api-token"
-    zoneId: "your-zone-id"
-    recordName: "service.example.com"
-    recordType: "A"
-    ttl: 300
+  recordName: "service.example.com"
+  recordType: "A"
+  ttl: 300
+  provider:
+    cloudflare:
+      apiToken: "your-cloudflare-api-token"
+      zoneId: "your-zone-id"

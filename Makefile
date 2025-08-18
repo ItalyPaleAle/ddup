@@ -6,7 +6,7 @@ BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Build flags
-LDFLAGS=-ldflags "-X main.Version=$(VERSION) -X main.BuildTime=$(BUILD_TIME) -X main.GitCommit=$(GIT_COMMIT)"
+LDFLAGS=-ldflags "-X github.com/italypaleale/ddup/pkg/buildinfo.AppVersion=$(VERSION) -X github.com/italypaleale/ddup/pkg/buildinfo.BuildTime=$(BUILD_TIME) -X github.com/italypaleale/ddup/pkg/buildinfo.CommitHash=$(GIT_COMMIT)"
 
 .PHONY: build clean test run run-test help install
 
@@ -43,7 +43,8 @@ run: build
 
 # Run the application with test config
 run-test: build
-	./dist/$(BINARY_NAME) -config config-test.yaml
+	DDUP_CONFIG=config-test.yaml \
+	  ./dist/$(BINARY_NAME)
 
 # Install dependencies
 deps:
