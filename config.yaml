@@ -1,0 +1,29 @@
+# Health Check and DNS Update Configuration
+
+# How often to perform health checks
+interval: 30s
+
+# List of endpoints to health check
+endpoints:
+  - name: "server1"
+    url: "http://192.168.1.100:8080/health"
+    ip: "192.168.1.100"
+    timeout: "5s"
+  - name: "server2"
+    url: "http://192.168.1.101:8080/health"
+    ip: "192.168.1.101"
+    timeout: "5s"
+  - name: "server3"
+    url: "http://192.168.1.102:8080/health"
+    ip: "192.168.1.102"
+    timeout: "5s"
+
+# DNS Provider Configuration
+dns:
+  provider: "cloudflare"
+  cloudflare:
+    apiToken: "your-cloudflare-api-token"
+    zoneId: "your-zone-id"
+    recordName: "service.example.com"
+    recordType: "A"
+    ttl: 300
