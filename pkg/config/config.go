@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"time"
@@ -14,9 +15,9 @@ type Config struct {
 	// +default 30s
 	Interval time.Duration `yaml:"interval"`
 
-	Endpoints []ConfigEndpoint `yaml:"endpoints"`
-	DNS       ConfigDNS        `yaml:"dns"`
-	Logs      ConfigLogs       `yaml:"logs"`
+	Endpoints []*ConfigEndpoint `yaml:"endpoints"`
+	DNS       ConfigDNS         `yaml:"dns"`
+	Logs      ConfigLogs        `yaml:"logs"`
 
 	// Dev is meant for development only; it's undocumented
 	Dev ConfigDev `yaml:"-"`
@@ -27,10 +28,20 @@ type Config struct {
 
 // ConfigEndpoint represents a single endpoint to health check
 type ConfigEndpoint struct {
-	Name    string        `yaml:"name"`
-	URL     string        `yaml:"url"`
-	IP      string        `yaml:"ip"`
+	// Endpoint name, used for logging purposes
+	// Defaults to the URL
+	Name string `yaml:"name"`
+
+	// Health check URL
+	// +required
+	URL string `yaml:"url"`
+
+	IP string `yaml:"ip"`
+
+	// Request timeout
+	// Defaults to 5s
 	Timeout time.Duration `yaml:"timeout"`
+	Host    string        `yaml:"host"`
 }
 
 // ConfigDNS represents DNS provider configuration
@@ -105,6 +116,22 @@ func (c *Config) Validate(logger *slog.Logger) error {
 	count := countSetProperties(c.DNS.Provider)
 	if count != 1 {
 		return errors.New("exactly one DNS provider must be configure")
+	}
+
+	// Validate all endpoints
+	for i, v := range c.Endpoints {
+		// Validate required fields
+		if v.URL == "" {
+			return fmt.Errorf("endpoint %d is invalid: URL is empty", i)
+		}
+
+		// Set the default values
+		if v.Name == "" {
+			v.Name = v.URL
+		}
+		if v.Timeout <= 0 {
+			v.Timeout = 5 * time.Second
+		}
 	}
 
 	return nil
