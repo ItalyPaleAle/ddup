@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/italypaleale/ddup/pkg/config"
+	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
 // Provider defines the interface for DNS providers
@@ -14,13 +15,13 @@ type Provider interface {
 }
 
 // NewProvider creates a new DNS provider based on the configuration
-func NewProvider() (provider Provider, err error) {
+func NewProvider(metrics *appmetrics.AppMetrics) (provider Provider, err error) {
 	cfg := config.Get()
 
 	// We know that only one provider will be non-nil
 	switch {
 	case cfg.Provider.Cloudflare != nil:
-		provider, err = NewCloudflareProvider(cfg.Provider.Cloudflare)
+		provider, err = NewCloudflareProvider(cfg.Provider.Cloudflare, metrics)
 		if err != nil {
 			return nil, fmt.Errorf("error initializing Cloudflare provider: %w", err)
 		}

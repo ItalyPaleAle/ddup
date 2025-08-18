@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/italypaleale/ddup/pkg/config"
+	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 	"github.com/italypaleale/ddup/pkg/utils"
 )
 
@@ -18,11 +19,12 @@ import (
 type CloudflareProvider struct {
 	apiToken   string
 	zoneID     string
+	metrics    *appmetrics.AppMetrics
 	httpClient *http.Client
 }
 
 // NewCloudflareProvider creates a new Cloudflare DNS provider
-func NewCloudflareProvider(cfg *config.CloudflareConfig) (*CloudflareProvider, error) {
+func NewCloudflareProvider(cfg *config.CloudflareConfig, metrics *appmetrics.AppMetrics) (*CloudflareProvider, error) {
 	if cfg.APIToken == "" {
 		return nil, errors.New("API token is required")
 	}
@@ -33,6 +35,7 @@ func NewCloudflareProvider(cfg *config.CloudflareConfig) (*CloudflareProvider, e
 	return &CloudflareProvider{
 		apiToken:   cfg.APIToken,
 		zoneID:     cfg.ZoneID,
+		metrics:    metrics,
 		httpClient: http.DefaultClient,
 	}, nil
 }
@@ -115,8 +118,15 @@ type CloudflareError struct {
 }
 
 func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain string) ([]CloudflareRecord, error) {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=A", c.zoneID, domain)
+	start := time.Now()
+	var success bool
+	defer func() {
+		if c.metrics != nil {
+			c.metrics.RecordAPICall("cloudflare", http.MethodGet, fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID), success, time.Since(start))
+		}
+	}()
 
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=A", c.zoneID, domain)
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
@@ -143,12 +153,20 @@ func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain stri
 		return nil, fmt.Errorf("API error: %v", cfResp.Errors)
 	}
 
+	success = true
 	return cfResp.Result, nil
 }
 
 func (c *CloudflareProvider) deleteRecord(ctx context.Context, recordID string) error {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records/%s", c.zoneID, recordID)
+	start := time.Now()
+	var success bool
+	defer func() {
+		if c.metrics != nil {
+			c.metrics.RecordAPICall("cloudflare", http.MethodDelete, fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID), success, time.Since(start))
+		}
+	}()
 
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records/%s", c.zoneID, recordID)
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodDelete, url, nil)
@@ -170,10 +188,19 @@ func (c *CloudflareProvider) deleteRecord(ctx context.Context, recordID string) 
 		return fmt.Errorf("invalid response status code HTTP %d; response: %s", resp.StatusCode, string(body))
 	}
 
+	success = true
 	return nil
 }
 
 func (c *CloudflareProvider) createRecord(ctx context.Context, domain, ip string, ttl int) error {
+	start := time.Now()
+	var success bool
+	defer func() {
+		if c.metrics != nil {
+			c.metrics.RecordAPICall("cloudflare", http.MethodPost, fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID), success, time.Since(start))
+		}
+	}()
+
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", c.zoneID)
 
 	record := map[string]interface{}{
@@ -209,5 +236,6 @@ func (c *CloudflareProvider) createRecord(ctx context.Context, domain, ip string
 		return fmt.Errorf("invalid response status code HTTP %d; response: %s", resp.StatusCode, string(body))
 	}
 
+	success = true
 	return nil
 }

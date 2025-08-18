@@ -41,11 +41,6 @@ test:
 run: build
 	./dist/$(BINARY_NAME)
 
-# Run the application with test config
-run-test: build
-	DDUP_CONFIG=config.test.yaml \
-	  ./dist/$(BINARY_NAME)
-
 # Install dependencies
 deps:
 	@echo "Installing dependencies..."

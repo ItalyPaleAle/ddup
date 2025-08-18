@@ -11,6 +11,7 @@ import (
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 	"github.com/italypaleale/ddup/pkg/logging"
+	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 	"github.com/italypaleale/ddup/pkg/servicerunner"
 	"github.com/italypaleale/ddup/pkg/signals"
 	"github.com/italypaleale/ddup/pkg/utils"
@@ -63,15 +64,25 @@ func main() {
 	ctx := utils.LogToContext(context.Background(), log)
 	ctx = signals.SignalContext(ctx)
 
+	// Init metrics
+	metrics, metricsShutdownFn, err := appmetrics.NewAppMetrics(ctx)
+	if err != nil {
+		utils.FatalError(log, "Failed to init metrics", err)
+		return
+	}
+	if metricsShutdownFn != nil {
+		shutdownFns = append(shutdownFns, metricsShutdownFn)
+	}
+
 	// Initialize DNS provider
-	dnsProvider, err := dns.NewProvider()
+	dnsProvider, err := dns.NewProvider(metrics)
 	if err != nil {
 		utils.FatalError(log, "Failed to DNS provider", err)
 		return
 	}
 
 	// Initialize health checker
-	hc := NewHealthChecker(dnsProvider)
+	hc := NewHealthChecker(dnsProvider, metrics)
 
 	// Run all services
 	// This call blocks until the context is canceled
@@ -102,22 +113,20 @@ type HealthChecker struct {
 }
 
 type domainChecker struct {
-	domain     string
 	checker    *healthcheck.Checker
 	ttl        int
 	healthyIPs []string
 }
 
 // NewHealthChecker creates a new HealthChecker instance
-func NewHealthChecker(dnsProvider dns.Provider) *HealthChecker {
+func NewHealthChecker(dnsProvider dns.Provider, metrics *appmetrics.AppMetrics) *HealthChecker {
 	cfg := config.Get()
 
 	dcs := make([]domainChecker, len(cfg.Domains))
 	for i, d := range cfg.Domains {
 		dcs[i] = domainChecker{
-			domain:  d.RecordName,
 			ttl:     d.TTL,
-			checker: healthcheck.New(d.Endpoints),
+			checker: healthcheck.New(d.RecordName, d.Endpoints, metrics),
 		}
 	}
 
@@ -156,7 +165,7 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 
 	for i := range hc.domainCheckers {
 		dc := &hc.domainCheckers[i]
-		domainLog := log.With("domain", dc.domain)
+		domainLog := log.With("domain", dc.checker.GetDomain())
 
 		// Perform health checks for this domain
 		results := dc.checker.CheckAll(ctx)
@@ -176,7 +185,7 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		if !utils.ElementsMatch(dc.healthyIPs, newHealthyIPs) {
 			// Update DNS records
 			if len(newHealthyIPs) > 0 {
-				err := hc.dnsProvider.UpdateRecords(ctx, dc.domain, dc.ttl, newHealthyIPs)
+				err := hc.dnsProvider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 				} else {

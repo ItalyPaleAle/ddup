@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/mitchellh/go-homedir"
-	"go.yaml.in/yaml/v3"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
 	"github.com/italypaleale/ddup/pkg/utils"
 )

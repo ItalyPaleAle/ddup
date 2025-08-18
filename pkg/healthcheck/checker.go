@@ -9,13 +9,16 @@ import (
 	"time"
 
 	"github.com/italypaleale/ddup/pkg/config"
+	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
 const DefaultTimeout = 5 * time.Second
 
 // Checker performs health checks on configured endpoints
 type Checker struct {
+	domain    string
 	endpoints []*config.ConfigEndpoint
+	metrics   *appmetrics.AppMetrics
 	client    *http.Client
 }
 
@@ -28,7 +31,7 @@ type Result struct {
 }
 
 // New creates a new health checker
-func New(endpoints []*config.ConfigEndpoint) *Checker {
+func New(domain string, endpoints []*config.ConfigEndpoint, metrics *appmetrics.AppMetrics) *Checker {
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -36,7 +39,9 @@ func New(endpoints []*config.ConfigEndpoint) *Checker {
 	}
 
 	return &Checker{
+		domain:    domain,
 		endpoints: endpoints,
+		metrics:   metrics,
 		client:    client,
 	}
 }
@@ -51,11 +56,20 @@ func (c *Checker) CheckAll(ctx context.Context) []Result {
 		go func(i int, endpoint *config.ConfigEndpoint) {
 			defer wg.Done()
 			results[i] = c.checkEndpoint(ctx, endpoint)
+
+			if c.metrics != nil {
+				c.metrics.RecordHealthCheck(c.domain, endpoint.Name, results[i].Healthy)
+			}
 		}(i, endpoint)
 	}
 
 	wg.Wait()
 	return results
+}
+
+// GetDomain returns the domain this Checker is configured for
+func (c *Checker) GetDomain() string {
+	return c.domain
 }
 
 // checkEndpoint performs a health check on a single endpoint
