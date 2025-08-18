@@ -24,6 +24,7 @@ func NewProvider(cfg config.ConfigDNS) (provider Provider, err error) {
 		}
 		return provider, nil
 	default:
-		return nil, fmt.Errorf("unsupported DNS provider: %s", cfg.Provider)
+		// Indicates a development-time error
+		panic("invalid provider")
 	}
 }

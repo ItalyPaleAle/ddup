@@ -43,7 +43,7 @@ run: build
 
 # Run the application with test config
 run-test: build
-	DDUP_CONFIG=config-test.yaml \
+	DDUP_CONFIG=config.test.yaml \
 	  ./dist/$(BINARY_NAME)
 
 # Install dependencies
