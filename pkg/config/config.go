@@ -15,15 +15,35 @@ type Config struct {
 	// +default 30s
 	Interval time.Duration `yaml:"interval"`
 
-	Endpoints []*ConfigEndpoint `yaml:"endpoints"`
-	DNS       ConfigDNS         `yaml:"dns"`
-	Logs      ConfigLogs        `yaml:"logs"`
+	// Domains allows configuring multiple domains, each with its own endpoints
+	Domains []ConfigDomain `yaml:"domains"`
+
+	// Provider contains shared provider configuration (shared across all domains)
+	Provider ConfigProvider `yaml:"provider"`
+
+	// Logs contains configuration for logging
+	Logs ConfigLogs `yaml:"logs"`
 
 	// Dev is meant for development only; it's undocumented
 	Dev ConfigDev `yaml:"-"`
 
 	// Internal keys
 	internal internal `yaml:"-"`
+}
+
+// ConfigDomain represents a single domain and its endpoints
+type ConfigDomain struct {
+	// RecordName is the DNS record to update for this domain (e.g., "app.example.com")
+	// +required
+	RecordName string `yaml:"recordName"`
+
+	// TTL for the created records, in seconds
+	// +default 60
+	TTL int `yaml:"ttl"`
+
+	// Endpoints to health check for this domain
+	// +required
+	Endpoints []*ConfigEndpoint `yaml:"endpoints"`
 }
 
 // ConfigEndpoint represents a single endpoint to health check
@@ -44,19 +64,7 @@ type ConfigEndpoint struct {
 	Host    string        `yaml:"host"`
 }
 
-// ConfigDNS represents DNS provider configuration
-type ConfigDNS struct {
-	RecordName string `yaml:"recordName"`
-	RecordType string `yaml:"recordType"`
-
-	// TTL for the created records, in seconds
-	// +default 60
-	TTL int `yaml:"ttl"`
-
-	Provider ConfigDNSProvider `yaml:"provider"`
-}
-
-type ConfigDNSProvider struct {
+type ConfigProvider struct {
 	// Config for the Cloudflare provider
 	Cloudflare *CloudflareConfig `yaml:"cloudflare"`
 }
@@ -113,24 +121,42 @@ func (c *Config) GetInstanceID() string {
 // Validates the configuration and performs some sanitization
 func (c *Config) Validate(logger *slog.Logger) error {
 	// Ensure that one and only one provider is configured
-	count := countSetProperties(c.DNS.Provider)
+	count := countSetProperties(c.Provider)
 	if count != 1 {
-		return errors.New("exactly one DNS provider must be configure")
+		return errors.New("exactly one provider must be configured")
 	}
 
-	// Validate all endpoints
-	for i, v := range c.Endpoints {
-		// Validate required fields
-		if v.URL == "" {
-			return fmt.Errorf("endpoint %d is invalid: URL is empty", i)
+	// Require at least one domain to be configured
+	if len(c.Domains) == 0 {
+		return errors.New("no domains configured; specify at least one domain under 'domains'")
+	}
+
+	// Validate domains
+	for di := range c.Domains {
+		d := c.Domains[di]
+		if d.RecordName == "" {
+			return fmt.Errorf("domain %d is invalid: recordName is empty", di)
+		}
+		if len(d.Endpoints) == 0 {
+			return fmt.Errorf("domain %s is invalid: endpoints list is empty", d.RecordName)
 		}
 
-		// Set the default values
-		if v.Name == "" {
-			v.Name = v.URL
+		// Default TTL is 120s
+		if d.TTL <= 0 {
+			d.TTL = 120
 		}
-		if v.Timeout <= 0 {
-			v.Timeout = 5 * time.Second
+
+		// Validate endpoints for this domain
+		for ei, v := range d.Endpoints {
+			if v.URL == "" {
+				return fmt.Errorf("domain %s endpoint %d is invalid: URL is empty", d.RecordName, ei)
+			}
+			if v.Name == "" {
+				v.Name = v.URL
+			}
+			if v.Timeout <= 0 {
+				v.Timeout = 5 * time.Second
+			}
 		}
 	}
 

@@ -64,7 +64,7 @@ func main() {
 	ctx = signals.SignalContext(ctx)
 
 	// Initialize DNS provider
-	dnsProvider, err := dns.NewProvider(cfg.DNS)
+	dnsProvider, err := dns.NewProvider()
 	if err != nil {
 		utils.FatalError(log, "Failed to DNS provider", err)
 		return
@@ -97,18 +97,33 @@ func main() {
 
 // HealthChecker manages health checking and DNS updates
 type HealthChecker struct {
-	checker     *healthcheck.Checker
-	dnsProvider dns.Provider
-	healthyIPs  []string
+	dnsProvider    dns.Provider
+	domainCheckers []domainChecker
+}
+
+type domainChecker struct {
+	domain     string
+	checker    *healthcheck.Checker
+	ttl        int
+	healthyIPs []string
 }
 
 // NewHealthChecker creates a new HealthChecker instance
 func NewHealthChecker(dnsProvider dns.Provider) *HealthChecker {
 	cfg := config.Get()
 
+	dcs := make([]domainChecker, len(cfg.Domains))
+	for i, d := range cfg.Domains {
+		dcs[i] = domainChecker{
+			domain:  d.RecordName,
+			ttl:     d.TTL,
+			checker: healthcheck.New(d.Endpoints),
+		}
+	}
+
 	return &HealthChecker{
-		checker:     healthcheck.New(cfg.Endpoints),
-		dnsProvider: dnsProvider,
+		dnsProvider:    dnsProvider,
+		domainCheckers: dcs,
 	}
 }
 
@@ -137,40 +152,44 @@ func (hc *HealthChecker) Run(ctx context.Context) error {
 
 // checkAndUpdateDNS performs health checks and updates DNS if needed
 func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
-	cfg := config.Get()
 	log := utils.LogFromContext(ctx)
 
-	// Perform health checks
-	results := hc.checker.CheckAll(ctx)
+	for i := range hc.domainCheckers {
+		dc := &hc.domainCheckers[i]
+		domainLog := log.With("domain", dc.domain)
 
-	// Collect healthy IPs
-	var newHealthyIPs []string
-	for _, result := range results {
-		if result.Healthy {
-			newHealthyIPs = append(newHealthyIPs, result.Endpoint.IP)
-			log.DebugContext(ctx, "✓ Endpoint is healthy", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP)
-		} else {
-			log.WarnContext(ctx, "✗ Endpoint health check failed", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP, "error", result.Error)
-		}
-	}
+		// Perform health checks for this domain
+		results := dc.checker.CheckAll(ctx)
 
-	// Check if healthy IPs have changed
-	if !utils.ElementsMatch(hc.healthyIPs, newHealthyIPs) {
-		// Update DNS records
-		if len(newHealthyIPs) > 0 {
-			err := hc.dnsProvider.UpdateRecords(ctx, cfg.DNS.RecordName, newHealthyIPs)
-			if err != nil {
-				log.ErrorContext(ctx, "Error updating DNS records", "domain", cfg.DNS.RecordName, "error", err)
+		// Collect healthy IPs
+		var newHealthyIPs []string
+		for _, result := range results {
+			if result.Healthy {
+				newHealthyIPs = append(newHealthyIPs, result.Endpoint.IP)
+				domainLog.DebugContext(ctx, "✓ Endpoint is healthy", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP)
 			} else {
-				log.InfoContext(ctx, "Updated DNS records", "domain", cfg.DNS.RecordName, "ips", newHealthyIPs)
+				domainLog.WarnContext(ctx, "✗ Endpoint health check failed", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP, "error", result.Error)
 			}
-		} else {
-			log.WarnContext(ctx, "No healthy endpoints found, not updating DNS", "domain", cfg.DNS.RecordName)
 		}
 
-		// Update the stored previous IPs
-		hc.healthyIPs = newHealthyIPs
-	} else {
-		log.DebugContext(ctx, "Healthy IPs unchanged, skipping DNS update", "domain", cfg.DNS.RecordName, "healthy", newHealthyIPs)
+		// Check if healthy IPs have changed
+		if !utils.ElementsMatch(dc.healthyIPs, newHealthyIPs) {
+			// Update DNS records
+			if len(newHealthyIPs) > 0 {
+				err := hc.dnsProvider.UpdateRecords(ctx, dc.domain, dc.ttl, newHealthyIPs)
+				if err != nil {
+					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
+				} else {
+					domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs)
+				}
+			} else {
+				domainLog.WarnContext(ctx, "No healthy endpoints found, not updating DNS")
+			}
+
+			// Update the stored previous IPs
+			dc.healthyIPs = newHealthyIPs
+		} else {
+			domainLog.DebugContext(ctx, "Healthy IPs unchanged, skipping DNS update", "healthy", newHealthyIPs)
+		}
 	}
 }

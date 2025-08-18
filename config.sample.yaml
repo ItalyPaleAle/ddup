@@ -3,27 +3,32 @@
 # How often to perform health checks
 interval: 30s
 
-# List of endpoints to health check
-endpoints:
-  - name: "server1"
-    url: "http://192.168.1.100:8080/health"
-    ip: "192.168.1.100"
-    timeout: "5s"
-  - name: "server2"
-    url: "http://192.168.1.101:8080/health"
-    ip: "192.168.1.101"
-    timeout: "5s"
-  - name: "server3"
-    url: "http://192.168.1.102:8080/health"
-    ip: "192.168.1.102"
-    timeout: "5s"
+domains:
+  - recordName: "service.example.com"
+    ttl: 120
+    endpoints:
+      - name: "server1"
+        url: "http://192.168.1.100:8080/health"
+        ip: "192.168.1.100"
+        timeout: "5s"
+      - name: "server2"
+        url: "http://192.168.1.101:8080/health"
+        ip: "192.168.1.101"
+        timeout: "5s"
+  - recordName: "foo.example.com"
+    ttl: 120
+    endpoints:
+      - name: "foo1"
+        url: "http://192.168.1.200:9000/health"
+        ip: "192.168.1.200"
+        timeout: "5s"
+      - name: "foo2"
+        url: "http://192.168.1.201:9000/health"
+        ip: "192.168.1.201"
+        timeout: "5s"
 
-# DNS Provider Configuration
-dns:
-  recordName: "service.example.com"
-  recordType: "A"
-  ttl: 300
-  provider:
-    cloudflare:
-      apiToken: "your-cloudflare-api-token"
-      zoneId: "your-zone-id"
+# Provider Configuration
+provider:
+  cloudflare:
+    apiToken: "your-cloudflare-api-token"
+    zoneId: "your-zone-id"

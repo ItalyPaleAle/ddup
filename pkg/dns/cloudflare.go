@@ -18,13 +18,11 @@ import (
 type CloudflareProvider struct {
 	apiToken   string
 	zoneID     string
-	recordType string
-	ttl        int
 	httpClient *http.Client
 }
 
 // NewCloudflareProvider creates a new Cloudflare DNS provider
-func NewCloudflareProvider(cfg *config.CloudflareConfig, recordType string, ttl int) (*CloudflareProvider, error) {
+func NewCloudflareProvider(cfg *config.CloudflareConfig) (*CloudflareProvider, error) {
 	if cfg.APIToken == "" {
 		return nil, errors.New("API token is required")
 	}
@@ -35,14 +33,12 @@ func NewCloudflareProvider(cfg *config.CloudflareConfig, recordType string, ttl 
 	return &CloudflareProvider{
 		apiToken:   cfg.APIToken,
 		zoneID:     cfg.ZoneID,
-		recordType: recordType,
-		ttl:        ttl,
 		httpClient: http.DefaultClient,
 	}, nil
 }
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
-func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ips []string) error {
+func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
 	log := utils.LogFromContext(ctx)
 
 	// First, get existing records
@@ -87,7 +83,7 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, i
 
 		log.DebugContext(ctx, "Creating record for healthy IP", "ip", ip)
 
-		err = c.createRecord(ctx, domain, ip)
+		err = c.createRecord(ctx, domain, ip, ttl)
 		if err != nil {
 			return fmt.Errorf("error creating record for IP %s: %w", ip, err)
 		}
@@ -119,7 +115,7 @@ type CloudflareError struct {
 }
 
 func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain string) ([]CloudflareRecord, error) {
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=%s", c.zoneID, domain, c.recordType)
+	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=A", c.zoneID, domain)
 
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -177,14 +173,14 @@ func (c *CloudflareProvider) deleteRecord(ctx context.Context, recordID string) 
 	return nil
 }
 
-func (c *CloudflareProvider) createRecord(ctx context.Context, domain, ip string) error {
+func (c *CloudflareProvider) createRecord(ctx context.Context, domain, ip string, ttl int) error {
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", c.zoneID)
 
 	record := map[string]interface{}{
-		"type":    c.recordType,
+		"type":    "A",
 		"name":    domain,
 		"content": ip,
-		"ttl":     c.ttl,
+		"ttl":     ttl,
 	}
 
 	jsonData, err := json.Marshal(record)

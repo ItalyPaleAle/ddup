@@ -35,9 +35,6 @@ func Get() *Config {
 func GetDefaultConfig() *Config {
 	return &Config{
 		Interval: 30 * time.Second,
-		DNS: ConfigDNS{
-			TTL: 60,
-		},
 		Logs: ConfigLogs{
 			Level: "info",
 		},
