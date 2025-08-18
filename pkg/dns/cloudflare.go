@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/italypaleale/ddup/pkg/config"
+	"github.com/italypaleale/ddup/pkg/utils"
 )
 
 // CloudflareProvider implements the Provider interface for Cloudflare DNS
@@ -42,22 +43,50 @@ func NewCloudflareProvider(cfg *config.CloudflareConfig, recordType string, ttl 
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
 func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ips []string) error {
+	log := utils.LogFromContext(ctx)
+
 	// First, get existing records
 	existingRecords, err := c.getExistingRecords(ctx, domain)
 	if err != nil {
 		return fmt.Errorf("error getting existing records: %w", err)
 	}
 
-	// Delete existing records
+	// Map of existing IPs and record IDs
+	existingIPs := make(map[string]string)
 	for _, record := range existingRecords {
-		err = c.deleteRecord(ctx, record.ID)
+		existingIPs[record.Content] = record.ID
+	}
+
+	// Map of IPs we want to preserve
+	desiredIPs := make(map[string]struct{})
+	for _, ip := range ips {
+		desiredIPs[ip] = struct{}{}
+	}
+
+	// Delete records for IPs that are no longer healthy
+	for ip, recordID := range existingIPs {
+		_, ok := desiredIPs[ip]
+		if ok {
+			continue
+		}
+
+		log.DebugContext(ctx, "Deleting record for unhealthy IP", "ip", ip, "recordID", recordID)
+
+		err = c.deleteRecord(ctx, recordID)
 		if err != nil {
-			return fmt.Errorf("error deleting record %s: %w", record.ID, err)
+			return fmt.Errorf("error deleting record %s for IP %s: %w", recordID, ip, err)
 		}
 	}
 
-	// Create new records for healthy IPs
+	// Create new records for healthy IPs that don't exist yet
 	for _, ip := range ips {
+		_, exists := existingIPs[ip]
+		if exists {
+			continue
+		}
+
+		log.DebugContext(ctx, "Creating record for healthy IP", "ip", ip)
+
 		err = c.createRecord(ctx, domain, ip)
 		if err != nil {
 			return fmt.Errorf("error creating record for IP %s: %w", ip, err)

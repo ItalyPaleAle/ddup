@@ -71,32 +71,12 @@ func main() {
 	}
 
 	// Initialize health checker
-	checker := healthcheck.New(cfg.Endpoints)
-
-	// Healthcheck service
-	checkerSvc := func(ctx context.Context) error {
-		log.InfoContext(ctx, "Health checker started", "interval", cfg.Interval)
-
-		// Run initial health check
-		runHealthCheckAndUpdateDNS(ctx, checker, dnsProvider, cfg.DNS)
-
-		ticker := time.NewTicker(cfg.Interval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-ticker.C:
-				runHealthCheckAndUpdateDNS(ctx, checker, dnsProvider, cfg.DNS)
-			}
-		}
-	}
+	hc := NewHealthChecker(dnsProvider)
 
 	// Run all services
 	// This call blocks until the context is canceled
 	err = servicerunner.
-		NewServiceRunner(checkerSvc).
+		NewServiceRunner(hc.Run).
 		Run(ctx)
 	if err != nil {
 		utils.FatalError(log, "Failed to run service", err)
@@ -115,32 +95,82 @@ func main() {
 	}
 }
 
-func runHealthCheckAndUpdateDNS(ctx context.Context, checker *healthcheck.Checker, dnsProvider dns.Provider, dnsConfig config.ConfigDNS) {
+// HealthChecker manages health checking and DNS updates
+type HealthChecker struct {
+	checker     *healthcheck.Checker
+	dnsProvider dns.Provider
+	healthyIPs  []string
+}
+
+// NewHealthChecker creates a new HealthChecker instance
+func NewHealthChecker(dnsProvider dns.Provider) *HealthChecker {
+	cfg := config.Get()
+
+	return &HealthChecker{
+		checker:     healthcheck.New(cfg.Endpoints),
+		dnsProvider: dnsProvider,
+	}
+}
+
+func (hc *HealthChecker) Run(ctx context.Context) error {
+	cfg := config.Get()
+	log := utils.LogFromContext(ctx)
+
+	log.InfoContext(ctx, "Health checker started", "interval", cfg.Interval)
+
+	// Run immediately
+	hc.checkAndUpdateDNS(ctx)
+
+	// Run on an interval until the context is canceled
+	ticker := time.NewTicker(cfg.Interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			hc.checkAndUpdateDNS(ctx)
+		}
+	}
+}
+
+// checkAndUpdateDNS performs health checks and updates DNS if needed
+func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
+	cfg := config.Get()
 	log := utils.LogFromContext(ctx)
 
 	// Perform health checks
-	results := checker.CheckAll(ctx)
+	results := hc.checker.CheckAll(ctx)
 
 	// Collect healthy IPs
-	var healthyIPs []string
+	var newHealthyIPs []string
 	for _, result := range results {
 		if result.Healthy {
-			healthyIPs = append(healthyIPs, result.Endpoint.IP)
+			newHealthyIPs = append(newHealthyIPs, result.Endpoint.IP)
 			log.DebugContext(ctx, "✓ Endpoint is healthy", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP)
 		} else {
 			log.WarnContext(ctx, "✗ Endpoint health check failed", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP, "error", result.Error)
 		}
 	}
 
-	// Update DNS records
-	if len(healthyIPs) > 0 {
-		err := dnsProvider.UpdateRecords(ctx, dnsConfig.RecordName, healthyIPs)
-		if err != nil {
-			log.ErrorContext(ctx, "Error updating DNS records", "domain", dnsConfig.RecordName, "error", err)
+	// Check if healthy IPs have changed
+	if !utils.ElementsMatch(hc.healthyIPs, newHealthyIPs) {
+		// Update DNS records
+		if len(newHealthyIPs) > 0 {
+			err := hc.dnsProvider.UpdateRecords(ctx, cfg.DNS.RecordName, newHealthyIPs)
+			if err != nil {
+				log.ErrorContext(ctx, "Error updating DNS records", "domain", cfg.DNS.RecordName, "error", err)
+			} else {
+				log.InfoContext(ctx, "Updated DNS records", "domain", cfg.DNS.RecordName, "ips", newHealthyIPs)
+			}
 		} else {
-			log.DebugContext(ctx, "✓ Updated DNS records", "domain", dnsConfig.RecordName, "healthy", healthyIPs)
+			log.WarnContext(ctx, "No healthy endpoints found, not updating DNS", "domain", cfg.DNS.RecordName)
 		}
+
+		// Update the stored previous IPs
+		hc.healthyIPs = newHealthyIPs
 	} else {
-		log.WarnContext(ctx, "No healthy endpoints found, not updating DNS", "domain", dnsConfig.RecordName)
+		log.DebugContext(ctx, "Healthy IPs unchanged, skipping DNS update", "domain", cfg.DNS.RecordName, "healthy", newHealthyIPs)
 	}
 }
