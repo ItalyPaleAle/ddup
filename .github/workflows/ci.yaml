@@ -1,0 +1,48 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - master
+      - main
+      - v*
+  pull_request:
+    branches:
+      - master
+      - main
+      - v*
+
+jobs:
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CGO_ENABLED: "0"
+      GOLANGCI_LINT_VERSION: "v2.4.0"
+    steps:
+
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        # Use cache from golangci-lint
+        cache: false
+
+    # - name: Check diff
+    #   run: |
+    #     make check-config-diff || echo "Please run 'make gen-config'"
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v8
+      with:
+        version: ${{ env.GOLANGCI_LINT_VERSION }}
+
+    - name: Test
+      run: |
+        make test
