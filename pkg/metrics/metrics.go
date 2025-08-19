@@ -35,7 +35,7 @@ func NewAppMetrics(ctx context.Context) (m *AppMetrics, shutdownFn func(ctx cont
 	// Get the metric reader
 	// If the env var OTEL_METRICS_EXPORTER is empty, we set it to "none"
 	if os.Getenv("OTEL_METRICS_EXPORTER") == "" {
-		os.Setenv("OTEL_METRICS_EXPORTER", "none")
+		_ = os.Setenv("OTEL_METRICS_EXPORTER", "none") //nolint:errcheck
 	}
 	mr, err := autoexport.NewMetricReader(ctx)
 	if err != nil {

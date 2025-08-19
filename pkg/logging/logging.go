@@ -70,7 +70,7 @@ func GetLogger(ctx context.Context, cfg *config.Config) (log *slog.Logger, shutd
 
 	// If the env var OTEL_LOGS_EXPORTER is empty, we set it to "none"
 	if os.Getenv("OTEL_LOGS_EXPORTER") == "" {
-		os.Setenv("OTEL_LOGS_EXPORTER", "none")
+		_ = os.Setenv("OTEL_LOGS_EXPORTER", "none") //nolint:errcheck
 	}
 	exp, err := autoexport.NewLogExporter(ctx)
 	if err != nil {
