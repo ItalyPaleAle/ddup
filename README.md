@@ -4,6 +4,8 @@ ddup periodically checks the health of your services and updates the DNS records
 
 You can use ddup to configure [round-robin DNS](https://en.wikipedia.org/wiki/Round-robin_DNS) for load balancing and failover, for internal or external apps, automatically excluding un-healthy replicas.
 
+ddup is **not** a DNS server, instead it works with "dynamic" DNS servers. Currently, it supports **Cloudflare DNS** only.
+
 ## Installation
 
 ### Using Docker/Podman
