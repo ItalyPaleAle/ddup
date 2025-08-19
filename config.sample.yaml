@@ -3,6 +3,7 @@
 # How often to perform health checks
 interval: 30s
 
+# List of domains to manage
 domains:
   - recordName: "service.example.com"
     ttl: 120

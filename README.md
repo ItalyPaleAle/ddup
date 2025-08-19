@@ -1,45 +1,77 @@
 # ddup - Dynamic DNS Health Checker
 
-A Go application that performs periodic health checks on configured backends and updates Cloudflare DNS records based on the health status.
+ddup periodically checks the health of your services and updates the DNS records pointing to healthy deployments.
+
+You can use ddup to configure [round-robin DNS](https://en.wikipedia.org/wiki/Round-robin_DNS) for load balancing and failover, for internal or external apps, automatically excluding un-healthy replicas.
+
+## Installation
+
+### Using Docker/Podman
+
+You can run ddup as a Docker/Podman container. Container images are available for Linux and support amd64, arm64, and armv7/armhf.
+
+First, create a folder where you will store the configuration file `config.yaml`, for example `$HOME/.ddup`. You can then start ddup with:
+
+```sh
+# For podman, replace "docker run" with "podman run"
+docker run \
+  -d \
+  --read-only \
+  -v $HOME/.ddup:/etc/ddup:ro \
+  ghcr.io/italypaleale/ddup:0
+```
+
+> ddup follows semver for versioning. The command above uses the latest version in the 0.x branch. We do not publish a container image tagged "latest".
+
+### Using Docker Compose
+
+This is an example of a `docker-compose.yaml` for running ddup:
+
+```yaml
+version: "3.6"
+
+services:
+  ddup:
+    image: "ghcr.io/italypaleale/ddup:0"
+    volumes:
+      # Set the path on the host OS
+      - "/path/to/ddup:/etc/ddup:ro"
+    restart: "unless-stopped"
+    read_only: true
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "5"
+        max-size: "20m"
+```
+
+### Start as standalone app
+
+You can download the latest version of ddup from the [Releases](https://github.com/italypaleale/ddup/releases) page. Fetch the correct archive for your system and architecture, then extract the files and copy the `ddup` binary to `/usr/local/bin` or another folder.
+
+Place the configuration for ddup in the `/etc/ddup` folder.
+
+You will need to start ddup as a service using the process manager for your system.
+
+For example, for Linux distributions based on **systemd** you can use the sample unit in [`ddup.service`](./ddup.service): copy this file to `/etc/systemd/system/ddup.service`.
+
+Start the service and enable it at boot with:
+
+```sh
+sudo systemctl enable --now ddup
+```
 
 ## Configuration
 
-Create a `config.yaml` file with your endpoints and DNS provider settings. Multiple domains are supported and share the same DNS provider configuration:
+ddup requires a configuration file `config.yaml` in one of the following paths:
 
-```yaml
-# Health Check and DNS Update Configuration
-interval: 30s # How often to perform health checks
+- `/etc/ddup/config.yaml`
+- `$HOME/.ddup/config.yaml`
+- Or in the same folder where the ddup binary is located
 
-domains:
-  - recordName: "api.example.com"
-    ttl: 120
-    endpoints:
-      - name: "server1"
-        url: "http://192.168.1.100:8080/health"
-        ip: "192.168.1.100"
-        timeout: 5s
-      - name: "server2"
-        url: "http://192.168.1.101:8080/health"
-        ip: "192.168.1.101"
-        timeout: 5s
-  - recordName: "foo.example.com"
-    ttl: 120
-    endpoints:
-      - name: "foo1"
-        url: "https://foo1.local/health"
-        ip: "10.0.0.11"
-        timeout: 5s
-      - name: "foo2"
-        url: "https://foo2.local/health"
-        ip: "10.0.0.12"
-        timeout: 5s
+> You can specify a custom configuration file using the `DDUP_CONFIG` environmental variable.
 
-# Provider Configuration (shared by all domains)
-provider:
-  cloudflare:
-    zoneId: "your-zone-id"
-    apiToken: "your-cloudflare-api-token"
-```
+You can find an example of the configuration file, and a description of every option, in the [`config.sample.yaml`](/config.sample.yaml) file.
 
 ### Configuration Options
 
@@ -51,9 +83,9 @@ provider:
 
 - `domains`: Array of domains to manage
   - `recordName`: The DNS record to update (e.g., "api.example.com")
-  - `ttl`: Time to live for DNS records
+  - `ttl`: Time to live for DNS records. A short value is preferred to ensure faster failover from failed deployments. The default value is 120 (seconds, equivalent to 2 minutes)
   - `endpoints`: Array of endpoints for this domain
-    - `name`: Friendly name for the endpoint
+    - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status
     - `ip`: The IP address to include in DNS records when healthy
     - `timeout`: Request timeout for this specific endpoint
@@ -67,48 +99,8 @@ provider:
 - `zoneId`: Cloudflare Zone ID for your domain
 - `apiToken`: Cloudflare API token with Zone:Edit permissions
 
-## Usage
+To get the credentials:
 
-1. **Create configuration file**: Copy the example above to `config.yaml` and update with your settings
-
-2. **Get Cloudflare credentials**:
-   - API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token
-   - Grant Zone:Edit permissions for your domain
-   - Zone ID: Found in the domain overview page
-
-3. **Build and run**:
-
-  ```bash
-   go build -o ddup .
-   ./ddup
-   ```
-
-## DNS Provider Interface
-
-The application uses a provider interface that allows easy extension to other DNS services:
-
-```go
-type Provider interface {
-    UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error
-}
-```
-
-To add a new provider:
-
-1. Implement the `Provider` interface
-2. Add the provider to the factory function in `internal/dns/provider.go`
-3. Update the configuration structure to include provider-specific settings
-
-## Building
-
-```bash
-# Build for current platform
-make build
-
-# Build for all platforms
-make build-all
-```
-
-## License
-
-MIT License
+- API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token
+  - Grant `Zone:Edit` permissions for your domain
+- Zone ID: Found in the domain overview page

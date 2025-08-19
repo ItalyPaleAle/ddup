@@ -7,8 +7,7 @@ Wants=network.target
 Type=simple
 User=ddup
 Group=ddup
-WorkingDirectory=/opt/ddup
-ExecStart=/opt/ddup/ddup
+ExecStart=/usr/local/bin/ddup
 Restart=always
 RestartSec=5
 StandardOutput=journal
@@ -19,7 +18,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/opt/ddup
+ReadOnlyPaths=/etc/ddup
 
 [Install]
 WantedBy=multi-user.target
