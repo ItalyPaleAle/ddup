@@ -75,11 +75,11 @@ type ConfigEndpoint struct {
 	URL string `yaml:"url"`
 
 	// IP address to include in DNS records when healthy
-	// TODO: GET FROM URL AS DEFAULT
+	// +required
 	IP string `yaml:"ip"`
 
-	// Host
-	// TODO: GET FROM URL AS DEFAULT
+	// Hostname to include in the requests
+	// This can be used when the request is made to an IP address or to a hostname different from the desired one
 	Host string `yaml:"host"`
 }
 
@@ -187,6 +187,9 @@ func (c *Config) Validate(logger *slog.Logger) error {
 		for ei, v := range d.Endpoints {
 			if v.URL == "" {
 				return fmt.Errorf("domain %s endpoint %d is invalid: URL is empty", d.RecordName, ei)
+			}
+			if v.IP == "" {
+				return fmt.Errorf("domain %s endpoint %d is invalid: IP is empty", d.RecordName, ei)
 			}
 			if v.Name == "" {
 				v.Name = v.URL
