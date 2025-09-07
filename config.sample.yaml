@@ -8,27 +8,29 @@ domains:
   - recordName: "service.example.com"
     provider: "example-provider-1"
     ttl: 120
+    healthChecks:
+      timeout: "2s"
+      attempts: 3
     endpoints:
       - name: "server1"
         url: "http://192.168.1.100:8080/health"
         ip: "192.168.1.100"
-        timeout: "5s"
       - name: "server2"
         url: "http://192.168.1.101:8080/health"
         ip: "192.168.1.101"
-        timeout: "5s"
   - recordName: "foo.example.com"
     provider: "example-provider-1"
     ttl: 120
+    healthChecks:
+      timeout: "5s"
+      attempts: 2
     endpoints:
       - name: "foo1"
         url: "http://192.168.1.200:9000/health"
         ip: "192.168.1.200"
-        timeout: "5s"
       - name: "foo2"
         url: "http://192.168.1.201:9000/health"
         ip: "192.168.1.201"
-        timeout: "5s"
 
 # Provider Configuration
 providers:

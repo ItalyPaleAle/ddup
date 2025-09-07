@@ -84,14 +84,16 @@ You can find an example of the configuration file, and a description of every op
 ### Domains and Endpoints
 
 - `domains`: Array of domains to manage
-  - `recordName`: The DNS record to update (e.g., `api.example.com`)
+  - `recordName`: The DNS record to update (e.g., "api.example.com")
   - `provider`: Name of the DNS provider (from the [`providers` map](#providers-configuration))
   - `ttl`: Time to live for DNS records. A short value is preferred to ensure faster failover from failed deployments. The default value is 120 (seconds, equivalent to 2 minutes)
+  - `healthChecks`: Configuration for health checks
+    - `timeout`: Request timeout (default: "3s")
+    - `attempts`: Maximum number of consecutive attempts before considering the endpoint unhealthy (default: 2)
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status
     - `ip`: The IP address to include in DNS records when healthy
-    - `timeout`: Request timeout for this specific endpoint
 
 ### Providers Configuration
 

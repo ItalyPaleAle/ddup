@@ -12,12 +12,16 @@ import (
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
-const DefaultTimeout = 5 * time.Second
+const (
+	DefaultTimeout  = 3 * time.Second
+	DefaultAttempts = 2
+)
 
 // Checker performs health checks on configured endpoints
 type Checker struct {
 	domain    string
 	endpoints []*config.ConfigEndpoint
+	cfg       config.ConfigHealthChecks
 	metrics   *appmetrics.AppMetrics
 	client    *http.Client
 }
@@ -31,16 +35,25 @@ type Result struct {
 }
 
 // New creates a new health checker
-func New(domain string, endpoints []*config.ConfigEndpoint, metrics *appmetrics.AppMetrics) *Checker {
+func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig config.ConfigHealthChecks, metrics *appmetrics.AppMetrics) *Checker {
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
 	}
 
+	// Set default config value
+	if healthCheckConfig.Timeout <= 0 {
+		healthCheckConfig.Timeout = DefaultTimeout
+	}
+	if healthCheckConfig.Attempts <= 0 {
+		healthCheckConfig.Attempts = DefaultAttempts
+	}
+
 	return &Checker{
 		domain:    domain,
 		endpoints: endpoints,
+		cfg:       healthCheckConfig,
 		metrics:   metrics,
 		client:    client,
 	}
@@ -72,17 +85,17 @@ func (c *Checker) GetDomain() string {
 	return c.domain
 }
 
+// GetMaxAttempts returns the maximum number attempts the Checker is configured for
+func (c *Checker) GetMaxAttempts() int {
+	return c.cfg.Attempts
+}
+
 // checkEndpoint performs a health check on a single endpoint
 func (c *Checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndpoint) Result {
 	start := time.Now()
 
 	// Create a context with timeout for this specific endpoint
-	timeout := endpoint.Timeout
-	if timeout <= 0 {
-		timeout = DefaultTimeout
-	}
-
-	endpointCtx, cancel := context.WithTimeout(ctx, timeout)
+	endpointCtx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
 
 	// Create HTTP request

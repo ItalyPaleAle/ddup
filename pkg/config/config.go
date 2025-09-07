@@ -45,9 +45,23 @@ type ConfigDomain struct {
 	// +default 60
 	TTL int `yaml:"ttl"`
 
+	// Configuration for health checks
+	HealthChecks ConfigHealthChecks `yaml:"healthChecks"`
+
 	// Endpoints to health check for this domain
 	// +required
 	Endpoints []*ConfigEndpoint `yaml:"endpoints"`
+}
+
+// ConfigHealthChecks configures the health checks for the endpoints
+type ConfigHealthChecks struct {
+	// Request timeout
+	// Defaults to 3s
+	Timeout time.Duration `yaml:"timeout"`
+
+	// Maximum number of consecutive attempts before considering the endpoint unhealthy
+	// Defaults to 2
+	Attempts int `yaml:"attempts"`
 }
 
 // ConfigEndpoint represents a single endpoint to health check
@@ -60,12 +74,13 @@ type ConfigEndpoint struct {
 	// +required
 	URL string `yaml:"url"`
 
+	// IP address to include in DNS records when healthy
+	// TODO: GET FROM URL AS DEFAULT
 	IP string `yaml:"ip"`
 
-	// Request timeout
-	// Defaults to 5s
-	Timeout time.Duration `yaml:"timeout"`
-	Host    string        `yaml:"host"`
+	// Host
+	// TODO: GET FROM URL AS DEFAULT
+	Host string `yaml:"host"`
 }
 
 type ConfigProvider struct {
@@ -174,9 +189,6 @@ func (c *Config) Validate(logger *slog.Logger) error {
 			}
 			if v.Name == "" {
 				v.Name = v.URL
-			}
-			if v.Timeout <= 0 {
-				v.Timeout = 5 * time.Second
 			}
 		}
 	}

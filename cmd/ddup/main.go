@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/italypaleale/ddup/pkg/buildinfo"
@@ -125,6 +126,7 @@ type domainChecker struct {
 	checker    *healthcheck.Checker
 	ttl        int
 	healthyIPs []string
+	failedIPs  map[string]int
 	provider   dns.Provider
 }
 
@@ -140,7 +142,7 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 		}
 		dcs[i] = domainChecker{
 			ttl:      d.TTL,
-			checker:  healthcheck.New(d.RecordName, d.Endpoints, metrics),
+			checker:  healthcheck.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics),
 			provider: provider,
 		}
 	}
@@ -187,13 +189,33 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		results := dc.checker.CheckAll(ctx)
 
 		// Collect healthy IPs
-		var newHealthyIPs []string
+		newHealthyIPs := make([]string, 0, len(results))
 		for _, result := range results {
+			ip := result.Endpoint.IP
+
+			// If the endpoint is healthy, save it in the healthy list and remove any record of recent failed attempts
 			if result.Healthy {
-				newHealthyIPs = append(newHealthyIPs, result.Endpoint.IP)
-				domainLog.DebugContext(ctx, "✓ Endpoint is healthy", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP)
-			} else {
-				domainLog.WarnContext(ctx, "✗ Endpoint health check failed", "endpoint", result.Endpoint.Name, "ip", result.Endpoint.IP, "error", result.Error)
+				domainLog.DebugContext(ctx, "✓ Endpoint is healthy", "endpoint", result.Endpoint.Name, "ip", ip)
+				newHealthyIPs = append(newHealthyIPs, ip)
+				delete(dc.failedIPs, ip)
+				continue
+			}
+
+			// Endpoint is unhealthy
+			domainLog.WarnContext(ctx, "✗ Endpoint health check failed", "endpoint", result.Endpoint.Name, "ip", ip, "error", result.Error)
+			maxAttempts := dc.checker.GetMaxAttempts()
+			dc.failedIPs[ip]++
+
+			if dc.failedIPs[ip] >= maxAttempts {
+				// Limit to the max attempts number to prevent overflowing
+				dc.failedIPs[ip] = maxAttempts
+				continue
+			}
+
+			// If the number of attempts is less than the maximum, we consider the endpoint healthy if it was healthy before
+			// This is to allow for retries
+			if slices.Contains(dc.healthyIPs, ip) {
+				newHealthyIPs = append(newHealthyIPs, ip)
 			}
 		}
 
@@ -204,9 +226,12 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 				err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
-				} else {
-					domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs)
+
+					// Continue, so we don't update the cached previous IPs
+					continue
 				}
+
+				domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs)
 			} else {
 				domainLog.WarnContext(ctx, "No healthy endpoints found, not updating DNS")
 			}
