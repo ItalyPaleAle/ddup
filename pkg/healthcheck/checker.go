@@ -18,7 +18,17 @@ const (
 )
 
 // Checker performs health checks on configured endpoints
-type Checker struct {
+type Checker interface {
+	CheckAll(ctx context.Context) []Result
+	GetDomain() string
+	GetMaxAttempts() int
+}
+
+// Compile time interface check
+var _ Checker = (*checker)(nil)
+
+// concrete implementation of the Checker interface
+type checker struct {
 	domain    string
 	endpoints []*config.ConfigEndpoint
 	cfg       config.ConfigHealthChecks
@@ -35,7 +45,7 @@ type Result struct {
 }
 
 // New creates a new health checker
-func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig config.ConfigHealthChecks, metrics *appmetrics.AppMetrics) *Checker {
+func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig config.ConfigHealthChecks, metrics *appmetrics.AppMetrics) *checker {
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
@@ -50,7 +60,7 @@ func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig co
 		healthCheckConfig.Attempts = DefaultAttempts
 	}
 
-	return &Checker{
+	return &checker{
 		domain:    domain,
 		endpoints: endpoints,
 		cfg:       healthCheckConfig,
@@ -60,7 +70,7 @@ func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig co
 }
 
 // CheckAll performs health checks on all configured endpoints concurrently
-func (c *Checker) CheckAll(ctx context.Context) []Result {
+func (c *checker) CheckAll(ctx context.Context) []Result {
 	var wg sync.WaitGroup
 	results := make([]Result, len(c.endpoints))
 
@@ -81,17 +91,17 @@ func (c *Checker) CheckAll(ctx context.Context) []Result {
 }
 
 // GetDomain returns the domain this Checker is configured for
-func (c *Checker) GetDomain() string {
+func (c *checker) GetDomain() string {
 	return c.domain
 }
 
 // GetMaxAttempts returns the maximum number attempts the Checker is configured for
-func (c *Checker) GetMaxAttempts() int {
+func (c *checker) GetMaxAttempts() int {
 	return c.cfg.Attempts
 }
 
 // checkEndpoint performs a health check on a single endpoint
-func (c *Checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndpoint) Result {
+func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndpoint) Result {
 	start := time.Now()
 
 	// Create a context with timeout for this specific endpoint

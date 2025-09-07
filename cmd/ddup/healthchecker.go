@@ -19,7 +19,7 @@ type HealthChecker struct {
 }
 
 type domainChecker struct {
-	checker    *healthcheck.Checker
+	checker    healthcheck.Checker
 	ttl        int
 	healthyIPs []string
 	failedIPs  map[string]int
