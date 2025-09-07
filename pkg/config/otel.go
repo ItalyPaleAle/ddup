@@ -9,6 +9,7 @@ import (
 
 // GetOtelResource returns the OpenTelemetry Resource object
 func (c *Config) GetOtelResource(name string) (*resource.Resource, error) {
+	//nolint:wrapcheck
 	return resource.Merge(
 		resource.Default(),
 		resource.NewSchemaless(

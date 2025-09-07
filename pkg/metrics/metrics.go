@@ -68,6 +68,7 @@ func NewAppMetrics(ctx context.Context) (m *AppMetrics, shutdownFn func(ctx cont
 	return m, mp.Shutdown, nil
 }
 
+//nolint:contextcheck
 func (m *AppMetrics) RecordHealthCheck(domain string, endpoint string, ok bool) {
 	if m == nil {
 		return
@@ -86,6 +87,7 @@ func (m *AppMetrics) RecordHealthCheck(domain string, endpoint string, ok bool) 
 	)
 }
 
+//nolint:contextcheck
 func (m *AppMetrics) RecordAPICall(provider string, method string, path string, ok bool, duration time.Duration) {
 	if m == nil {
 		return

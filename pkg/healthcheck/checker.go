@@ -131,14 +131,21 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 		if req.URL.Scheme == "https" {
 			var transport *http.Transport
 			if client.Transport != nil {
-				transport = client.Transport.(*http.Transport).Clone()
-				if transport.TLSClientConfig == nil {
-					transport.TLSClientConfig = &tls.Config{}
+				var ok bool
+				transport, ok = client.Transport.(*http.Transport)
+				if !ok || transport.TLSClientConfig == nil {
+					transport.TLSClientConfig = &tls.Config{
+						MinVersion: tls.VersionTLS12,
+					}
+				} else {
+					transport = transport.Clone()
 				}
+
 				transport.TLSClientConfig.ServerName = endpoint.Host
 			} else {
 				transport = &http.Transport{
 					TLSClientConfig: &tls.Config{
+						MinVersion: tls.VersionTLS12,
 						ServerName: endpoint.Host,
 					},
 				}

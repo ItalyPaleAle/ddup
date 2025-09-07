@@ -118,6 +118,7 @@ type internal struct {
 
 // String implements fmt.Stringer and prints out the config for debugging
 func (c *Config) String() string {
+	//nolint:errchkjson,musttag
 	enc, _ := json.Marshal(c)
 	return string(enc)
 }
