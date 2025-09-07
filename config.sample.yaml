@@ -6,6 +6,7 @@ interval: 30s
 # List of domains to manage
 domains:
   - recordName: "service.example.com"
+    provider: "example-provider-1"
     ttl: 120
     endpoints:
       - name: "server1"
@@ -17,6 +18,7 @@ domains:
         ip: "192.168.1.101"
         timeout: "5s"
   - recordName: "foo.example.com"
+    provider: "example-provider-1"
     ttl: 120
     endpoints:
       - name: "foo1"
@@ -29,7 +31,8 @@ domains:
         timeout: "5s"
 
 # Provider Configuration
-provider:
-  cloudflare:
-    apiToken: "your-cloudflare-api-token"
-    zoneId: "your-zone-id"
+providers:
+  example-provider-1:
+    cloudflare:
+      apiToken: "your-cloudflare-api-token"
+      zoneId: "your-zone-id"

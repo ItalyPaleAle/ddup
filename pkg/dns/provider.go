@@ -15,13 +15,11 @@ type Provider interface {
 }
 
 // NewProvider creates a new DNS provider based on the configuration
-func NewProvider(metrics *appmetrics.AppMetrics) (provider Provider, err error) {
-	cfg := config.Get()
-
+func NewProvider(cfg *config.ConfigProvider, metrics *appmetrics.AppMetrics) (provider Provider, err error) {
 	// We know that only one provider will be non-nil
 	switch {
-	case cfg.Provider.Cloudflare != nil:
-		provider, err = NewCloudflareProvider(cfg.Provider.Cloudflare, metrics)
+	case cfg.Cloudflare != nil:
+		provider, err = NewCloudflareProvider(cfg.Cloudflare, metrics)
 		if err != nil {
 			return nil, fmt.Errorf("error initializing Cloudflare provider: %w", err)
 		}

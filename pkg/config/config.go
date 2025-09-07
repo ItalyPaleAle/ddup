@@ -19,7 +19,7 @@ type Config struct {
 	Domains []ConfigDomain `yaml:"domains"`
 
 	// Provider contains shared provider configuration (shared across all domains)
-	Provider ConfigProvider `yaml:"provider"`
+	Providers map[string]ConfigProvider `yaml:"providers"`
 
 	// Logs contains configuration for logging
 	Logs ConfigLogs `yaml:"logs"`
@@ -36,6 +36,10 @@ type ConfigDomain struct {
 	// RecordName is the DNS record to update for this domain (e.g., "app.example.com")
 	// +required
 	RecordName string `yaml:"recordName"`
+
+	// Name of the DNS provider as configured in the `providers` dictionary.
+	// +required
+	Provider string `yaml:"provider"`
 
 	// TTL for the created records, in seconds
 	// +default 60
@@ -82,7 +86,7 @@ type ConfigLogs struct {
 	Level string `yaml:"level"`
 
 	// If true, emits logs formatted as JSON, otherwise uses a text-based structured log format.
-	// Defaults to false if a TTY is attached (e.g. in development); true otherwise.
+	// Defaults to false if a TTY is attached (e.g. when running the binary directly in the terminal or in development); true otherwise.
 	JSON bool `yaml:"json"`
 }
 
@@ -120,10 +124,18 @@ func (c *Config) GetInstanceID() string {
 
 // Validates the configuration and performs some sanitization
 func (c *Config) Validate(logger *slog.Logger) error {
-	// Ensure that one and only one provider is configured
-	count := countSetProperties(c.Provider)
-	if count != 1 {
-		return errors.New("exactly one provider must be configured")
+	// Ensure that at least one provider is configured
+	if len(c.Providers) == 0 {
+		return errors.New("at least one provider must be configured")
+	}
+
+	// Validate the providers
+	for name, p := range c.Providers {
+		// Ensure that one and only one provider is configured
+		count := countSetProperties(p)
+		if count != 1 {
+			return fmt.Errorf("provider '%s' is invalid: exactly one provider must be configured", name)
+		}
 	}
 
 	// Require at least one domain to be configured
@@ -139,6 +151,15 @@ func (c *Config) Validate(logger *slog.Logger) error {
 		}
 		if len(d.Endpoints) == 0 {
 			return fmt.Errorf("domain %s is invalid: endpoints list is empty", d.RecordName)
+		}
+		if d.Provider == "" {
+			return fmt.Errorf("domain %d is invalid: provider is empty", di)
+		}
+
+		// Ensure the provider exists
+		_, ok := c.Providers[d.Provider]
+		if !ok {
+			return fmt.Errorf("domain %d is invalid: provider '%s' does not exist in the provider configuration", di, d.Provider)
 		}
 
 		// Default TTL is 120s

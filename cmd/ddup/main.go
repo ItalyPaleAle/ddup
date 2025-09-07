@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -74,15 +75,24 @@ func main() {
 		shutdownFns = append(shutdownFns, metricsShutdownFn)
 	}
 
-	// Initialize DNS provider
-	dnsProvider, err := dns.NewProvider(metrics)
-	if err != nil {
-		utils.FatalError(log, "Failed to DNS provider", err)
-		return
+	// Initialize DNS providers
+	dnsProviders := make(map[string]dns.Provider, len(cfg.Providers))
+	for name, pc := range cfg.Providers {
+		var provider dns.Provider
+		provider, err = dns.NewProvider(&pc, metrics)
+		if err != nil {
+			utils.FatalError(log, "Failed to init DNS provider '"+name+"'", err)
+			return
+		}
+		dnsProviders[name] = provider
 	}
 
 	// Initialize health checker
-	hc := NewHealthChecker(dnsProvider, metrics)
+	hc, err := NewHealthChecker(dnsProviders, metrics)
+	if err != nil {
+		utils.FatalError(log, "Failed to init health checker", err)
+		return
+	}
 
 	// Run all services
 	// This call blocks until the context is canceled
@@ -108,7 +118,6 @@ func main() {
 
 // HealthChecker manages health checking and DNS updates
 type HealthChecker struct {
-	dnsProvider    dns.Provider
 	domainCheckers []domainChecker
 }
 
@@ -116,24 +125,29 @@ type domainChecker struct {
 	checker    *healthcheck.Checker
 	ttl        int
 	healthyIPs []string
+	provider   dns.Provider
 }
 
 // NewHealthChecker creates a new HealthChecker instance
-func NewHealthChecker(dnsProvider dns.Provider, metrics *appmetrics.AppMetrics) *HealthChecker {
+func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.AppMetrics) (*HealthChecker, error) {
 	cfg := config.Get()
 
 	dcs := make([]domainChecker, len(cfg.Domains))
 	for i, d := range cfg.Domains {
+		provider, ok := dnsProviders[d.Provider]
+		if !ok || provider == nil {
+			return nil, fmt.Errorf("domain '%s' references DNS provider '%s' that is not configured", d.RecordName, d.Provider)
+		}
 		dcs[i] = domainChecker{
-			ttl:     d.TTL,
-			checker: healthcheck.New(d.RecordName, d.Endpoints, metrics),
+			ttl:      d.TTL,
+			checker:  healthcheck.New(d.RecordName, d.Endpoints, metrics),
+			provider: provider,
 		}
 	}
 
 	return &HealthChecker{
-		dnsProvider:    dnsProvider,
 		domainCheckers: dcs,
-	}
+	}, nil
 }
 
 func (hc *HealthChecker) Run(ctx context.Context) error {
@@ -161,6 +175,8 @@ func (hc *HealthChecker) Run(ctx context.Context) error {
 
 // checkAndUpdateDNS performs health checks and updates DNS if needed
 func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
+	var err error
+
 	log := utils.LogFromContext(ctx)
 
 	for i := range hc.domainCheckers {
@@ -185,7 +201,7 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		if !utils.ElementsMatch(dc.healthyIPs, newHealthyIPs) {
 			// Update DNS records
 			if len(newHealthyIPs) > 0 {
-				err := hc.dnsProvider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
+				err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 				} else {
