@@ -37,9 +37,10 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 			return nil, fmt.Errorf("domain '%s' references DNS provider '%s' that is not configured", d.RecordName, d.Provider)
 		}
 		dcs[i] = domainChecker{
-			ttl:      d.TTL,
-			checker:  healthcheck.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics),
-			provider: provider,
+			checker:   healthcheck.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics),
+			ttl:       d.TTL,
+			failedIPs: make(map[string]int, 0),
+			provider:  provider,
 		}
 	}
 
