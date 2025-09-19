@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/rs/cors"
 	sloghttp "github.com/samber/slog-http"
 
 	"github.com/italypaleale/ddup/pkg/config"
@@ -105,6 +106,8 @@ func (s *Server) initAppServer() (err error) {
 		sloghttp.Recovery,
 		// Limit request body to 1KB
 		MiddlewareMaxBodySize(1<<10),
+		// CORS
+		cors.Default().Handler,
 		// Log requests
 		sloghttp.New(slog.Default()),
 	)

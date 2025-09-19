@@ -6,6 +6,7 @@ require (
 	github.com/lmittmann/tint v1.1.2
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/rs/cors v1.11.1
 	github.com/samber/slog-http v1.8.2
 	github.com/spf13/cast v1.9.2
 	github.com/stretchr/testify v1.10.0
