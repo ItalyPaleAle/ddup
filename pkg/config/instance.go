@@ -38,6 +38,11 @@ func GetDefaultConfig() *Config {
 		Logs: ConfigLogs{
 			Level: "info",
 		},
+		Server: ConfigServer{
+			Enabled: false,
+			Bind:    "127.0.0.1",
+			Port:    7401,
+		},
 	}
 }
 

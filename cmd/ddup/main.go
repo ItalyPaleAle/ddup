@@ -9,8 +9,10 @@ import (
 	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
+	"github.com/italypaleale/ddup/pkg/healthcheck"
 	"github.com/italypaleale/ddup/pkg/logging"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
+	"github.com/italypaleale/ddup/pkg/server"
 	"github.com/italypaleale/ddup/pkg/servicerunner"
 	"github.com/italypaleale/ddup/pkg/signals"
 	"github.com/italypaleale/ddup/pkg/utils"
@@ -60,8 +62,7 @@ func main() {
 
 	// Get a context that is canceled when the application receives a termination signal
 	// We store the logger in the context too
-	ctx := utils.LogToContext(context.Background(), log)
-	ctx = signals.SignalContext(ctx)
+	ctx := signals.SignalContext(context.Background())
 
 	// Init metrics
 	metrics, metricsShutdownFn, err := appmetrics.NewAppMetrics(ctx)
@@ -77,7 +78,7 @@ func main() {
 	dnsProviders := make(map[string]dns.Provider, len(cfg.Providers))
 	for name, pc := range cfg.Providers {
 		var provider dns.Provider
-		provider, err = dns.NewProvider(&pc, metrics)
+		provider, err = dns.NewProvider(name, &pc, metrics)
 		if err != nil {
 			utils.FatalError(log, "Failed to init DNS provider '"+name+"'", err)
 			return
@@ -85,17 +86,34 @@ func main() {
 		dnsProviders[name] = provider
 	}
 
+	// List of services to run
+	services := make([]servicerunner.Service, 0, 2)
+
 	// Initialize health checker
-	hc, err := NewHealthChecker(dnsProviders, metrics)
+	hc, err := healthcheck.NewHealthChecker(dnsProviders, metrics)
 	if err != nil {
 		utils.FatalError(log, "Failed to init health checker", err)
 		return
+	}
+	services = append(services, hc.Run)
+
+	// Init the server if needed
+	if cfg.Server.Enabled {
+		srv, err := server.NewServer(server.NewServerOpts{
+			HealthChecker: hc,
+		})
+		if err != nil {
+			utils.FatalError(log, "Failed to init server", err)
+			return
+		}
+
+		services = append(services, srv.Run)
 	}
 
 	// Run all services
 	// This call blocks until the context is canceled
 	err = servicerunner.
-		NewServiceRunner(hc.Run).
+		NewServiceRunner(services...).
 		Run(ctx)
 	if err != nil {
 		utils.FatalError(log, "Failed to run service", err)

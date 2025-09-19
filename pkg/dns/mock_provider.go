@@ -19,6 +19,11 @@ func NewMockProvider(shouldError bool) *MockProvider {
 	return &MockProvider{ShouldError: shouldError}
 }
 
+// Name implements the Provider interface.
+func (m MockProvider) Name() string {
+	return "mock"
+}
+
 // UpdateRecords implements the Provider interface.
 func (m *MockProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
 	m.CallCount++

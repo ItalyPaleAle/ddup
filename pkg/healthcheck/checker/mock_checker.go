@@ -1,6 +1,6 @@
 //go:build unit
 
-package healthcheck
+package checker
 
 import (
 	"context"

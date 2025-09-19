@@ -24,6 +24,9 @@ type Config struct {
 	// Logs contains configuration for logging
 	Logs ConfigLogs `yaml:"logs"`
 
+	// Server contains configuration for the server
+	Server ConfigServer `yaml:"server"`
+
 	// Dev is meant for development only; it's undocumented
 	Dev ConfigDev `yaml:"-"`
 
@@ -103,6 +106,21 @@ type ConfigLogs struct {
 	// If true, emits logs formatted as JSON, otherwise uses a text-based structured log format.
 	// Defaults to false if a TTY is attached (e.g. when running the binary directly in the terminal or in development); true otherwise.
 	JSON bool `yaml:"json"`
+}
+
+// ConfigServer represents server configuration
+type ConfigServer struct {
+	// Enable the server
+	// +default false
+	Enabled bool `yaml:"enabled"`
+
+	// Address to bind to
+	// +default "127.0.0.1"
+	Bind string `yaml:"bind"`
+
+	// Port to listen on
+	// +default 7401
+	Port int `yaml:"port"`
 }
 
 // ConfigDev includes options using during development only

@@ -38,3 +38,9 @@ providers:
     cloudflare:
       apiToken: "your-cloudflare-api-token"
       zoneId: "your-zone-id"
+
+# Enable the web server
+server:
+  enabled: true
+  bind: "127.0.0.1"
+  port: 7401

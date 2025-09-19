@@ -123,6 +123,12 @@ To get the credentials:
   - Grant `Zone:Edit` permissions for your domain
 - Zone ID: Found in the domain overview page
 
+### Server Settings
+
+- `enabled`: Enable the server (disabled by default)
+- `bind`: Address to bind to (defaults to `127.0.0.1`)
+- `port`: Port to listen on (defaults to `7401`)
+
 ### Logging Settings
 
 - `log`: Logging options

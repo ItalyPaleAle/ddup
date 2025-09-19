@@ -7,16 +7,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/italypaleale/ddup/pkg/config"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
-	"github.com/italypaleale/ddup/pkg/utils"
 )
 
 // CloudflareProvider implements the Provider interface for Cloudflare DNS
 type CloudflareProvider struct {
+	name       string
 	apiToken   string
 	zoneID     string
 	metrics    *appmetrics.AppMetrics
@@ -24,7 +25,7 @@ type CloudflareProvider struct {
 }
 
 // NewCloudflareProvider creates a new Cloudflare DNS provider
-func NewCloudflareProvider(cfg *config.CloudflareConfig, metrics *appmetrics.AppMetrics) (*CloudflareProvider, error) {
+func NewCloudflareProvider(name string, cfg *config.CloudflareConfig, metrics *appmetrics.AppMetrics) (*CloudflareProvider, error) {
 	if cfg.APIToken == "" {
 		return nil, errors.New("API token is required")
 	}
@@ -33,6 +34,7 @@ func NewCloudflareProvider(cfg *config.CloudflareConfig, metrics *appmetrics.App
 	}
 
 	return &CloudflareProvider{
+		name:       name,
 		apiToken:   cfg.APIToken,
 		zoneID:     cfg.ZoneID,
 		metrics:    metrics,
@@ -40,10 +42,13 @@ func NewCloudflareProvider(cfg *config.CloudflareConfig, metrics *appmetrics.App
 	}, nil
 }
 
+// Name returns the provider's name
+func (c CloudflareProvider) Name() string {
+	return c.name
+}
+
 // UpdateRecords updates DNS records for the given domain with the provided IPs
 func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
-	log := utils.LogFromContext(ctx)
-
 	// First, get existing records
 	existingRecords, err := c.getExistingRecords(ctx, domain)
 	if err != nil {
@@ -69,7 +74,7 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 			continue
 		}
 
-		log.DebugContext(ctx, "Deleting record for unhealthy IP", "ip", ip, "recordID", recordID)
+		slog.DebugContext(ctx, "Deleting record for unhealthy IP", "ip", ip, "recordID", recordID)
 
 		err = c.deleteRecord(ctx, recordID)
 		if err != nil {
@@ -84,7 +89,7 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 			continue
 		}
 
-		log.DebugContext(ctx, "Creating record for healthy IP", "ip", ip)
+		slog.DebugContext(ctx, "Creating record for healthy IP", "ip", ip)
 
 		err = c.createRecord(ctx, domain, ip, ttl)
 		if err != nil {
@@ -115,6 +120,11 @@ type CloudflareResponse struct {
 type CloudflareError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
+}
+
+// String implements fmt.Stringer
+func (ce CloudflareError) String() string {
+	return fmt.Sprintf("(%d) %s", ce.Code, ce.Message)
 }
 
 func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain string) ([]CloudflareRecord, error) {
