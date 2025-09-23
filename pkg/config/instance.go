@@ -11,7 +11,11 @@ import (
 	"time"
 )
 
-var config *Config
+var (
+	config *Config
+
+	defaultDevConfig ConfigDev
+)
 
 func init() {
 	// Set the default config at startup
@@ -43,6 +47,7 @@ func GetDefaultConfig() *Config {
 			Bind:    "127.0.0.1",
 			Port:    7401,
 		},
+		Dev: defaultDevConfig,
 	}
 }
 

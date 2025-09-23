@@ -28,7 +28,7 @@ const (
 
 // Server is the server based on Gin
 type Server struct {
-	hc *healthcheck.HealthChecker
+	hc healthcheck.StatusProvider
 
 	appSrv  *http.Server
 	handler http.Handler
@@ -42,7 +42,7 @@ type Server struct {
 
 // NewServerOpts contains options for the NewServer method
 type NewServerOpts struct {
-	HealthChecker *healthcheck.HealthChecker
+	HealthChecker healthcheck.StatusProvider
 }
 
 // NewServer creates a new Server object and initializes it
@@ -72,6 +72,8 @@ func (s *Server) init() error {
 }
 
 func (s *Server) initAppServer() (err error) {
+	cfg := config.Get()
+
 	// Create the mux
 	mux := http.NewServeMux()
 
@@ -100,17 +102,34 @@ func (s *Server) initAppServer() (err error) {
 		respondWithJSON(r.Context(), w, s.hc.GetAllDomainsStatus())
 	})
 
-	// Add middlewares
-	s.handler = Use(mux,
+	// Add static files (includes dashboard)
+	err = registerStatic(mux)
+	if err != nil {
+		return fmt.Errorf("failed to register static server: %w", err)
+	}
+
+	middlewares := make([]Middleware, 0, 4)
+	middlewares = append(middlewares,
 		// Recover from panics
 		sloghttp.Recovery,
 		// Limit request body to 1KB
 		MiddlewareMaxBodySize(1<<10),
-		// CORS
-		cors.Default().Handler,
+	)
+
+	if cfg.Dev.EnableCORS {
+		middlewares = append(middlewares,
+			// CORS
+			cors.Default().Handler,
+		)
+	}
+
+	middlewares = append(middlewares,
 		// Log requests
 		sloghttp.New(slog.Default()),
 	)
+
+	// Add middlewares
+	s.handler = Use(mux, middlewares...)
 
 	return nil
 }

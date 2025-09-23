@@ -1,3 +1,4 @@
 {
-    "go.buildTags": "unit"
+    //"go.buildTags": "unit dashboarddev",
+    "go.buildTags": "unit",
 }

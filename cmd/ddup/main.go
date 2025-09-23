@@ -18,6 +18,8 @@ import (
 	"github.com/italypaleale/ddup/pkg/utils"
 )
 
+var statusProvider healthcheck.StatusProvider
+
 func main() {
 	// Init a logger used for initialization only, to report initialization errors
 	initLogger := slog.Default().
@@ -90,17 +92,22 @@ func main() {
 	services := make([]servicerunner.Service, 0, 2)
 
 	// Initialize health checker
-	hc, err := healthcheck.NewHealthChecker(dnsProviders, metrics)
-	if err != nil {
-		utils.FatalError(log, "Failed to init health checker", err)
-		return
+	// If there's a non-nil statusProvider, it means we're in the "dashboarddev" mode where we use static data
+	if statusProvider == nil {
+		hc, err := healthcheck.NewHealthChecker(dnsProviders, metrics)
+		if err != nil {
+			utils.FatalError(log, "Failed to init health checker", err)
+			return
+		}
+		services = append(services, hc.Run)
+
+		statusProvider = hc
 	}
-	services = append(services, hc.Run)
 
 	// Init the server if needed
 	if cfg.Server.Enabled {
 		srv, err := server.NewServer(server.NewServerOpts{
-			HealthChecker: hc,
+			HealthChecker: statusProvider,
 		})
 		if err != nil {
 			utils.FatalError(log, "Failed to init server", err)

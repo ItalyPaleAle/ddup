@@ -125,7 +125,9 @@ type ConfigServer struct {
 
 // ConfigDev includes options using during development only
 type ConfigDev struct {
-	// Empty for now
+	// If true, enables CORS from anywhere
+	// This is used by the dashboarddev mode
+	EnableCORS bool
 }
 
 // Internal properties
