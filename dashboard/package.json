@@ -13,7 +13,7 @@
     "format:check": "prettier --check .",
     "preview": "vite preview"
   },
-  "packageManager": "^pnpm@10.13.1",
+  "packageManager": "pnpm@10.13.1",
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.3",
     "class-variance-authority": "^0.7.1",
