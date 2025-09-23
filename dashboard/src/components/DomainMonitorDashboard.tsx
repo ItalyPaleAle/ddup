@@ -145,7 +145,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                 size="sm"
                 onClick={refreshClicked}
                 disabled={isLoading}
-                className="flex items-center gap-2 bg-transparent"
+                className="flex items-center gap-2"
               >
                 <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
                 Refresh
@@ -168,13 +168,13 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
 
         {/* Error Message */}
         {error && (
-          <Card className="border-red-200 bg-red-50 lg:w-3/5 mx-auto">
+          <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/50 lg:w-3/5 mx-auto">
             <CardContent>
-              <div className="flex items-center gap-2 text-red-800">
+              <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
                 <XCircle className="h-5 w-5" />
                 <span className="font-medium">Error</span>
               </div>
-              <p className="mt-2 text-sm text-red-700">{error}</p>
+              <p className="mt-2 text-sm text-red-700 dark:text-red-300">{error}</p>
             </CardContent>
           </Card>
         )}
@@ -182,34 +182,33 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
         {/* Stats Overview */}
         {!error && domains.length > 0 && (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-sm font-medium">Healthy Domains</CardTitle>
-                <CheckCircle className="h-4 w-4 text-green-600" />
+                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">{healthyDomains}</div>
+                <div className="text-2xl font-bold text-green-600 dark:text-green-400">{healthyDomains}</div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-sm font-medium">Warning Domains</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                <AlertTriangle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-yellow-600">{warningDomains}</div>
+                <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{warningDomains}</div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-sm font-medium">Unhealthy Domains</CardTitle>
-                <XCircle className="h-4 w-4 text-red-600" />
+                <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-red-600">{unhealthyDomains}</div>
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400">{unhealthyDomains}</div>
               </CardContent>
             </Card>
           </div>
@@ -229,9 +228,12 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                         variant={status === 'healthy' ? 'default' : status === 'warning' ? 'secondary' : 'destructive'}
                         className={cn(
                           'flex items-center gap-1',
-                          status === 'healthy' && 'bg-green-100 text-green-800 hover:bg-green-100',
-                          status === 'warning' && 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100',
-                          status === 'unhealthy' && 'bg-red-100 text-red-800 hover:bg-red-100'
+                          status === 'healthy' &&
+                            'bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30',
+                          status === 'warning' &&
+                            'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/30',
+                          status === 'unhealthy' &&
+                            'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30'
                         )}
                       >
                         {status === 'healthy' && <CheckCircle className="h-3 w-3" />}
@@ -248,13 +250,14 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                       </span>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length} endpoints healthy
+                      {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
+                      endpoints healthy
                     </div>
                   </CardHeader>
 
                   <CardContent className="space-y-4">
                     {domain.status.error && (
-                      <div className="rounded-lg bg-red-50 p-3 text-sm text-red-800">
+                      <div className="rounded-lg bg-red-50 dark:bg-red-950/50 p-3 text-sm text-red-800 dark:text-red-200">
                         <div className="flex items-center gap-2">
                           <XCircle className="h-4 w-4" />
                           <span className="font-medium">Domain Error</span>
