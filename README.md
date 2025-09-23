@@ -6,6 +6,8 @@ You can use ddup to configure [round-robin DNS](https://en.wikipedia.org/wiki/Ro
 
 ddup is **not** a DNS server, instead it works with "dynamic" DNS servers. Currently, it supports **Cloudflare DNS** only.
 
+![Screenshot of the ddup dashboard, showing the status of domains and their health](screenshot.webp)
+
 ## Installation
 
 ### Using Docker/Podman
