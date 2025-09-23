@@ -36,7 +36,7 @@ jobs:
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
-          cache-dependency-path: pnpm-lock.yaml
+          cache-dependency-path: 'dashboard/pnpm-lock.yaml'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
