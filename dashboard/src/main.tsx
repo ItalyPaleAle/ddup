@@ -7,6 +7,6 @@ import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <DomainMonitorDashboard endpoint="http://localhost:7401" />
+    <DomainMonitorDashboard endpoint="" />
   </StrictMode>
 )
