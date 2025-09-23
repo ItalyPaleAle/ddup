@@ -8,6 +8,8 @@ import (
 )
 
 // MockProvider is a mock implementation of the Provider interface for testing.
+//
+//nolint:recvcheck
 type MockProvider struct {
 	// If true, UpdateRecords will return an error
 	ShouldError bool

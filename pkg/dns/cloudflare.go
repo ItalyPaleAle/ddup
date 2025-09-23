@@ -43,7 +43,7 @@ func NewCloudflareProvider(name string, cfg *config.CloudflareConfig, metrics *a
 }
 
 // Name returns the provider's name
-func (c CloudflareProvider) Name() string {
+func (c *CloudflareProvider) Name() string {
 	return c.name
 }
 

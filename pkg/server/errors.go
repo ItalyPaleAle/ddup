@@ -52,12 +52,14 @@ func (e apiError) Clone(with ...func(*apiError)) *apiError {
 	return cloned
 }
 
+//nolint:unused
 func withInnerError(innerError error) func(*apiError) {
 	return func(e *apiError) {
 		e.InnerError = innerError
 	}
 }
 
+//nolint:unused
 func withMetadata(metadata map[string]string) func(*apiError) {
 	return func(e *apiError) {
 		e.Metadata = metadata

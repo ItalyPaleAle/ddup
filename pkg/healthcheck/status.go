@@ -35,7 +35,7 @@ func (hc *HealthChecker) GetDomainStatus(domain string) *DomainStatus {
 	return &res
 }
 
-func (hc HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
+func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 	healthy, unhealthy, lastUpdated, lastError := dc.getState()
 
 	// Endpoints in the unhealthy list could also be in the healthy one,

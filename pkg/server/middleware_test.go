@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestUse(t *testing.T) {
@@ -17,7 +16,7 @@ func TestUse(t *testing.T) {
 	testHandler := func(message string) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(message))
+			_, _ = w.Write([]byte(message)) //nolint:errcheck
 		})
 	}
 
@@ -145,9 +144,12 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 		// Create a handler that reads the body
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(r.Body)
-			require.NoError(t, err)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
-			w.Write(body)
+			_, _ = w.Write(body) //nolint:errcheck
 		})
 
 		wrappedHandler := middleware(handler)
@@ -201,9 +203,12 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 		// Create a handler that reads the body
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(r.Body)
-			require.NoError(t, err)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
-			w.Write(body)
+			_, _ = w.Write(body) //nolint:errcheck
 		})
 
 		wrappedHandler := middleware(handler)
@@ -228,9 +233,12 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 		// Create a handler that reads the body
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, err := io.ReadAll(r.Body)
-			require.NoError(t, err)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+				return
+			}
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("body length: " + string(rune(len(body)))))
+			_, _ = w.Write([]byte("body length: " + string(rune(len(body))))) //nolint:errcheck
 		})
 
 		wrappedHandler := middleware(handler)
@@ -280,7 +288,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 
 		// Create a handler that reads the body in chunks
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			var buffer bytes.Buffer
+			buffer := &bytes.Buffer{}
 
 			// Read in small chunks
 			chunk := make([]byte, 5)
@@ -299,7 +307,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 			}
 
 			w.WriteHeader(http.StatusOK)
-			w.Write(buffer.Bytes())
+			_, _ = io.Copy(w, buffer) //nolint:errcheck
 		})
 
 		wrappedHandler := middleware(handler)
@@ -339,7 +347,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("processed: " + string(body)))
+			_, _ = w.Write([]byte("processed: " + string(body))) //nolint:errcheck
 		})
 
 		wrappedHandler := Use(handler, bodyMiddleware, headerMiddleware)

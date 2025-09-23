@@ -22,9 +22,11 @@ linters:
     - dupl
     - exhaustruct
     - err113
+    - funcorder
     - funlen
     - gochecknoglobals
     - gochecknoinits
+    - gocognit
     - godot
     - ireturn
     - lll

@@ -149,7 +149,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to start app server: %w", err)
 	}
-	defer func() {
+	defer func() { //nolint:contextcheck
 		// Handle graceful shutdown
 		defer s.wg.Done()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -185,7 +185,7 @@ func (s *Server) startAppServer(ctx context.Context) error {
 	// Create the listener if we don't have one already
 	if s.appListener == nil {
 		var err error
-		s.appListener, err = net.Listen("tcp", s.appSrv.Addr)
+		s.appListener, err = net.Listen("tcp", s.appSrv.Addr) //nolint:noctx
 		if err != nil {
 			return fmt.Errorf("failed to create TCP listener: %w", err)
 		}
@@ -196,8 +196,8 @@ func (s *Server) startAppServer(ctx context.Context) error {
 		slog.String("bind", cfg.Server.Bind),
 		slog.Int("port", cfg.Server.Port),
 	)
-	go func() {
-		defer s.appListener.Close()
+	go func() { //nolint:contextcheck
+		defer s.appListener.Close() //nolint:errcheck
 
 		// Next call blocks until the server is shut down
 		srvErr := s.appSrv.Serve(s.appListener)
