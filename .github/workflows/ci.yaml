@@ -34,15 +34,15 @@ jobs:
           # Use cache from golangci-lint
           cache: false
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
 
       - name: Build dashboard
         working-directory: dashboard
