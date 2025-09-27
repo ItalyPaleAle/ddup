@@ -6,6 +6,7 @@ You can use ddup to configure [round-robin DNS](https://en.wikipedia.org/wiki/Ro
 
 ddup is **not** a DNS server, instead it works with "dynamic" DNS servers. Currently, it supports these DNS providers:
 
+- Azure DNS
 - Cloudflare DNS
 - OVH
 
@@ -106,10 +107,48 @@ You can find an example of the configuration file, and a description of every op
 - `providers`: Map of providers.
   - Key: provider name (e.g. `my-provider-1`)
   - Value: an object containing a provider configuration, which is one (and only one) of:
+    - [`azure`](#azure-provider-settings)
     - [`cloudflare`](#cloudflare-provider-settings)
     - [`ovh`](#ovh-provider-settings)
 
+#### Azure Provider Settings
+
+Required settings:
+
+- `subscriptionId`: ID of the Azure subscription where the DNS Zone is deployed
+- `resourceGroupName`: Name of the Resource Group containing the DNS Zone resource
+- `zoneName`: Name of the DNS Zone, which corresponds to the domain name (e.g. `example.com`)
+
+The other settings depend on the authentication method:
+
+- The default authentication method automatically attempts a number of supported methods, including Managed Identity, Workload Identity, Azure CLI credentials (in development), etc. You can also configure it with environmental variables including `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` ([full reference](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables))
+- To use a service principal (with client ID and client secret), set these options:
+  - `clientId`: Client ID
+  - `clientSecret`: Client Secret
+  - `tenantId`: Tenant ID
+- To use a user-assigned managed identity, set:
+  - `managedIdentityClientID`: Client ID of the user-assigned managed identity
+
+Regardless of the authentication method, ensure that the principal (user, service principal, or managed identity) have the **DNS Zone Contributor** role assigned on the DNS zone (specifically, these permissions if using a custom RBAC role: "Microsoft.Network/dnsZones/A/read", "Microsoft.Network/dnsZones/A/write", "Microsoft.Network/dnsZones/A/delete"). Using the Azure CLI:
+
+```sh
+az role assignment create --assignee <client-id> --role "DNS Zone Contributor" --scope "/subscriptions/<subscription-id>/resourceGroups/<rg-name>/providers/Microsoft.Network/dnsZones/<zone-name>"
+```
+
+Example:
+
+```yaml
+providers:
+  example-provider-1:
+    azure:
+      subscriptionId: "00000000-0000-0000-0000-000000000000"
+      resourceGroupName: "my-dns-rg"
+      zoneName: "example.com"
+```
+
 #### Cloudflare Provider Settings
+
+Required settings:
 
 - `zoneId`: Cloudflare Zone ID for your domain
 - `apiToken`: Cloudflare API token with Zone:Edit permissions
@@ -120,13 +159,28 @@ To get the credentials:
   - Grant `Zone:Edit` permissions for your domain
 - Zone ID: Found in the domain overview page
 
+Example:
+
+```yaml
+providers:
+  example-provider-1:
+    cloudflare:
+      apiToken: "your-cloudflare-api-token"
+      zoneId: "your-zone-id"
+```
+
 #### OVH Provider Settings
+
+Required settings:
 
 - `apiKey`: API key
 - `apiSecret`: API secret
 - `consumerKey`: Consumer key
 - `zoneName`: Name of the zone (e.g. `example.com`)
-- `endpoint`: (optional) OVH API endpoint, which is one of:
+
+Optional settings:
+
+- `endpoint`: OVH API endpoint, which is one of:
   - `"eu"` (default value if omitted)
   - `"ca"`
   - `"us"`
