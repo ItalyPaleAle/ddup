@@ -80,7 +80,7 @@ func TestCloudflareProvider(t *testing.T) {
 		assert.Equal(t, "A", createReq["type"])
 		assert.Equal(t, "example.com", createReq["name"])
 		assert.Equal(t, "1.1.1.1", createReq["content"])
-		assert.Equal(t, 300, createReq["ttl"]) // JSON unmarshals numbers as float64
+		assert.EqualValues(t, 300, createReq["ttl"]) // JSON unmarshals numbers as float64
 	})
 
 	t.Run("Delete record", func(t *testing.T) {
