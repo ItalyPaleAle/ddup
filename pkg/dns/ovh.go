@@ -158,11 +158,11 @@ type OVHCreateRecordRequest struct {
 func (o *OVHProvider) getExistingRecords(ctx context.Context, domain string) ([]OVHRecord, error) {
 	start := time.Now()
 	var success bool
-	defer func() {
-		if o.metrics != nil {
+	if o.metrics != nil {
+		defer func() {
 			o.metrics.RecordAPICall("ovh", http.MethodGet, "/v1/domain/zone/"+o.zoneName+"/record", success, time.Since(start))
-		}
-	}()
+		}()
+	}
 
 	// Extract subdomain from full domain
 	subDomain := ""
@@ -215,11 +215,11 @@ func (o *OVHProvider) getRecord(ctx context.Context, recordID int64) (*OVHRecord
 func (o *OVHProvider) deleteRecord(ctx context.Context, recordID int64) error {
 	start := time.Now()
 	var success bool
-	defer func() {
-		if o.metrics != nil {
+	if o.metrics != nil {
+		defer func() {
 			o.metrics.RecordAPICall("ovh", http.MethodDelete, "/v1/domain/zone/"+o.zoneName+"/record", success, time.Since(start))
-		}
-	}()
+		}()
+	}
 
 	url := fmt.Sprintf("%s/domain/zone/%s/record/%d", o.endpoint, o.zoneName, recordID)
 
@@ -235,11 +235,11 @@ func (o *OVHProvider) deleteRecord(ctx context.Context, recordID int64) error {
 func (o *OVHProvider) createRecord(ctx context.Context, domain, ip string, ttl int) error {
 	start := time.Now()
 	var success bool
-	defer func() {
-		if o.metrics != nil {
+	if o.metrics != nil {
+		defer func() {
 			o.metrics.RecordAPICall("ovh", http.MethodPost, "/v1/domain/zone/"+o.zoneName+"/record", success, time.Since(start))
-		}
-	}()
+		}()
+	}
 
 	// Extract subdomain from full domain
 	subDomain := ""

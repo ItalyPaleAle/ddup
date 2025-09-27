@@ -91,6 +91,8 @@ type ConfigProvider struct {
 	Cloudflare *CloudflareConfig `yaml:"cloudflare"`
 	// Config for the OVH provider
 	OVH *OVHConfig `yaml:"ovh"`
+	// Config for the Azure DNS provider
+	Azure *AzureConfig `yaml:"azure"`
 }
 
 // CloudflareConfig represents Cloudflare-specific configuration
@@ -107,7 +109,19 @@ type OVHConfig struct {
 	ZoneName    string `yaml:"zoneName"`
 	// OVH API endpoint (defaults to EU if not specified)
 	// Valid values: "eu", "ca", "us" or full URL
-	Endpoint string `yaml:"endpoint"`
+	Endpoint string `yaml:"endpoint,omitempty"`
+}
+
+// AzureConfig represents Azure DNS-specific configuration
+type AzureConfig struct {
+	SubscriptionID    string `yaml:"subscriptionId"`
+	ResourceGroupName string `yaml:"resourceGroupName"`
+	ZoneName          string `yaml:"zoneName"`
+	TenantID          string `yaml:"tenantId"`
+	// Client ID for authenticating with a service principal
+	ClientID string `yaml:"clientId,omitempty"`
+	// Client secret for authenticating with a service principal
+	ClientSecret string `yaml:"clientSecret,omitempty"`
 }
 
 // ConfigLogs represents logging configuration

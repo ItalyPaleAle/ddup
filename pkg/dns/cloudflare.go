@@ -130,11 +130,11 @@ func (ce CloudflareError) String() string {
 func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain string) ([]CloudflareRecord, error) {
 	start := time.Now()
 	var success bool
-	defer func() {
-		if c.metrics != nil {
+	if c.metrics != nil {
+		defer func() {
 			c.metrics.RecordAPICall("cloudflare", http.MethodGet, fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID), success, time.Since(start))
-		}
-	}()
+		}()
+	}
 
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=A", c.zoneID, domain)
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -170,11 +170,11 @@ func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain stri
 func (c *CloudflareProvider) deleteRecord(ctx context.Context, recordID string) error {
 	start := time.Now()
 	var success bool
-	defer func() {
-		if c.metrics != nil {
+	if c.metrics != nil {
+		defer func() {
 			c.metrics.RecordAPICall("cloudflare", http.MethodDelete, fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID), success, time.Since(start))
-		}
-	}()
+		}()
+	}
 
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records/%s", c.zoneID, recordID)
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -205,11 +205,11 @@ func (c *CloudflareProvider) deleteRecord(ctx context.Context, recordID string) 
 func (c *CloudflareProvider) createRecord(ctx context.Context, domain, ip string, ttl int) error {
 	start := time.Now()
 	var success bool
-	defer func() {
-		if c.metrics != nil {
+	if c.metrics != nil {
+		defer func() {
 			c.metrics.RecordAPICall("cloudflare", http.MethodPost, fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID), success, time.Since(start))
-		}
-	}()
+		}()
+	}
 
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", c.zoneID)
 
