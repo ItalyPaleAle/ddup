@@ -154,31 +154,31 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 	return nil
 }
 
-// AzureARecord represents an A record from the Azure DNS API
-type AzureARecord struct {
+// azureARecord represents an A record from the Azure DNS API
+type azureARecord struct {
 	IPv4Address string `json:"ipv4Address"`
 }
 
-// AzureRecordProperties represents a record's properties from the Azure DNS API
-type AzureRecordProperties struct {
+// azureRecordProperties represents a record's properties from the Azure DNS API
+type azureRecordProperties struct {
 	TTL      int            `json:"TTL"`
-	ARecords []AzureARecord `json:"ARecords"`
+	ARecords []azureARecord `json:"ARecords"`
 }
 
-// AzureRecord represents a DNS record from Azure DNS API
-type AzureRecord struct {
+// azureRecord represents a DNS record from Azure DNS API
+type azureRecord struct {
 	Name       string                `json:"name"`
-	Properties AzureRecordProperties `json:"properties"`
+	Properties azureRecordProperties `json:"properties"`
 }
 
-// AzureRecordSet represents a record set for creating/updating records
-type AzureRecordSet struct {
-	Properties AzureRecordProperties `json:"properties"`
+// azureRecordSet represents a record set for creating/updating records
+type azureRecordSet struct {
+	Properties azureRecordProperties `json:"properties"`
 }
 
-// AzureRecordsResponse represents the response from listing records
-type AzureRecordsResponse struct {
-	Value []AzureRecord `json:"value"`
+// azureRecordsResponse represents the response from listing records
+type azureRecordsResponse struct {
+	Value []azureRecord `json:"value"`
 }
 
 func (a *AzureProvider) getRecordName(domain string) string {
@@ -266,7 +266,7 @@ func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string) ([]st
 		return nil, fmt.Errorf("invalid response status code HTTP %d; response: %s", res.StatusCode, string(body))
 	}
 
-	var response AzureRecordsResponse
+	var response azureRecordsResponse
 	err = json.NewDecoder(res.Body).Decode(&response)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding response: %w", err)
@@ -319,15 +319,15 @@ func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName str
 	)
 
 	// Build A records
-	aRecords := make([]AzureARecord, len(ips))
+	aRecords := make([]azureARecord, len(ips))
 	for i, ip := range ips {
-		aRecords[i] = AzureARecord{
+		aRecords[i] = azureARecord{
 			IPv4Address: ip,
 		}
 	}
 
-	recordSet := AzureRecordSet{
-		Properties: AzureRecordProperties{
+	recordSet := azureRecordSet{
+		Properties: azureRecordProperties{
 			TTL:      ttl,
 			ARecords: aRecords,
 		},
