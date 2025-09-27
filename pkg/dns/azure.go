@@ -56,9 +56,10 @@ func NewAzureProvider(name string, cfg *config.AzureConfig, metrics *appmetrics.
 		},
 	}
 
-	// If client ID and secret are specified, use the service principal
 	// Otherwise, use the default credentials
-	if cfg.ClientID != "" && cfg.ClientSecret != "" {
+	switch {
+	case cfg.ClientID != "" && cfg.ClientSecret != "":
+		// If client ID and secret are specified, use the service principal
 		slog.Info("Authenticating to Azure with a service principal", slog.String("clientId", cfg.ClientID))
 		credential, err = azidentity.NewClientSecretCredential(cfg.TenantID, cfg.ClientID, cfg.ClientSecret, &azidentity.ClientSecretCredentialOptions{
 			ClientOptions: clientOpts,
@@ -66,7 +67,18 @@ func NewAzureProvider(name string, cfg *config.AzureConfig, metrics *appmetrics.
 		if err != nil {
 			return nil, fmt.Errorf("error creating service principal credential: %w", err)
 		}
-	} else {
+	case cfg.ManagedIdentityClientID != "":
+		// Use managed identity with a specific client ID (for user-assigned identities)
+		slog.Info("Authenticating to Azure with a managed identity", slog.String("managedIdentityClientID", cfg.ManagedIdentityClientID))
+		credential, err = azidentity.NewManagedIdentityCredential(&azidentity.ManagedIdentityCredentialOptions{
+			ClientOptions: clientOpts,
+			ID:            azidentity.ClientID(cfg.ManagedIdentityClientID),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("error creating service principal credential: %w", err)
+		}
+	default:
+		// Use the default credentials
 		slog.Info("Authenticating to Azure with the default options")
 		credential, err = azidentity.NewDefaultAzureCredential(&azidentity.DefaultAzureCredentialOptions{
 			ClientOptions: clientOpts,
@@ -261,7 +273,7 @@ func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string) ([]st
 	}
 
 	// Get the list of A IPs
-	ips := make([]string, 0, 0)
+	var ips []string
 	if len(response.Value) > 0 {
 		for _, r := range response.Value {
 			if len(r.Properties.ARecords) == 0 || r.Name != recordName {
