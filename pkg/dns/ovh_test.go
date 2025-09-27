@@ -15,7 +15,7 @@ import (
 //nolint:maintidx
 func TestOVHProvider(t *testing.T) {
 	t.Run("Create record", func(t *testing.T) {
-		provider, mockTransport := newOVHTestProviderWithMock("eu")
+		provider, mockTransport := newOVHTestProviderWithMock()
 
 		// Mock response for getting existing records (empty response)
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record?fieldType=A&subDomain=", &MockResponse{
@@ -72,13 +72,13 @@ func TestOVHProvider(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, "A", createReq.FieldType)
-		assert.Equal(t, "", createReq.SubDomain)
+		assert.Empty(t, createReq.SubDomain)
 		assert.Equal(t, "1.1.1.1", createReq.Target)
 		assert.Equal(t, 300, createReq.TTL)
 	})
 
 	t.Run("Delete record", func(t *testing.T) {
-		provider, mockTransport := newOVHTestProviderWithMock("eu")
+		provider, mockTransport := newOVHTestProviderWithMock()
 
 		// Mock response for getting existing records (has one record)
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record?fieldType=A&subDomain=www", &MockResponse{
@@ -123,7 +123,7 @@ func TestOVHProvider(t *testing.T) {
 	})
 
 	t.Run("Update existing records", func(t *testing.T) {
-		provider, mockTransport := newOVHTestProviderWithMock("eu")
+		provider, mockTransport := newOVHTestProviderWithMock()
 
 		// Mock response for getting existing records (has two records)
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record?fieldType=A&subDomain=api", &MockResponse{
@@ -207,7 +207,7 @@ func TestOVHProvider(t *testing.T) {
 	})
 
 	t.Run("No changes needed", func(t *testing.T) {
-		provider, mockTransport := newOVHTestProviderWithMock("eu")
+		provider, mockTransport := newOVHTestProviderWithMock()
 
 		// Mock response for getting existing records (has one record)
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record?fieldType=A&subDomain=api", &MockResponse{
@@ -240,7 +240,7 @@ func TestOVHProvider(t *testing.T) {
 	})
 
 	t.Run("Multiple IPs for subdomain", func(t *testing.T) {
-		provider, mockTransport := newOVHTestProviderWithMock("eu")
+		provider, mockTransport := newOVHTestProviderWithMock()
 
 		// Mock response for getting existing records (empty)
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record?fieldType=A&subDomain=multi", &MockResponse{
@@ -342,7 +342,7 @@ func TestOVHProvider(t *testing.T) {
 	})
 
 	t.Run("Domain validation", func(t *testing.T) {
-		provider, mockTransport := newOVHTestProviderWithMock("eu")
+		provider, mockTransport := newOVHTestProviderWithMock()
 
 		// Test with domain not in zone
 		err := provider.UpdateRecords(t.Context(), "other.com", 300, []string{"1.1.1.1"})
@@ -351,7 +351,7 @@ func TestOVHProvider(t *testing.T) {
 
 		// Verify no requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 0)
+		require.Empty(t, requests)
 	})
 
 	t.Run("Signature calculation", func(t *testing.T) {
@@ -365,7 +365,7 @@ func TestOVHProvider(t *testing.T) {
 
 		// We just verify it starts with $1$ and has the right format
 		assert.True(t, len(signature) > 3 && signature[:3] == "$1$")
-		assert.Equal(t, 43, len(signature)) // $1$ + 40 char hex string
+		assert.Len(t, signature, 43) // $1$ + 40 char hex string
 	})
 }
 
@@ -391,7 +391,7 @@ func TestOVHEndpoints(t *testing.T) {
 }
 
 // newOVHTestProviderWithMock creates a test OVH provider with a mock HTTP client
-func newOVHTestProviderWithMock(endpoint string) (*OVHProvider, *MockHTTPTransport) {
+func newOVHTestProviderWithMock() (*OVHProvider, *MockHTTPTransport) {
 	mockClient, mockTransport := NewMockHTTPClient()
 
 	provider := &OVHProvider{
@@ -400,7 +400,7 @@ func newOVHTestProviderWithMock(endpoint string) (*OVHProvider, *MockHTTPTranspo
 		apiSecret:   "test-secret",
 		consumerKey: "test-consumer",
 		zoneName:    "example.com",
-		endpoint:    getOVHEndpoint(endpoint),
+		endpoint:    getOVHEndpoint("eu"),
 		httpClient:  mockClient,
 	}
 

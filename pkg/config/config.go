@@ -123,7 +123,7 @@ type AzureConfig struct {
 	// Client secret for authenticating with a service principal
 	ClientSecret string `yaml:"clientSecret,omitempty"`
 	// Managed identity client ID for authenticating with a user-assigned managed identity
-	ManagedIdentityClientID string `yaml:"managedIdentityClientID,omitempty"`
+	ManagedIdentityClientID string `yaml:"managedIdentityClientId,omitempty"`
 }
 
 // ConfigLogs represents logging configuration

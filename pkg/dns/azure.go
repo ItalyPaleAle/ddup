@@ -160,6 +160,8 @@ type azureARecord struct {
 }
 
 // azureRecordProperties represents a record's properties from the Azure DNS API
+//
+//nolint:tagliatelle
 type azureRecordProperties struct {
 	TTL      int            `json:"TTL"`
 	ARecords []azureARecord `json:"ARecords"`

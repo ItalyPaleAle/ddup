@@ -1,9 +1,10 @@
 package dns
 
+// Disable the "G505: Use of weak cryptographic primitive" gosec warning because this is required for an external system
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -326,7 +327,7 @@ func (o *OVHProvider) createAuthenticatedRequest(ctx context.Context, method str
 
 	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
 	// Calculate signature
@@ -349,6 +350,8 @@ func (o *OVHProvider) calculateSignature(method, url, body, timestamp string) st
 	// OVH signature calculation: $1$<sha1_hex>(AS+CK+METHOD+URL+BODY+TSTAMP)
 	data := o.apiSecret + "+" + o.consumerKey + "+" + method + "+" + url + "+" + body + "+" + timestamp
 
+	// Disable the "G401: Use of weak cryptographic primitive" gosec warning because this is required for an external system
+	// #nosec G401
 	hash := sha1.Sum([]byte(data))
 	return "$1$" + hex.EncodeToString(hash[:])
 }

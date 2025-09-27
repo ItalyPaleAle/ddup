@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//nolint:maintidx
 func TestAzureProvider(t *testing.T) {
 	t.Run("Create record", func(t *testing.T) {
 		// Create a mock HTTP client
@@ -87,7 +88,7 @@ func TestAzureProvider(t *testing.T) {
 	})
 
 	t.Run("Delete record", func(t *testing.T) {
-		provider, mockTransport := newAzureTestProviderWithMock("test-sub", "test-rg", "example.com")
+		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
 		// Mock response for getting existing records (has one record)
 		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=www&api-version=2018-05-01", &MockResponse{
@@ -130,7 +131,7 @@ func TestAzureProvider(t *testing.T) {
 	})
 
 	t.Run("Does not delete record if already empty", func(t *testing.T) {
-		provider, mockTransport := newAzureTestProviderWithMock("test-sub", "test-rg", "example.com")
+		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
 		// Mock response for getting existing records (has one record)
 		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=www&api-version=2018-05-01", &MockResponse{
@@ -163,7 +164,7 @@ func TestAzureProvider(t *testing.T) {
 	})
 
 	t.Run("Update existing record", func(t *testing.T) {
-		provider, mockTransport := newAzureTestProviderWithMock("test-sub", "test-rg", "example.com")
+		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
 		// Mock response for getting existing records (has one record with different IP)
 		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=api&api-version=2018-05-01", &MockResponse{
@@ -224,7 +225,7 @@ func TestAzureProvider(t *testing.T) {
 	})
 
 	t.Run("No changes with existing record", func(t *testing.T) {
-		provider, mockTransport := newAzureTestProviderWithMock("test-sub", "test-rg", "example.com")
+		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
 		// Mock response for getting existing records (has one record with different IP)
 		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=api&api-version=2018-05-01", &MockResponse{
@@ -366,13 +367,15 @@ func (mockAzureTokenProvider) GetToken(ctx context.Context, options policy.Token
 }
 
 // newAzureTestProviderWithMock creates a test Azure provider with a mock HTTP client
-func newAzureTestProviderWithMock(subscriptionID, resourceGroup, zoneName string) (*AzureProvider, *MockHTTPTransport) {
+//
+//nolint:unparam
+func newAzureTestProviderWithMock(zoneName string) (*AzureProvider, *MockHTTPTransport) {
 	mockClient, mockTransport := NewMockHTTPClient()
 
 	provider := &AzureProvider{
 		name:              "test",
-		subscriptionID:    subscriptionID,
-		resourceGroupName: resourceGroup,
+		subscriptionID:    "test-sub",
+		resourceGroupName: "test-rg",
 		zoneName:          zoneName,
 		credential:        mockAzureTokenProvider{},
 		httpClient:        mockClient,

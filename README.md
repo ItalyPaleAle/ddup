@@ -127,7 +127,7 @@ The other settings depend on the authentication method:
   - `clientSecret`: Client Secret
   - `tenantId`: Tenant ID
 - To use a user-assigned managed identity, set:
-  - `managedIdentityClientID`: Client ID of the user-assigned managed identity
+  - `managedIdentityClientId`: Client ID of the user-assigned managed identity
 
 Regardless of the authentication method, ensure that the principal (user, service principal, or managed identity) have the **DNS Zone Contributor** role assigned on the DNS zone (specifically, these permissions if using a custom RBAC role: "Microsoft.Network/dnsZones/A/read", "Microsoft.Network/dnsZones/A/write", "Microsoft.Network/dnsZones/A/delete"). Using the Azure CLI:
 
