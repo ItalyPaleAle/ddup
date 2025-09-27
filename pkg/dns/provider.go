@@ -26,6 +26,12 @@ func NewProvider(name string, cfg *config.ConfigProvider, metrics *appmetrics.Ap
 			return nil, fmt.Errorf("error initializing Cloudflare provider: %w", err)
 		}
 		return provider, nil
+	case cfg.OVH != nil:
+		provider, err = NewOVHProvider(name, cfg.OVH, metrics)
+		if err != nil {
+			return nil, fmt.Errorf("error initializing OVH provider: %w", err)
+		}
+		return provider, nil
 	default:
 		// Indicates a development-time error
 		panic("invalid provider")

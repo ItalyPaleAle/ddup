@@ -89,12 +89,25 @@ type ConfigEndpoint struct {
 type ConfigProvider struct {
 	// Config for the Cloudflare provider
 	Cloudflare *CloudflareConfig `yaml:"cloudflare"`
+	// Config for the OVH provider
+	OVH *OVHConfig `yaml:"ovh"`
 }
 
 // CloudflareConfig represents Cloudflare-specific configuration
 type CloudflareConfig struct {
 	APIToken string `yaml:"apiToken"`
 	ZoneID   string `yaml:"zoneId"`
+}
+
+// OVHConfig represents OVH-specific configuration
+type OVHConfig struct {
+	APIKey      string `yaml:"apiKey"`
+	APISecret   string `yaml:"apiSecret"`
+	ConsumerKey string `yaml:"consumerKey"`
+	ZoneName    string `yaml:"zoneName"`
+	// OVH API endpoint (defaults to EU if not specified)
+	// Valid values: "eu", "ca", "us" or full URL
+	Endpoint string `yaml:"endpoint"`
 }
 
 // ConfigLogs represents logging configuration

@@ -4,7 +4,10 @@ ddup periodically checks the health of your services and updates the DNS records
 
 You can use ddup to configure [round-robin DNS](https://en.wikipedia.org/wiki/Round-robin_DNS) for load balancing and failover, for internal or external apps, automatically excluding un-healthy replicas.
 
-ddup is **not** a DNS server, instead it works with "dynamic" DNS servers. Currently, it supports **Cloudflare DNS** only.
+ddup is **not** a DNS server, instead it works with "dynamic" DNS servers. Currently, it supports these DNS providers:
+
+- Cloudflare DNS
+- OVH
 
 ![Screenshot of the ddup dashboard, showing the status of domains and their health](screenshot.webp)
 
@@ -102,17 +105,9 @@ You can find an example of the configuration file, and a description of every op
 
 - `providers`: Map of providers.
   - Key: provider name (e.g. `my-provider-1`)
-  - Value: an object containing a provider configuration (currently only [`cloudflare`](#cloudflare-provider-settings) supported)
-
-Example:
-
-```yaml
-providers:
-  example-provider-1:
-    cloudflare:
-      apiToken: "your-cloudflare-api-token"
-      zoneId: "your-zone-id"
-```
+  - Value: an object containing a provider configuration, which is one (and only one) of:
+    - [`cloudflare`](#cloudflare-provider-settings)
+    - [`ovh`](#ovh-provider-settings)
 
 #### Cloudflare Provider Settings
 
@@ -124,6 +119,37 @@ To get the credentials:
 - API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token
   - Grant `Zone:Edit` permissions for your domain
 - Zone ID: Found in the domain overview page
+
+#### OVH Provider Settings
+
+- `apiKey`: API key
+- `apiSecret`: API secret
+- `consumerKey`: Consumer key
+- `zoneName`: Name of the zone (e.g. `example.com`)
+- `endpoint`: (optional) OVH API endpoint, which is one of:
+  - `"eu"` (default value if omitted)
+  - `"ca"`
+  - `"us"`
+  - A custom URL
+
+To get the required credentials, navigate to this URL, replacing `{zoneName}` with the name of your zone (e.g. `example.com`):
+
+```text
+https://api.ovh.com/createToken/index.cgi?GET=/domain/zone/{zoneName}/*&POST=/domain/zone/{zoneName}/*&DELETE=/domain/zone/{zoneName}/*
+```
+
+Example:
+
+```yaml
+providers:
+  ovh-eu-example:
+    ovh:
+      apiKey: "your-ovh-api-key"
+      apiSecret: "your-ovh-api-secret" 
+      consumerKey: "your-ovh-consumer-key"
+      zoneName: "example.com"
+      endpoint: "eu"
+```
 
 ### Server Settings
 
