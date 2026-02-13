@@ -187,7 +187,7 @@ func (c *Config) GetInstanceID() string {
 	return c.internal.instanceID
 }
 
-// Validates the configuration and performs some sanitization
+// Validate the configuration and performs some sanitization
 func (c *Config) Validate(logger *slog.Logger) error {
 	// Ensure that at least one provider is configured
 	if len(c.Providers) == 0 {
@@ -263,8 +263,7 @@ func countSetProperties(s any) int {
 	}
 
 	var count int
-	for i := range val.NumField() {
-		field := val.Field(i)
+	for _, field := range val.Fields() {
 		if field.IsValid() && !field.IsZero() {
 			count++
 		}

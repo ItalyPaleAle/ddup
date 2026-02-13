@@ -213,7 +213,7 @@ func (c *CloudflareProvider) createRecord(ctx context.Context, domain, ip string
 
 	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", c.zoneID)
 
-	record := map[string]interface{}{
+	record := map[string]any{
 		"type":    "A",
 		"name":    domain,
 		"content": ip,

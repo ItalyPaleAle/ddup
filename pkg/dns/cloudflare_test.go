@@ -73,7 +73,7 @@ func TestCloudflareProvider(t *testing.T) {
 		body, err := io.ReadAll(postReq.Body)
 		require.NoError(t, err)
 
-		var createReq map[string]interface{}
+		var createReq map[string]any
 		err = json.Unmarshal(body, &createReq)
 		require.NoError(t, err)
 
@@ -211,7 +211,7 @@ func TestCloudflareProvider(t *testing.T) {
 		body, err := io.ReadAll(postReq.Body)
 		require.NoError(t, err)
 
-		var createReq map[string]interface{}
+		var createReq map[string]any
 		err = json.Unmarshal(body, &createReq)
 		require.NoError(t, err)
 		assert.Equal(t, "9.10.11.12", createReq["content"])
