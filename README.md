@@ -26,7 +26,7 @@ docker run \
   -d \
   --read-only \
   -v $HOME/.ddup:/etc/ddup:ro \
-  ghcr.io/italypaleale/ddup:0
+  ghcr.io/italypaleale/ddup:v0
 ```
 
 > ddup follows semver for versioning. The command above uses the latest version in the 0.x branch. We do not publish a container image tagged "latest".
@@ -40,7 +40,7 @@ version: "3.6"
 
 services:
   ddup:
-    image: "ghcr.io/italypaleale/ddup:0"
+    image: "ghcr.io/italypaleale/ddup:v0"
     volumes:
       # Set the path on the host OS
       - "/path/to/ddup:/etc/ddup:ro"
