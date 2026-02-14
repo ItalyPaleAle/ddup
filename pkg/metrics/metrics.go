@@ -3,13 +3,11 @@ package metrics
 import (
 	"context"
 	"fmt"
-	"os"
 	"time"
 
-	"go.opentelemetry.io/contrib/exporters/autoexport"
+	"github.com/italypaleale/go-kit/observability"
 	"go.opentelemetry.io/otel/attribute"
 	api "go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/config"
@@ -27,26 +25,14 @@ func NewAppMetrics(ctx context.Context) (m *AppMetrics, shutdownFn func(ctx cont
 
 	m = &AppMetrics{}
 
-	resource, err := cfg.GetOtelResource(buildinfo.AppName)
+	meter, shutdownFn, err := observability.InitMetrics(ctx, observability.InitMetricsOpts{
+		Config:  cfg,
+		AppName: buildinfo.AppName,
+		Prefix:  prefix,
+	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get OpenTelemetry resource: %w", err)
+		return nil, nil, fmt.Errorf("failed to init metrics: %w", err)
 	}
-
-	// Get the metric reader
-	// If the env var OTEL_METRICS_EXPORTER is empty, we set it to "none"
-	if os.Getenv("OTEL_METRICS_EXPORTER") == "" {
-		_ = os.Setenv("OTEL_METRICS_EXPORTER", "none") //nolint:errcheck
-	}
-	mr, err := autoexport.NewMetricReader(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize OpenTelemetry metric reader: %w", err)
-	}
-
-	mp := metric.NewMeterProvider(
-		metric.WithResource(resource),
-		metric.WithReader(mr),
-	)
-	meter := mp.Meter(prefix)
 
 	m.healthChecks, err = meter.Int64Counter(
 		prefix+"_checks",
@@ -65,7 +51,7 @@ func NewAppMetrics(ctx context.Context) (m *AppMetrics, shutdownFn func(ctx cont
 		return nil, nil, fmt.Errorf("failed to create "+prefix+"_api_calls meter: %w", err)
 	}
 
-	return m, mp.Shutdown, nil
+	return m, shutdownFn, nil
 }
 
 //nolint:contextcheck

@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"time"
 
+	configkit "github.com/italypaleale/go-kit/config"
+	"github.com/italypaleale/go-kit/observability"
+
 	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
-	"github.com/italypaleale/ddup/pkg/logging"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 	"github.com/italypaleale/ddup/pkg/server"
 	"github.com/italypaleale/ddup/pkg/servicerunner"
@@ -27,9 +29,13 @@ func main() {
 		With(slog.String("version", buildinfo.AppVersion))
 
 	// Load config
-	err := config.LoadConfig()
+	cfg := config.Get()
+	err := configkit.LoadConfig(cfg, configkit.LoadConfigOpts{
+		EnvVar:  "DDUP_CONFIG",
+		DirName: "ddup",
+	})
 	if err != nil {
-		var ce *config.ConfigError
+		var ce *configkit.ConfigError
 		if errors.As(err, &ce) {
 			ce.LogFatal(initLogger)
 		} else {
@@ -37,25 +43,30 @@ func main() {
 			return
 		}
 	}
-	cfg := config.Get()
 
-	// Shutdown functions
-	shutdownFns := make([]servicerunner.Service, 0)
+	shutdowns := &shutdownManager{
+		fns: make([]servicerunner.Service, 0, 2),
+	}
 
 	// Get the logger and set it in the context
-	log, loggerShutdownFn, err := logging.GetLogger(context.Background(), cfg)
+	log, loggerShutdownFn, err := observability.InitLogs(context.Background(), observability.InitLogsOpts{
+		Config:     cfg,
+		Level:      cfg.Logs.Level,
+		JSON:       cfg.Logs.JSON,
+		AppName:    buildinfo.AppName,
+		AppVersion: buildinfo.AppVersion,
+	})
 	if err != nil {
 		utils.FatalError(initLogger, "Failed to create logger", err)
 		return
 	}
 	slog.SetDefault(log)
-	if loggerShutdownFn != nil {
-		shutdownFns = append(shutdownFns, loggerShutdownFn)
-	}
+	shutdowns.Add(loggerShutdownFn)
 
 	// Validate the configuration
 	err = cfg.Validate(log)
 	if err != nil {
+		shutdowns.Run(log)
 		utils.FatalError(log, "Invalid configuration", err)
 		return
 	}
@@ -69,12 +80,11 @@ func main() {
 	// Init metrics
 	metrics, metricsShutdownFn, err := appmetrics.NewAppMetrics(ctx)
 	if err != nil {
+		shutdowns.Run(log)
 		utils.FatalError(log, "Failed to init metrics", err)
 		return
 	}
-	if metricsShutdownFn != nil {
-		shutdownFns = append(shutdownFns, metricsShutdownFn)
-	}
+	shutdowns.Add(metricsShutdownFn)
 
 	// Initialize DNS providers
 	dnsProviders := make(map[string]dns.Provider, len(cfg.Providers))
@@ -82,6 +92,7 @@ func main() {
 		var provider dns.Provider
 		provider, err = dns.NewProvider(name, &pc, metrics)
 		if err != nil {
+			shutdowns.Run(log)
 			utils.FatalError(log, "Failed to init DNS provider '"+name+"'", err)
 			return
 		}
@@ -96,6 +107,7 @@ func main() {
 	if statusProvider == nil {
 		hc, err := healthcheck.NewHealthChecker(dnsProviders, metrics)
 		if err != nil {
+			shutdowns.Run(log)
 			utils.FatalError(log, "Failed to init health checker", err)
 			return
 		}
@@ -110,6 +122,7 @@ func main() {
 			HealthChecker: statusProvider,
 		})
 		if err != nil {
+			shutdowns.Run(log)
 			utils.FatalError(log, "Failed to init server", err)
 			return
 		}
@@ -123,16 +136,30 @@ func main() {
 		NewServiceRunner(services...).
 		Run(ctx)
 	if err != nil {
+		shutdowns.Run(log)
 		utils.FatalError(log, "Failed to run service", err)
 		return
 	}
 
-	// Invoke all shutdown functions
-	// We give these a timeout of 5s
+	shutdowns.Run(log)
+}
+
+type shutdownManager struct {
+	fns []servicerunner.Service
+}
+
+func (s *shutdownManager) Add(fn servicerunner.Service) {
+	if fn == nil {
+		return
+	}
+	s.fns = append(s.fns, fn)
+}
+
+func (s *shutdownManager) Run(log *slog.Logger) {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
-	err = servicerunner.
-		NewServiceRunner(shutdownFns...).
+	err := servicerunner.
+		NewServiceRunner(s.fns...).
 		Run(shutdownCtx)
 	if err != nil {
 		log.Error("Error shutting down services", slog.Any("error", err))

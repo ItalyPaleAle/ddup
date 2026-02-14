@@ -18,7 +18,6 @@ import (
 
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
-	"github.com/italypaleale/ddup/pkg/utils"
 )
 
 const (
@@ -145,7 +144,8 @@ func (s *Server) Run(ctx context.Context) error {
 
 	// App server
 	s.wg.Add(1)
-	err := s.startAppServer(ctx)
+	appSrvErrCh := make(chan error, 1)
+	err := s.startAppServer(ctx, appSrvErrCh)
 	if err != nil {
 		return fmt.Errorf("failed to start app server: %w", err)
 	}
@@ -164,14 +164,18 @@ func (s *Server) Run(ctx context.Context) error {
 		}
 	}()
 
-	// Block until the context is canceled
-	<-ctx.Done()
+	// Block until the context is canceled or the app server exits unexpectedly.
+	select {
+	case <-ctx.Done():
+	case err = <-appSrvErrCh:
+		return fmt.Errorf("app server failed: %w", err)
+	}
 
 	// Servers are stopped with deferred calls
 	return nil
 }
 
-func (s *Server) startAppServer(ctx context.Context) error {
+func (s *Server) startAppServer(ctx context.Context, appSrvErrCh chan<- error) error {
 	cfg := config.Get()
 
 	// Create the HTTP(S) server
@@ -202,7 +206,10 @@ func (s *Server) startAppServer(ctx context.Context) error {
 		// Next call blocks until the server is shut down
 		srvErr := s.appSrv.Serve(s.appListener)
 		if !errors.Is(srvErr, http.ErrServerClosed) {
-			utils.FatalError(slog.Default(), "Error starting app server", srvErr)
+			select {
+			case appSrvErrCh <- srvErr:
+			default:
+			}
 		}
 	}()
 

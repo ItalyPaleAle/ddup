@@ -1,6 +1,7 @@
-dist/
-config.yaml
-config.*.yaml
+/scratch
+/dist/
+/config.yaml
+/config.*.yaml
 !config.test.yaml
 !config.sample.yaml
 
