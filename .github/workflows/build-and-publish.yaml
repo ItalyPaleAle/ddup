@@ -24,6 +24,8 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
+          # Do not cache in release workflows
+          cache: false
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -31,14 +33,17 @@ jobs:
           package_json_file: 'dashboard/package.json'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version-file: '.node-version'
-          cache: 'pnpm'
-          cache-dependency-path: 'dashboard/pnpm-lock.yaml'
+          node-version-file: 'client/web/.nvmrc'
+          # Do not cache in release workflows
+          package-manager-cache: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # Do not cache in release workflows
+          cache-binary: false
 
       # Lowercase REPO_OWNER which is required for containers
       - name: Set lowercase REPO_OWNER
