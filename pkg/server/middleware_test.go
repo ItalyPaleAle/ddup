@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -36,7 +37,7 @@ func TestUse(t *testing.T) {
 		result := Use(originalHandler)
 
 		// Create a test request
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -54,7 +55,7 @@ func TestUse(t *testing.T) {
 		result := Use(originalHandler, middleware)
 
 		// Create a test request
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -76,7 +77,7 @@ func TestUse(t *testing.T) {
 		result := Use(originalHandler, middleware1, middleware2, middleware3)
 
 		// Create a test request
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -118,7 +119,7 @@ func TestUse(t *testing.T) {
 		result := Use(handler, middleware1, middleware2)
 
 		// Create a test request
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -156,7 +157,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 
 		// Create a request with a small body
 		smallBody := "small body content"
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(smallBody))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(smallBody))
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -185,7 +186,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 
 		// Create a request with a large body
 		largeBody := strings.Repeat("a", 20) // 20 bytes, exceeds limit of 10
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(largeBody))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(largeBody))
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -215,7 +216,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 
 		// Create a request with body exactly at the limit
 		exactBody := strings.Repeat("a", 15) // Exactly 15 bytes
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(exactBody))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(exactBody))
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -238,13 +239,14 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("body length: " + string(rune(len(body))))) //nolint:errcheck
+
+			_, _ = w.Write([]byte("body length: " + strconv.Itoa(len(body))))
 		})
 
 		wrappedHandler := middleware(handler)
 
 		// Create a request with empty body
-		req := httptest.NewRequest(http.MethodPost, "/", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -272,7 +274,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 		wrappedHandler := middleware(handler)
 
 		// Create a request with any body content
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("a"))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader("a"))
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -314,7 +316,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 
 		// Create a request with body within the limit
 		body := "This is a test body that should be allowed"
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader(body))
 		rec := httptest.NewRecorder()
 
 		// Execute the handler
@@ -353,7 +355,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 		wrappedHandler := Use(handler, bodyMiddleware, headerMiddleware)
 
 		// Test with allowed body size
-		req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("small body"))
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader("small body"))
 		rec := httptest.NewRecorder()
 
 		wrappedHandler.ServeHTTP(rec, req)
@@ -363,7 +365,7 @@ func TestMiddlewareMaxBodySize(t *testing.T) {
 		assert.Equal(t, "processed: small body", rec.Body.String())
 
 		// Test with body size exceeding limit
-		req2 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("this body is definitely too long"))
+		req2 := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", strings.NewReader("this body is definitely too long"))
 		rec2 := httptest.NewRecorder()
 
 		wrappedHandler.ServeHTTP(rec2, req2)

@@ -21,7 +21,7 @@ jobs:
       contents: read
     env:
       CGO_ENABLED: "0"
-      GOLANGCI_LINT_VERSION: "v2.9.0"
+      GOLANGCI_LINT_VERSION: "v2.11.4"
     steps:
 
       - name: Check out code
@@ -33,12 +33,12 @@ jobs:
           go-version-file: 'go.mod'
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           package_json_file: 'dashboard/package.json'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version-file: '.node-version'
           cache: 'pnpm'
