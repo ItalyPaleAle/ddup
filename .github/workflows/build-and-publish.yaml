@@ -28,14 +28,14 @@ jobs:
           cache: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           package_json_file: 'dashboard/package.json'
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version-file: 'client/web/.nvmrc'
+          node-version-file: '.node-version'
           # Do not cache in release workflows
           package-manager-cache: false
 
