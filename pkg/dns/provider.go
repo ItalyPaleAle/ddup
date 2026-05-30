@@ -38,6 +38,12 @@ func NewProvider(name string, cfg *config.ConfigProvider, metrics *appmetrics.Ap
 			return nil, fmt.Errorf("error initializing Azure provider: %w", err)
 		}
 		return provider, nil
+	case cfg.Unifi != nil:
+		provider, err = NewUnifiProvider(name, cfg.Unifi, metrics)
+		if err != nil {
+			return nil, fmt.Errorf("error initializing Unifi provider: %w", err)
+		}
+		return provider, nil
 	default:
 		// Indicates a development-time error
 		panic("invalid provider")
