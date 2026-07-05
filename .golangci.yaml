@@ -27,6 +27,7 @@ linters:
     - gochecknoglobals
     - gochecknoinits
     - gocognit
+    - goconst
     - godot
     - ireturn
     - lll

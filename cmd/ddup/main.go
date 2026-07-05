@@ -8,6 +8,7 @@ import (
 
 	configkit "github.com/italypaleale/go-kit/config"
 	"github.com/italypaleale/go-kit/observability"
+	"github.com/italypaleale/go-kit/servicerunner"
 
 	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/config"
@@ -15,7 +16,6 @@ import (
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 	"github.com/italypaleale/ddup/pkg/server"
-	"github.com/italypaleale/ddup/pkg/servicerunner"
 	"github.com/italypaleale/ddup/pkg/signals"
 	"github.com/italypaleale/ddup/pkg/utils"
 )
@@ -156,11 +156,13 @@ func (s *shutdownManager) Add(fn servicerunner.Service) {
 }
 
 func (s *shutdownManager) Run(log *slog.Logger) {
+	// Cleanup functions are one-shot and must each run to completion independently, so we set WaitAll to true
+	sr := servicerunner.NewServiceRunner(s.fns...)
+	sr.WaitAll = true
+
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer shutdownCancel()
-	err := servicerunner.
-		NewServiceRunner(s.fns...).
-		Run(shutdownCtx)
+	err := sr.Run(shutdownCtx)
 	if err != nil {
 		log.Error("Error shutting down services", slog.Any("error", err))
 	}
