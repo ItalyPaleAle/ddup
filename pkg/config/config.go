@@ -93,6 +93,8 @@ type ConfigProvider struct {
 	OVH *OVHConfig `yaml:"ovh"`
 	// Config for the Azure DNS provider
 	Azure *AzureConfig `yaml:"azure"`
+	// Config for the Unifi provider
+	Unifi *UnifiConfig `yaml:"unifi"`
 }
 
 // CloudflareConfig represents Cloudflare-specific configuration
@@ -124,6 +126,20 @@ type AzureConfig struct {
 	ClientSecret string `yaml:"clientSecret,omitempty"`
 	// Managed identity client ID for authenticating with a user-assigned managed identity
 	ManagedIdentityClientID string `yaml:"managedIdentityClientId,omitempty"`
+}
+
+// UnifiConfig represents Unifi-specific configuration
+type UnifiConfig struct {
+	// Host is the Unifi controller address (e.g., "https://unifi.example.com" or "https://10.1.0.1")
+	Host string `yaml:"host"`
+	// APIKey for authentication
+	APIKey string `yaml:"apiKey"`
+	// Site identifier (defaults to "default")
+	Site string `yaml:"site,omitempty"`
+	// ExternalController indicates if using an external controller (defaults to false)
+	ExternalController bool `yaml:"externalController,omitempty"`
+	// SkipTLSVerify skips TLS certificate verification (defaults to false)
+	SkipTLSVerify bool `yaml:"skipTlsVerify,omitempty"`
 }
 
 // ConfigLogs represents logging configuration
