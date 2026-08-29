@@ -13,7 +13,8 @@ linters:
   default: all
 
   # Enable specific linters
-  enable: []
+  enable:
+    - gomodguard_v2
 
   # Disable specific linters.
   disable:
@@ -21,6 +22,7 @@ linters:
     - depguard
     - dupl
     - exhaustruct
+    - exhaustruct_v5
     - err113
     - funcorder
     - funlen
@@ -29,6 +31,7 @@ linters:
     - gocognit
     - goconst
     - godot
+    - gomodguard
     - ireturn
     - lll
     - mnd

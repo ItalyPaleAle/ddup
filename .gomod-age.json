@@ -3,5 +3,32 @@
   "ignore": [
     "github.com/italypaleale/*",
     "golang.org/x/*"
+  ],
+  "allow": [
+    {
+      "module": "github.com/Azure/azure-sdk-for-go/sdk/azcore",
+      "version": "v1.23.1",
+      "reason": ""
+    },
+    {
+      "module": "github.com/Azure/azure-sdk-for-go/sdk/azidentity",
+      "version": "v1.14.1",
+      "reason": ""
+    },
+    {
+      "module": "go.opentelemetry.io/otel",
+      "version": "v1.46.0",
+      "reason": ""
+    },
+    {
+      "module": "go.opentelemetry.io/otel/metric",
+      "version": "v1.46.0",
+      "reason": ""
+    },
+    {
+      "module": "go.opentelemetry.io/otel/sdk",
+      "version": "v1.46.0",
+      "reason": ""
+    }
   ]
 }

@@ -35,8 +35,8 @@ func main() {
 		DirName: "ddup",
 	})
 	if err != nil {
-		var ce *configkit.ConfigError
-		if errors.As(err, &ce) {
+		ce, ok := errors.AsType[*configkit.ConfigError](err)
+		if ok {
 			ce.LogFatal(initLogger)
 		} else {
 			utils.FatalError(initLogger, "Failed to load configuration", err)
