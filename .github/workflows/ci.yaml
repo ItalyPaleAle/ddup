@@ -35,7 +35,7 @@ jobs:
         uses: pnpm/setup@84cb39b217b10273981911c288cd62326dc7c6d2 # v2.0.2
         with:
           cache: true
-          package_json_file: 'dashboard/package.json'
+          package-json-file: 'dashboard/package.json'
           cache-dependency-path: 'dashboard/pnpm-lock.yaml'
 
       - name: Check Go dependency minimum age
