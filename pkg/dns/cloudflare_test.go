@@ -27,6 +27,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setCloudflareEmptyAAAAResponse(mockTransport, "example.com")
 
 		// Mock response for creating a record
 		mockTransport.SetResponse(http.MethodPost, "/client/v4/zones/test-zone-id/dns_records", &MockResponse{
@@ -104,6 +105,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setCloudflareEmptyAAAAResponse(mockTransport, "www.example.com")
 
 		// Mock response for deleting a record
 		mockTransport.SetResponse(http.MethodDelete, "/client/v4/zones/test-zone-id/dns_records/record-456", &MockResponse{
@@ -160,6 +162,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setCloudflareEmptyAAAAResponse(mockTransport, "api.example.com")
 
 		// Mock response for deleting first record (IP no longer healthy)
 		mockTransport.SetResponse(http.MethodDelete, "/client/v4/zones/test-zone-id/dns_records/record-789", &MockResponse{
@@ -197,14 +200,14 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 4) // GET A, GET AAAA, DELETE, POST
+		require.Len(t, requests, 4) // GET A, GET AAAA, POST, DELETE
 
-		deleteReq := requests[2]
+		deleteReq := requests[3]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/client/v4/zones/test-zone-id/dns_records/record-789", deleteReq.URL.Path)
 
 		// Verify we created a new record
-		postReq := requests[3]
+		postReq := requests[2]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		body, err := io.ReadAll(postReq.Body)
 		require.NoError(t, err)
@@ -236,6 +239,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setCloudflareEmptyAAAAResponse(mockTransport, "api.example.com")
 
 		// Test updating with the same IP (no changes needed)
 		err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4"})
@@ -259,6 +263,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setCloudflareEmptyAAAAResponse(mockTransport, "multi.example.com")
 
 		// Mock response for creating first record
 		mockTransport.SetResponse(http.MethodPost, "/client/v4/zones/test-zone-id/dns_records", &MockResponse{
@@ -409,4 +414,16 @@ func newCloudflareTestProviderWithMock() (*CloudflareProvider, *MockHTTPTranspor
 	}
 
 	return provider, mockTransport
+}
+
+func setCloudflareEmptyAAAAResponse(mockTransport *MockHTTPTransport, domain string) {
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/client/v4/zones/test-zone-id/dns_records?name="+domain+"&type=AAAA",
+		&MockResponse{
+			StatusCode: http.StatusOK,
+			Body:       `{"success":true,"errors":[],"result":[]}`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+		},
+	)
 }

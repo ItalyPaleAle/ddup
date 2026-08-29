@@ -112,19 +112,44 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 		return err
 	}
 
-	for _, records := range []struct {
+	recordSets := []struct {
 		recordType string
 		ips        []string
+		currentIPs []string
 	}{
 		{recordType: recordTypeA, ips: ipv4},
 		{recordType: recordTypeAAAA, ips: ipv6},
-	} {
+	}
+
+	// Read both record types before making changes, then apply additions before removals.
+	for i := range recordSets {
+		recordSets[i].currentIPs, err = a.getExistingIPs(ctx, domain, recordSets[i].recordType)
+		if err != nil {
+			return fmt.Errorf("error getting existing %s records: %w", recordSets[i].recordType, err)
+		}
+	}
+
+	for _, recordSet := range recordSets {
+		if len(recordSet.ips) == 0 {
+			continue
+		}
+		err = a.updateRecordType(ctx, domain, recordSet.recordType, ttl, recordSet.ips, recordSet.currentIPs)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, recordSet := range recordSets {
+		if len(recordSet.ips) > 0 {
+			continue
+		}
 		err = a.updateRecordType(
 			ctx,
 			domain,
-			records.recordType,
+			recordSet.recordType,
 			ttl,
-			records.ips,
+			recordSet.ips,
+			recordSet.currentIPs,
 		)
 		if err != nil {
 			return err
@@ -134,16 +159,7 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 	return nil
 }
 
-func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, ips []string) error {
-	currentIPs, err := a.getExistingIPs(ctx, domain, recordType)
-	if err != nil {
-		return fmt.Errorf(
-			"error getting existing %s records: %w",
-			recordType,
-			err,
-		)
-	}
-
+func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, ips []string, currentIPs []string) error {
 	recordName := a.getRecordName(domain)
 
 	if len(ips) == 0 {
@@ -157,7 +173,7 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 			slog.String("recordName", recordName),
 			slog.String("recordType", recordType),
 		)
-		err = a.deleteRecord(ctx, recordName, recordType)
+		err := a.deleteRecord(ctx, recordName, recordType)
 		if err != nil {
 			return fmt.Errorf(
 				"error deleting %s record for domain %s: %w",
@@ -188,7 +204,7 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 		slog.Any("ips", ips),
 	)
 
-	err = a.createOrUpdateRecord(
+	err := a.createOrUpdateRecord(
 		ctx,
 		recordName,
 		recordType,
@@ -196,12 +212,7 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 		ttl,
 	)
 	if err != nil {
-		return fmt.Errorf(
-			"error creating/updating %s record for domain %s: %w",
-			recordType,
-			domain,
-			err,
-		)
+		return fmt.Errorf("error creating/updating %s record for domain %s: %w", recordType, domain, err)
 	}
 
 	return nil
@@ -282,8 +293,8 @@ func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string, recor
 		defer func() {
 			a.metrics.RecordAPICall("azure", http.MethodGet,
 				fmt.Sprintf(
-					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/A",
-					a.subscriptionID, a.resourceGroupName, a.zoneName,
+					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s",
+					a.subscriptionID, a.resourceGroupName, a.zoneName, recordType,
 				),
 				success, time.Since(start))
 		}()
@@ -354,8 +365,13 @@ func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string, recor
 		}
 	}
 
+	canonicalIPs, err := canonicalizeIPs(ips)
+	if err != nil {
+		return nil, fmt.Errorf("invalid IP address in existing %s record: %w", recordType, err)
+	}
+
 	success = true
-	return ips, nil
+	return canonicalIPs, nil
 }
 
 func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName string, recordType string, ips []string, ttl int) error {

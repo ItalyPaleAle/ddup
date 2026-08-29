@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net"
+	"net/netip"
 	"reflect"
 	"time"
 )
@@ -241,9 +241,11 @@ func (c *Config) Validate(logger *slog.Logger) error {
 			if v.IP == "" {
 				return fmt.Errorf("domain %s endpoint %d is invalid: IP is empty", d.RecordName, ei)
 			}
-			if net.ParseIP(v.IP) == nil {
+			ip, err := netip.ParseAddr(v.IP)
+			if err != nil {
 				return fmt.Errorf("domain %s endpoint %d is invalid: IP %q is not a valid IPv4 or IPv6 address", d.RecordName, ei, v.IP)
 			}
+			v.IP = ip.String()
 			if v.Name == "" {
 				v.Name = v.URL
 			}

@@ -16,6 +16,7 @@ func TestRecordTypeForIP(t *testing.T) {
 	}{
 		{name: "IPv4", ip: "192.0.2.10", recordType: recordTypeA},
 		{name: "IPv6", ip: "2001:db8::10", recordType: recordTypeAAAA},
+		{name: "IPv4-mapped IPv6", ip: "::ffff:192.0.2.10", recordType: recordTypeAAAA},
 		{name: "invalid", ip: "not-an-ip", wantErr: true},
 	}
 
@@ -37,12 +38,22 @@ func TestRecordTypeForIP(t *testing.T) {
 func TestSplitIPs(t *testing.T) {
 	ipv4, ipv6, err := splitIPs([]string{
 		"192.0.2.1",
-		"2001:db8::1",
+		"2001:0DB8:0:0:0:0:0:1",
 		"198.51.100.2",
-		"2001:db8::2",
+		"::ffff:192.0.2.10",
 	})
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"192.0.2.1", "198.51.100.2"}, ipv4)
-	assert.Equal(t, []string{"2001:db8::1", "2001:db8::2"}, ipv6)
+	assert.Equal(t, []string{"2001:db8::1", "::ffff:192.0.2.10"}, ipv6)
+}
+
+func TestCanonicalizeIPs(t *testing.T) {
+	actual, err := canonicalizeIPs([]string{
+		"2001:0DB8:0:0:0:0:0:1",
+		"192.0.2.1",
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []string{"2001:db8::1", "192.0.2.1"}, actual)
 }

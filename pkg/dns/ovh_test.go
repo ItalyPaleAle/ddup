@@ -23,6 +23,7 @@ func TestOVHProvider(t *testing.T) {
 			Body:       `[]`,
 			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
+		setOVHEmptyAAAAResponse(mockTransport, "")
 
 		// Mock response for creating a record
 		mockTransport.SetResponse(http.MethodPost, "/1.0/domain/zone/example.com/record", &MockResponse{
@@ -86,6 +87,7 @@ func TestOVHProvider(t *testing.T) {
 			Body:       `[12345]`,
 			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
+		setOVHEmptyAAAAResponse(mockTransport, "www")
 
 		// Mock response for getting record details
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record/12345", &MockResponse{
@@ -131,6 +133,7 @@ func TestOVHProvider(t *testing.T) {
 			Body:       `[12345, 67890]`,
 			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
+		setOVHEmptyAAAAResponse(mockTransport, "api")
 
 		// Mock response for getting first record details
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record/12345", &MockResponse{
@@ -187,15 +190,15 @@ func TestOVHProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 6) // GET A list, GET AAAA list, GET details1, GET details2, DELETE, POST
+		require.Len(t, requests, 6) // GET A list, GET AAAA list, GET details1, GET details2, POST, DELETE
 
 		// Verify we deleted the right record
-		deleteReq := requests[4]
+		deleteReq := requests[5]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/1.0/domain/zone/example.com/record/12345", deleteReq.URL.Path)
 
 		// Verify we created a new record
-		postReq := requests[5]
+		postReq := requests[4]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		body, err := io.ReadAll(postReq.Body)
 		require.NoError(t, err)
@@ -215,6 +218,7 @@ func TestOVHProvider(t *testing.T) {
 			Body:       `[12345]`,
 			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
+		setOVHEmptyAAAAResponse(mockTransport, "api")
 
 		// Mock response for getting record details
 		mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record/12345", &MockResponse{
@@ -248,6 +252,7 @@ func TestOVHProvider(t *testing.T) {
 			Body:       `[]`,
 			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
+		setOVHEmptyAAAAResponse(mockTransport, "multi")
 
 		// Mock response for creating first record
 		mockTransport.SetResponse(http.MethodPost, "/1.0/domain/zone/example.com/record", &MockResponse{
@@ -405,4 +410,16 @@ func newOVHTestProviderWithMock() (*OVHProvider, *MockHTTPTransport) {
 	}
 
 	return provider, mockTransport
+}
+
+func setOVHEmptyAAAAResponse(mockTransport *MockHTTPTransport, subDomain string) {
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/1.0/domain/zone/example.com/record?fieldType=AAAA&subDomain="+subDomain,
+		&MockResponse{
+			StatusCode: http.StatusOK,
+			Body:       `[]`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+		},
+	)
 }

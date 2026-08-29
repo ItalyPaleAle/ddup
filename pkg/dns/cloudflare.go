@@ -49,12 +49,9 @@ func (c *CloudflareProvider) Name() string {
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
 func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
-	// Validate all desired addresses before making any provider changes.
-	for _, ip := range ips {
-		_, err := recordTypeForIP(ip)
-		if err != nil {
-			return err
-		}
+	canonicalIPs, err := canonicalizeIPs(ips)
+	if err != nil {
+		return err
 	}
 
 	// First, get existing A and AAAA records.
@@ -66,16 +63,38 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 	// Map of existing IPs and record IDs
 	existingIPs := make(map[string]string)
 	for _, record := range existingRecords {
-		existingIPs[record.Content] = record.ID
+		ip, err := canonicalizeIP(record.Content)
+		if err != nil {
+			return fmt.Errorf("invalid IP address in existing record %s: %w", record.ID, err)
+		}
+		existingIPs[ip] = record.ID
 	}
 
 	// Map of IPs we want to preserve
 	desiredIPs := make(map[string]struct{})
-	for _, ip := range ips {
+	for _, ip := range canonicalIPs {
 		desiredIPs[ip] = struct{}{}
 	}
 
-	// Delete records for IPs that are no longer healthy
+	// Create replacements before removing stale records so a failed create does not leave the domain empty.
+	createdIPs := make(map[string]struct{})
+	for _, ip := range canonicalIPs {
+		_, exists := existingIPs[ip]
+		_, created := createdIPs[ip]
+		if exists || created {
+			continue
+		}
+
+		slog.DebugContext(ctx, "Creating record for healthy IP", "ip", ip)
+
+		err = c.createRecord(ctx, domain, ip, ttl)
+		if err != nil {
+			return fmt.Errorf("error creating record for IP %s: %w", ip, err)
+		}
+		createdIPs[ip] = struct{}{}
+	}
+
+	// Delete records for IPs that are no longer healthy.
 	for ip, recordID := range existingIPs {
 		_, ok := desiredIPs[ip]
 		if ok {
@@ -87,21 +106,6 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 		err = c.deleteRecord(ctx, recordID)
 		if err != nil {
 			return fmt.Errorf("error deleting record %s for IP %s: %w", recordID, ip, err)
-		}
-	}
-
-	// Create new records for healthy IPs that don't exist yet
-	for _, ip := range ips {
-		_, exists := existingIPs[ip]
-		if exists {
-			continue
-		}
-
-		slog.DebugContext(ctx, "Creating record for healthy IP", "ip", ip)
-
-		err = c.createRecord(ctx, domain, ip, ttl)
-		if err != nil {
-			return fmt.Errorf("error creating record for IP %s: %w", ip, err)
 		}
 	}
 

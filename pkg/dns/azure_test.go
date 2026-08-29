@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -38,6 +39,7 @@ func TestAzureProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setAzureEmptyAAAAResponse(mockTransport, "@")
 
 		// Mock response for creating/updating a record
 		mockTransport.SetResponse(http.MethodPut, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/@?api-version=2018-05-01", &MockResponse{
@@ -60,7 +62,7 @@ func TestAzureProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET A, PUT A, GET AAAA
+		require.Len(t, requests, 3) // GET A, GET AAAA, PUT A
 
 		// Verify the GET request
 		getReq := requests[0]
@@ -69,7 +71,7 @@ func TestAzureProvider(t *testing.T) {
 		assert.Equal(t, "Bearer mock-123", getReq.Header.Get("Authorization"))
 
 		// Verify the PUT request
-		putReq := requests[1]
+		putReq := requests[2]
 		assert.Equal(t, http.MethodPut, putReq.Method)
 		assert.Contains(t, putReq.URL.Path, "/A/@")
 		assert.Equal(t, "Bearer mock-123", putReq.Header.Get("Authorization"))
@@ -108,6 +110,7 @@ func TestAzureProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setAzureEmptyAAAAResponse(mockTransport, "www")
 
 		// Mock response for deleting a record
 		mockTransport.SetResponse(http.MethodDelete, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/www?api-version=2018-05-01", &MockResponse{
@@ -122,10 +125,10 @@ func TestAzureProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET A, DELETE A, GET AAAA
+		require.Len(t, requests, 3) // GET A, GET AAAA, DELETE A
 
 		// Verify the DELETE request
-		deleteReq := requests[1]
+		deleteReq := requests[2]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Contains(t, deleteReq.URL.Path, "/A/www")
 	})
@@ -149,6 +152,7 @@ func TestAzureProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setAzureEmptyAAAAResponse(mockTransport, "www")
 
 		// Test deleting records (passing empty IPs array)
 		err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
@@ -184,6 +188,7 @@ func TestAzureProvider(t *testing.T) {
 		}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setAzureEmptyAAAAResponse(mockTransport, "api")
 
 		// Mock response for updating the record
 		mockTransport.SetResponse(http.MethodPut, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/api?api-version=2018-05-01", &MockResponse{
@@ -207,10 +212,10 @@ func TestAzureProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET A, PUT A, GET AAAA
+		require.Len(t, requests, 3) // GET A, GET AAAA, PUT A
 
 		// Verify the PUT request body
-		putReq := requests[1]
+		putReq := requests[2]
 		body, err := io.ReadAll(putReq.Body)
 		require.NoError(t, err)
 
@@ -246,6 +251,7 @@ func TestAzureProvider(t *testing.T) {
 		}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
+		setAzureEmptyAAAAResponse(mockTransport, "api")
 
 		// Mock response for updating the record
 		mockTransport.SetResponse(http.MethodPut, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/api?api-version=2018-05-01", &MockResponse{
@@ -382,4 +388,17 @@ func newAzureTestProviderWithMock(zoneName string) (*AzureProvider, *MockHTTPTra
 	}
 
 	return provider, mockTransport
+}
+
+func setAzureEmptyAAAAResponse(mockTransport *MockHTTPTransport, recordName string) {
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/AAAA?%24recordsetnamesuffix="+
+			url.QueryEscape(recordName)+"&api-version=2018-05-01",
+		&MockResponse{
+			StatusCode: http.StatusOK,
+			Body:       `{"value":[]}`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
+		},
+	)
 }
