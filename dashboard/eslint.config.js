@@ -13,13 +13,9 @@ export default defineConfig([
     // JavaScript/JSX files
     {
         files: ['**/*.{js,jsx}'],
-        extends: [
-            js.configs.recommended,
-            reactHooks.configs['recommended-latest'],
-            reactRefresh.configs.vite,
-            prettierConfig,
-        ],
+        extends: [js.configs.recommended, reactRefresh.configs.vite, prettierConfig],
         plugins: {
+            'react-hooks': reactHooks,
             prettier,
         },
         languageOptions: {
@@ -32,6 +28,7 @@ export default defineConfig([
             },
         },
         rules: {
+            ...reactHooks.configs.flat['recommended-latest'].rules,
             'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
             'prettier/prettier': 'error',
         },
@@ -57,7 +54,7 @@ export default defineConfig([
         extends: [prettierConfig],
         rules: {
             ...tseslint.configs.recommended.rules,
-            ...reactHooks.configs['recommended-latest'].rules,
+            ...reactHooks.configs.flat['recommended-latest'].rules,
             ...reactRefresh.configs.vite.rules,
             '@typescript-eslint/no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
             'prettier/prettier': 'error',

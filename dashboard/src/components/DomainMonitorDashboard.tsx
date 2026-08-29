@@ -64,18 +64,63 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   }, [endpoint])
 
   useEffect(() => {
-    if (autoRefresh) {
-      fetchDomains()
+    if (!autoRefresh) {
+      return
     }
+
+    const controller = new AbortController()
+
+    const runFetch = async () => {
+      try {
+        setIsLoading(true)
+        setError(null)
+
+        const response = await fetch(endpoint + '/api/status', { signal: controller.signal })
+        if (!response.ok) {
+          throw new Error(`HTTP error: ${response.status} ${response.statusText}`)
+        }
+
+        const data: DomainsResponse = await response.json()
+        if (controller.signal.aborted) {
+          return
+        }
+
+        const domainsArray: Domain[] = Object.entries(data).map(([name, status]) => ({ name, status }))
+        setDomains(domainsArray)
+        setLastUpdated(new Date())
+      } catch (err) {
+        if (controller.signal.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+          return
+        }
+
+        console.error('Failed to fetch domains data:', err)
+
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
+        setError(`Failed to fetch domain data: ${errorMessage}`)
+        setDomains([])
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    // Defer the initial fetch so the effect body itself does not call setState synchronously.
+    queueMicrotask(() => {
+      void runFetch()
+    })
 
     const interval = setInterval(() => {
       if (autoRefresh) {
-        fetchDomains()
+        void runFetch()
       }
     }, 60000)
 
-    return () => clearInterval(interval)
-  }, [autoRefresh, fetchDomains])
+    return () => {
+      controller.abort()
+      clearInterval(interval)
+    }
+  }, [autoRefresh, endpoint])
 
   const refreshClicked = async () => {
     await fetchDomains()
