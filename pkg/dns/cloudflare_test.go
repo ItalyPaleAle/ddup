@@ -51,7 +51,7 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 2) // Should have made 2 requests: GET and POST
+		require.Len(t, requests, 3) // GET A, GET AAAA, POST
 
 		// Verify the GET request
 		getReq := requests[0]
@@ -63,7 +63,7 @@ func TestCloudflareProvider(t *testing.T) {
 		assert.Equal(t, "application/json", getReq.Header.Get("Content-Type"))
 
 		// Verify the POST request
-		postReq := requests[1]
+		postReq := requests[2]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		assert.Equal(t, "/client/v4/zones/test-zone-id/dns_records", postReq.URL.Path)
 		assert.Equal(t, "Bearer test-token", postReq.Header.Get("Authorization"))
@@ -124,10 +124,9 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 2) // Should have made 2 requests: GET and DELETE
+		require.Len(t, requests, 3) // GET A, GET AAAA, DELETE
 
-		// Verify the DELETE request
-		deleteReq := requests[1]
+		deleteReq := requests[2]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/client/v4/zones/test-zone-id/dns_records/record-456", deleteReq.URL.Path)
 		assert.Equal(t, "Bearer test-token", deleteReq.Header.Get("Authorization"))
@@ -198,15 +197,14 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET, DELETE, POST
+		require.Len(t, requests, 4) // GET A, GET AAAA, DELETE, POST
 
-		// Verify we deleted the right record
-		deleteReq := requests[1]
+		deleteReq := requests[2]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/client/v4/zones/test-zone-id/dns_records/record-789", deleteReq.URL.Path)
 
 		// Verify we created a new record
-		postReq := requests[2]
+		postReq := requests[3]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		body, err := io.ReadAll(postReq.Body)
 		require.NoError(t, err)
@@ -245,7 +243,7 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify only the GET request was made (no DELETE or POST)
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 1) // GET only
+		require.Len(t, requests, 2) // GET A and GET AAAA
 	})
 
 	t.Run("Multiple IPs for domain", func(t *testing.T) {
@@ -285,11 +283,10 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET + 2 POST requests
+		require.Len(t, requests, 4) // GET A, GET AAAA + 2 POST requests
 
-		// Verify both POST requests
-		postReq1 := requests[1]
-		postReq2 := requests[2]
+		postReq1 := requests[2]
+		postReq2 := requests[3]
 		assert.Equal(t, http.MethodPost, postReq1.Method)
 		assert.Equal(t, http.MethodPost, postReq2.Method)
 

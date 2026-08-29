@@ -99,7 +99,7 @@ You can find an example of the configuration file, and a description of every op
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status
-    - `ip`: The IP address to include in DNS records when healthy
+    - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records
     - `host`: Optional hostname to include in the requests, when the request is made to an IP address or to a hostname different from the desired one
 
 ### Providers Configuration
@@ -129,10 +129,26 @@ The other settings depend on the authentication method:
 - To use a user-assigned managed identity, set:
   - `managedIdentityClientId`: Client ID of the user-assigned managed identity
 
-Regardless of the authentication method, ensure that the principal (user, service principal, or managed identity) have the **DNS Zone Contributor** role assigned on the DNS zone (specifically, these permissions if using a custom RBAC role: "Microsoft.Network/dnsZones/A/read", "Microsoft.Network/dnsZones/A/write", "Microsoft.Network/dnsZones/A/delete"). Using the Azure CLI:
+Regardless of the authentication method, ensure that the principal (user, service principal, or managed identity) has the **DNS Zone Contributor** role assigned to the DNS zone.
+
+If using a custom RBAC role instead, ensure it includes permissions for both IPv4 and IPv6 DNS records:
+
+```text
+Microsoft.Network/dnsZones/A/read
+Microsoft.Network/dnsZones/A/write
+Microsoft.Network/dnsZones/A/delete
+Microsoft.Network/dnsZones/AAAA/read
+Microsoft.Network/dnsZones/AAAA/write
+Microsoft.Network/dnsZones/AAAA/delete
+```
+
+Using the Azure CLI, the built-in **DNS Zone Contributor** role can be assigned with:
 
 ```sh
-az role assignment create --assignee <client-id> --role "DNS Zone Contributor" --scope "/subscriptions/<subscription-id>/resourceGroups/<rg-name>/providers/Microsoft.Network/dnsZones/<zone-name>"
+az role assignment create \
+  --assignee <client-id> \
+  --role "DNS Zone Contributor" \
+  --scope "/subscriptions/<subscription-id>/resourceGroups/<rg-name>/providers/Microsoft.Network/dnsZones/<zone-name>"
 ```
 
 Example:

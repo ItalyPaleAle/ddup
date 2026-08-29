@@ -48,11 +48,50 @@ func (m *MockHTTPTransport) RoundTrip(req *http.Request) (*http.Response, error)
 	// Look for a matching response
 	response, exists := m.responses[key]
 	if !exists {
-		// Return a default 404 response if no mock is configured
-		response = &MockResponse{
-			StatusCode: 404,
-			Body:       `{"error": "Not Found"}`,
-			Headers:    map[string]string{"Content-Type": "application/json"},
+		// IPv6 support adds an AAAA lookup alongside the existing A lookup
+		// Tests that are not specifically exercising IPv6 can treat an unconfigured AAAA lookup as an empty record set
+		switch {
+		case req.Method == http.MethodGet &&
+			req.URL.Query().Get("type") == recordTypeAAAA:
+
+			response = &MockResponse{
+				StatusCode: 200,
+				Body:       `{"success":true,"errors":[],"result":[]}`,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+			}
+
+		case req.Method == http.MethodGet &&
+			req.URL.Query().Get("fieldType") == recordTypeAAAA:
+
+			response = &MockResponse{
+				StatusCode: 200,
+				Body:       `[]`,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+			}
+
+		case req.Method == http.MethodGet &&
+			strings.Contains(req.URL.Path, "/AAAA"):
+
+			response = &MockResponse{
+				StatusCode: 200,
+				Body:       `{"value":[]}`,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+			}
+
+		default:
+			response = &MockResponse{
+				StatusCode: 404,
+				Body:       `{"error": "Not Found"}`,
+				Headers: map[string]string{
+					"Content-Type": "application/json",
+				},
+			}
 		}
 	}
 

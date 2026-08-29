@@ -44,7 +44,7 @@ func TestOVHProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 2) // Should have made 2 requests: GET and POST
+		require.Len(t, requests, 3) // GET A, GET AAAA, POST
 
 		// Verify the GET request
 		getReq := requests[0]
@@ -58,7 +58,7 @@ func TestOVHProvider(t *testing.T) {
 		assert.NotEmpty(t, getReq.Header.Get("X-Ovh-Timestamp"))
 
 		// Verify the POST request
-		postReq := requests[1]
+		postReq := requests[2]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		assert.Equal(t, "/1.0/domain/zone/example.com/record", postReq.URL.Path)
 		assert.Equal(t, "application/json", postReq.Header.Get("Content-Type"))
@@ -114,10 +114,10 @@ func TestOVHProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // Should have made 3 requests: GET (list), GET (details), DELETE
+		require.Len(t, requests, 4) // GET A list, GET AAAA list, GET details, DELETE
 
 		// Verify the DELETE request
-		deleteReq := requests[2]
+		deleteReq := requests[3]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/1.0/domain/zone/example.com/record/12345", deleteReq.URL.Path)
 	})
@@ -187,15 +187,15 @@ func TestOVHProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 5) // GET (list), GET (details1), GET (details2), DELETE, POST
+		require.Len(t, requests, 6) // GET A list, GET AAAA list, GET details1, GET details2, DELETE, POST
 
 		// Verify we deleted the right record
-		deleteReq := requests[3]
+		deleteReq := requests[4]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/1.0/domain/zone/example.com/record/12345", deleteReq.URL.Path)
 
 		// Verify we created a new record
-		postReq := requests[4]
+		postReq := requests[5]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		body, err := io.ReadAll(postReq.Body)
 		require.NoError(t, err)
@@ -236,7 +236,7 @@ func TestOVHProvider(t *testing.T) {
 
 		// Verify only the GET requests were made (no DELETE or POST)
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 2) // GET (list), GET (details)
+		require.Len(t, requests, 3) // GET A/AAAA lists, GET details
 	})
 
 	t.Run("Multiple IPs for subdomain", func(t *testing.T) {
@@ -269,11 +269,11 @@ func TestOVHProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET + 2 POST requests
+		require.Len(t, requests, 4) // GET + 2 POST requests
 
 		// Verify both POST requests
-		postReq1 := requests[1]
-		postReq2 := requests[2]
+		postReq1 := requests[2]
+		postReq2 := requests[3]
 		assert.Equal(t, http.MethodPost, postReq1.Method)
 		assert.Equal(t, http.MethodPost, postReq2.Method)
 

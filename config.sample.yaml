@@ -15,9 +15,10 @@ domains:
       - name: "server1"
         url: "http://192.168.1.100:8080/health"
         ip: "192.168.1.100"
-      - name: "server2"
-        url: "http://192.168.1.101:8080/health"
-        ip: "192.168.1.101"
+      # IPv6 endpoints are published as AAAA records
+      - name: "server2-ipv6"
+        url: "http://[2001:db8::101]:8080/health"
+        ip: "2001:db8::101"
   - recordName: "foo.example.com"
     provider: "example-provider-1"
     ttl: 120

@@ -87,7 +87,15 @@ func (o *OVHProvider) Name() string {
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
 func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
-	// First, get existing records
+	// Validate all desired addresses before making any provider changes.
+	for _, ip := range ips {
+		_, err := recordTypeForIP(ip)
+		if err != nil {
+			return err
+		}
+	}
+
+	// First, get existing A and AAAA records.
 	existingRecords, err := o.getExistingRecords(ctx, domain)
 	if err != nil {
 		return fmt.Errorf("error getting existing records: %w", err)
@@ -175,15 +183,27 @@ func (o *OVHProvider) getExistingRecords(ctx context.Context, domain string) ([]
 		}
 	}
 
-	url := fmt.Sprintf("%s/domain/zone/%s/record?fieldType=A&subDomain=%s", o.endpoint, o.zoneName, subDomain)
-
 	var recordIDs []int64
-	err := o.performJSONRequest(ctx, http.MethodGet, url, nil, &recordIDs)
-	if err != nil {
-		return nil, err
+
+	for _, recordType := range []string{recordTypeA, recordTypeAAAA} {
+		url := fmt.Sprintf(
+			"%s/domain/zone/%s/record?fieldType=%s&subDomain=%s",
+			o.endpoint,
+			o.zoneName,
+			recordType,
+			subDomain,
+		)
+
+		var typeRecordIDs []int64
+		err := o.performJSONRequest(ctx, http.MethodGet, url, nil, &typeRecordIDs)
+		if err != nil {
+			return nil, err
+		}
+
+		recordIDs = append(recordIDs, typeRecordIDs...)
 	}
 
-	// Get detailed information for each record
+	// Get detailed information for each record.
 	records := make([]OVHRecord, len(recordIDs))
 	for i, recordID := range recordIDs {
 		record, err := o.getRecord(ctx, recordID)
@@ -254,14 +274,19 @@ func (o *OVHProvider) createRecord(ctx context.Context, domain, ip string, ttl i
 
 	url := o.endpoint + "/domain/zone/" + o.zoneName + "/record"
 
+	recordType, err := recordTypeForIP(ip)
+	if err != nil {
+		return err
+	}
+
 	record := OVHCreateRecordRequest{
-		FieldType: "A",
+		FieldType: recordType,
 		SubDomain: subDomain,
 		Target:    ip,
 		TTL:       ttl,
 	}
 
-	err := o.performJSONRequest(ctx, http.MethodPost, url, record, nil)
+	err = o.performJSONRequest(ctx, http.MethodPost, url, record, nil)
 	if err != nil {
 		return err
 	}

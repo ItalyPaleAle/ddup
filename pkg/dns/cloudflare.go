@@ -49,7 +49,15 @@ func (c *CloudflareProvider) Name() string {
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
 func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
-	// First, get existing records
+	// Validate all desired addresses before making any provider changes.
+	for _, ip := range ips {
+		_, err := recordTypeForIP(ip)
+		if err != nil {
+			return err
+		}
+	}
+
+	// First, get existing A and AAAA records.
 	existingRecords, err := c.getExistingRecords(ctx, domain)
 	if err != nil {
 		return fmt.Errorf("error getting existing records: %w", err)
@@ -128,15 +136,42 @@ func (ce CloudflareError) String() string {
 }
 
 func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain string) ([]CloudflareRecord, error) {
+	var records []CloudflareRecord
+
+	for _, recordType := range []string{recordTypeA, recordTypeAAAA} {
+		typeRecords, err := c.getExistingRecordsByType(ctx, domain, recordType)
+		if err != nil {
+			return nil, err
+		}
+
+		records = append(records, typeRecords...)
+	}
+
+	return records, nil
+}
+
+func (c *CloudflareProvider) getExistingRecordsByType(ctx context.Context, domain string, recordType string) ([]CloudflareRecord, error) {
 	start := time.Now()
 	var success bool
+
 	if c.metrics != nil {
 		defer func() {
-			c.metrics.RecordAPICall("cloudflare", http.MethodGet, fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID), success, time.Since(start))
+			c.metrics.RecordAPICall(
+				"cloudflare",
+				http.MethodGet,
+				fmt.Sprintf("/v4/zones/%s/dns_records", c.zoneID),
+				success,
+				time.Since(start),
+			)
 		}()
 	}
 
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=A", c.zoneID, domain)
+	url := fmt.Sprintf(
+		"https://api.cloudflare.com/client/v4/zones/%s/dns_records?name=%s&type=%s",
+		c.zoneID,
+		domain,
+		recordType,
+	)
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
@@ -211,10 +246,18 @@ func (c *CloudflareProvider) createRecord(ctx context.Context, domain, ip string
 		}()
 	}
 
-	url := fmt.Sprintf("https://api.cloudflare.com/client/v4/zones/%s/dns_records", c.zoneID)
+	url := fmt.Sprintf(
+		"https://api.cloudflare.com/client/v4/zones/%s/dns_records",
+		c.zoneID,
+	)
+
+	recordType, err := recordTypeForIP(ip)
+	if err != nil {
+		return err
+	}
 
 	record := map[string]any{
-		"type":    "A",
+		"type":    recordType,
 		"name":    domain,
 		"content": ip,
 		"ttl":     ttl,
