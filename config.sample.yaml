@@ -40,6 +40,10 @@ domains:
         ip: "192.168.1.201"
 
 # Provider Configuration
+# Any provider setting, plus webhook "url" and header values, can read secrets from the environment or a file instead of the config file:
+#   apiToken: !env CLOUDFLARE_API_TOKEN
+#   apiToken: !file /run/secrets/cloudflare-token
+# ddup fails at startup if the variable or file is missing. In webhook "body" templates, use {{ env "NAME" }}
 providers:
   example-provider-1:
     cloudflare:

@@ -55,27 +55,27 @@ type OVHProvider struct {
 
 // NewOVHProvider creates a new OVH DNS provider
 func NewOVHProvider(name string, cfg *config.OVHConfig, metrics *appmetrics.AppMetrics) (*OVHProvider, error) {
-	if cfg.APIKey == "" {
+	if cfg.APIKey.String() == "" {
 		return nil, errors.New("API key is required")
 	}
-	if cfg.APISecret == "" {
+	if cfg.APISecret.String() == "" {
 		return nil, errors.New("API secret is required")
 	}
-	if cfg.ConsumerKey == "" {
+	if cfg.ConsumerKey.String() == "" {
 		return nil, errors.New("consumer key is required")
 	}
-	if cfg.ZoneName == "" {
+	if cfg.ZoneName.String() == "" {
 		return nil, errors.New("zone name is required")
 	}
 
-	endpoint := getOVHEndpoint(cfg.Endpoint)
+	endpoint := getOVHEndpoint(cfg.Endpoint.String())
 
 	return &OVHProvider{
 		name:        name,
-		apiKey:      cfg.APIKey,
-		apiSecret:   cfg.APISecret,
-		consumerKey: cfg.ConsumerKey,
-		zoneName:    cfg.ZoneName,
+		apiKey:      cfg.APIKey.String(),
+		apiSecret:   cfg.APISecret.String(),
+		consumerKey: cfg.ConsumerKey.String(),
+		zoneName:    cfg.ZoneName.String(),
 		endpoint:    endpoint,
 		metrics:     metrics,
 		httpClient:  http.DefaultClient,

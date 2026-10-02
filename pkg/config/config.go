@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -97,16 +98,17 @@ type ConfigWebhook struct {
 	Name string `yaml:"name"`
 
 	// URL to call
+	// Can use !env and !file
 	// +required
-	URL string `yaml:"url"`
+	URL SecretString `yaml:"url"`
 
 	// HTTP method
 	// Defaults to POST
 	Method string `yaml:"method"`
 
 	// Additional headers to send
-	// Values are Go templates, rendered with the event
-	Headers map[string]string `yaml:"headers"`
+	// Values are Go templates, rendered with the event, and can use !env and !file
+	Headers map[string]SecretString `yaml:"headers"`
 
 	// Events that trigger this webhook; if empty, all events
 	// Valid values: dns_updated, dns_update_failed, all_unhealthy
@@ -155,33 +157,33 @@ type ConfigProvider struct {
 
 // CloudflareConfig represents Cloudflare-specific configuration
 type CloudflareConfig struct {
-	APIToken string `yaml:"apiToken"`
-	ZoneID   string `yaml:"zoneId"`
+	APIToken SecretString `yaml:"apiToken"`
+	ZoneID   SecretString `yaml:"zoneId"`
 }
 
 // OVHConfig represents OVH-specific configuration
 type OVHConfig struct {
-	APIKey      string `yaml:"apiKey"`
-	APISecret   string `yaml:"apiSecret"`
-	ConsumerKey string `yaml:"consumerKey"`
-	ZoneName    string `yaml:"zoneName"`
+	APIKey      SecretString `yaml:"apiKey"`
+	APISecret   SecretString `yaml:"apiSecret"`
+	ConsumerKey SecretString `yaml:"consumerKey"`
+	ZoneName    SecretString `yaml:"zoneName"`
 	// OVH API endpoint (defaults to EU if not specified)
 	// Valid values: "eu", "ca", "us" or full URL
-	Endpoint string `yaml:"endpoint,omitempty"`
+	Endpoint SecretString `yaml:"endpoint,omitempty"`
 }
 
 // AzureConfig represents Azure DNS-specific configuration
 type AzureConfig struct {
-	SubscriptionID    string `yaml:"subscriptionId"`
-	ResourceGroupName string `yaml:"resourceGroupName"`
-	ZoneName          string `yaml:"zoneName"`
-	TenantID          string `yaml:"tenantId"`
+	SubscriptionID    SecretString `yaml:"subscriptionId"`
+	ResourceGroupName SecretString `yaml:"resourceGroupName"`
+	ZoneName          SecretString `yaml:"zoneName"`
+	TenantID          SecretString `yaml:"tenantId"`
 	// Client ID for authenticating with a service principal
-	ClientID string `yaml:"clientId,omitempty"`
+	ClientID SecretString `yaml:"clientId,omitempty"`
 	// Client secret for authenticating with a service principal
-	ClientSecret string `yaml:"clientSecret,omitempty"`
+	ClientSecret SecretString `yaml:"clientSecret,omitempty"`
 	// Managed identity client ID for authenticating with a user-assigned managed identity
-	ManagedIdentityClientID string `yaml:"managedIdentityClientId,omitempty"`
+	ManagedIdentityClientID SecretString `yaml:"managedIdentityClientId,omitempty"`
 }
 
 // ConfigLogs represents logging configuration
@@ -335,6 +337,14 @@ var WebhookTemplateFuncs = template.FuncMap{
 		b, err := json.Marshal(v)
 		return string(b), err
 	},
+	// env returns the value of an environment variable, and fails if it's not set
+	"env": func(name string) (string, error) {
+		val, ok := os.LookupEnv(name)
+		if !ok {
+			return "", fmt.Errorf("environment variable %s is not set", name)
+		}
+		return val, nil
+	},
 }
 
 // WebhookEvents is the list of valid webhook event names
@@ -343,7 +353,7 @@ var WebhookEvents = []string{"dns_updated", "dns_update_failed", "all_unhealthy"
 func (c *Config) validateWebhooks() error {
 	for i := range c.Webhooks {
 		w := &c.Webhooks[i]
-		u, err := url.Parse(w.URL)
+		u, err := url.Parse(w.URL.String())
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 			return fmt.Errorf("webhook %d is invalid: url must be an absolute http(s) URL", i)
 		}
@@ -371,7 +381,7 @@ func (c *Config) validateWebhooks() error {
 			return fmt.Errorf("webhook %q is invalid: body template: %w", w.Name, err)
 		}
 		for k, v := range w.Headers {
-			_, err = template.New(k).Funcs(WebhookTemplateFuncs).Parse(v)
+			_, err = template.New(k).Funcs(WebhookTemplateFuncs).Parse(v.String())
 			if err != nil {
 				return fmt.Errorf("webhook %q is invalid: header %q template: %w", w.Name, k, err)
 			}

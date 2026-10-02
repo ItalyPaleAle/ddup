@@ -341,7 +341,7 @@ func TestOVHProvider(t *testing.T) {
 					APISecret:   "test-secret",
 					ConsumerKey: "test-consumer",
 					ZoneName:    "example.com",
-					Endpoint:    tt.endpoint,
+					Endpoint:    config.SecretString(tt.endpoint),
 				}, nil)
 				require.NoError(t, err)
 

@@ -59,6 +59,15 @@ func (e Event) Subject() string {
 	}
 }
 
+var sampleEvent = Event{
+	Type:      EventDNSUpdated,
+	Domain:    "example.com",
+	Time:      time.Now().UTC(),
+	Healthy:   []string{"192.0.2.1"},
+	Previous:  []string{"192.0.2.2"},
+	Endpoints: []EndpointState{{Name: "sample", IP: "192.0.2.1", Healthy: true}},
+}
+
 type hook struct {
 	cfg     config.ConfigWebhook
 	body    *template.Template
@@ -128,11 +137,18 @@ func New(ctx context.Context, webhooks []config.ConfigWebhook) (*Notifier, error
 			}
 		}
 		for k, v := range w.Headers {
-			h.headers[k], err = template.New(k).Funcs(config.WebhookTemplateFuncs).Parse(v)
+			h.headers[k], err = template.New(k).Funcs(config.WebhookTemplateFuncs).Parse(v.String())
 			if err != nil {
 				return nil, fmt.Errorf("webhook %q: header %q template: %w", w.Name, k, err)
 			}
 		}
+
+		// Dry-run the templates with a sample event, so mistakes (unknown fields, unset environment variables) are caught at startup rather than when an incident happens
+		_, _, _, err = h.render(sampleEvent)
+		if err != nil {
+			return nil, fmt.Errorf("webhook %q: %w", w.Name, err)
+		}
+
 		n.hooks = append(n.hooks, h)
 	}
 	return n, nil
@@ -239,7 +255,7 @@ func (n *Notifier) send(h *hook, body []byte, contentType string, headers map[st
 	ctx, cancel := context.WithTimeout(n.ctx, h.cfg.Timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, h.cfg.Method, h.cfg.URL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, h.cfg.Method, h.cfg.URL.String(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}

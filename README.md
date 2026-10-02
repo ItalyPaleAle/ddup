@@ -108,6 +108,8 @@ You can find an example of the configuration file, and a description of every op
 
 ### Providers Configuration
 
+Provider settings (and webhook `url` and header values) can come from the environment or a file, so the config file doesn't need to contain secrets: `apiToken: !env CLOUDFLARE_API_TOKEN` or `apiToken: !file /run/secrets/token`. ddup fails at startup if the variable or file is missing. In webhook templates, use `{{ env "NAME" }}`.
+
 - `providers`: Map of providers.
   - Key: provider name (e.g. `my-provider-1`)
   - Value: an object containing a provider configuration, which is one (and only one) of:
