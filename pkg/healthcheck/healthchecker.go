@@ -2,6 +2,7 @@ package healthcheck
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -20,7 +21,20 @@ import (
 type HealthChecker struct {
 	// Key is domain name
 	domainCheckers map[string]*domainChecker
+	// Requests to run a check right away; handled by Run, so checks never overlap
+	forceCh chan forceRequest
 }
+
+// If a check completed more recently than this, a forced check returns without running another
+// Forced checks count towards `attempts` and `recoverAfter` like scheduled ones, so this keeps repeated clicks from tripping thresholds
+const minForceInterval = 5 * time.Second
+
+type forceRequest struct {
+	done chan struct{}
+}
+
+// ErrNotRunning is returned by ForceCheck when the health checker's Run loop isn't active
+var ErrNotRunning = errors.New("health checker is not running")
 
 // NewHealthChecker creates a new HealthChecker instance
 func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.AppMetrics) (*HealthChecker, error) {
@@ -43,6 +57,7 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 
 	return &HealthChecker{
 		domainCheckers: dcs,
+		forceCh:        make(chan forceRequest, 1),
 	}, nil
 }
 
@@ -53,6 +68,7 @@ func (hc *HealthChecker) Run(ctx context.Context) error {
 
 	// Run immediately
 	hc.checkAndUpdateDNS(ctx)
+	lastCheck := time.Now()
 
 	// Run on an interval until the context is canceled
 	ticker := time.NewTicker(cfg.Interval)
@@ -64,7 +80,40 @@ func (hc *HealthChecker) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			hc.checkAndUpdateDNS(ctx)
+			lastCheck = time.Now()
+		case req := <-hc.forceCh:
+			// A check that just finished is as good as a new one
+			if time.Since(lastCheck) >= minForceInterval {
+				slog.InfoContext(ctx, "Running forced health check")
+				hc.checkAndUpdateDNS(ctx)
+				lastCheck = time.Now()
+				// Restart the interval, so the next scheduled check isn't right after this one
+				ticker.Reset(cfg.Interval)
+			}
+			close(req.done)
 		}
+	}
+}
+
+// ForceCheck asks the Run loop to check all domains now, and waits for it to finish
+// If the context is canceled first, the check still completes in the background
+func (hc *HealthChecker) ForceCheck(ctx context.Context) error {
+	if hc.forceCh == nil {
+		return ErrNotRunning
+	}
+
+	req := forceRequest{done: make(chan struct{})}
+	select {
+	case hc.forceCh <- req:
+	case <-ctx.Done():
+		return fmt.Errorf("waiting to start check: %w", ctx.Err())
+	}
+
+	select {
+	case <-req.done:
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("waiting for check to complete: %w", ctx.Err())
 	}
 }
 

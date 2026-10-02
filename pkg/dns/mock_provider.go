@@ -8,8 +8,6 @@ import (
 )
 
 // MockProvider is a mock implementation of the Provider interface for testing.
-//
-//nolint:recvcheck
 type MockProvider struct {
 	// If true, UpdateRecords will return an error
 	ShouldError bool
@@ -22,7 +20,7 @@ func NewMockProvider(shouldError bool) *MockProvider {
 }
 
 // Name implements the Provider interface.
-func (m MockProvider) Name() string {
+func (m *MockProvider) Name() string {
 	return "mock"
 }
 

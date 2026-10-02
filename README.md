@@ -230,6 +230,12 @@ providers:
 - `bind`: Address to bind to (defaults to `127.0.0.1`)
 - `port`: Port to listen on (defaults to `7401`)
 
+The server has no authentication, so keep it on a trusted network. It exposes:
+
+- `GET /api/status` and `GET /api/status/{recordname}`: current status of the domains
+- `POST /api/check`: runs health checks for all domains right away (the dashboard's "Check now" button), and returns the updated status. The request must include the header `X-Requested-By: ddup-dashboard`, which keeps other websites from triggering it through a visitor's browser. If a check finished less than 5 seconds ago, no new one is run. A forced check counts towards `attempts` and `recoverAfter` like a scheduled one, and the next scheduled check is then a full `interval` later
+- `GET /healthz`: returns 204 when the server is up
+
 ### Logging Settings
 
 - `log`: Logging options
