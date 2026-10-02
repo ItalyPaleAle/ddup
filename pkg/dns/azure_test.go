@@ -57,8 +57,9 @@ func TestAzureProvider(t *testing.T) {
 		})
 
 		// Test updating records
-		err := provider.UpdateRecords(t.Context(), "example.com", 300, []string{"1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "example.com", 300, []string{"1.1.1.1"})
 		require.NoError(t, err)
+		assert.True(t, res.Changed)
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
@@ -120,8 +121,9 @@ func TestAzureProvider(t *testing.T) {
 		})
 
 		// Test deleting records (passing empty IPs array)
-		err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
 		require.NoError(t, err)
+		assert.True(t, res.Changed)
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
@@ -155,7 +157,7 @@ func TestAzureProvider(t *testing.T) {
 		setAzureEmptyAAAAResponse(mockTransport, "www")
 
 		// Test deleting records (passing empty IPs array)
-		err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
 		require.NoError(t, err)
 
 		// Verify the requests were made
@@ -207,8 +209,9 @@ func TestAzureProvider(t *testing.T) {
 		})
 
 		// Test updating records with new IPs
-		err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"5.6.7.8", "9.10.11.12"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"5.6.7.8", "9.10.11.12"})
 		require.NoError(t, err)
+		assert.True(t, res.Changed)
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
@@ -271,8 +274,9 @@ func TestAzureProvider(t *testing.T) {
 
 		// Test updating records with new IPs
 		// Note the order is reversed from the current state
-		err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4", "9.8.7.6"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4", "9.8.7.6"})
 		require.NoError(t, err)
+		assert.False(t, res.Changed)
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()

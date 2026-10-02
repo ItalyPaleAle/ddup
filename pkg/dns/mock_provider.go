@@ -14,6 +14,10 @@ type MockProvider struct {
 	// If true, UpdateRecords will return an error
 	ShouldError bool
 	CallCount   int
+	// If true, UpdateRecords reports that nothing changed
+	NoChange bool
+	// IPs reported as previously in DNS
+	Previous []string
 }
 
 // NewMockProvider creates a new MockProvider.
@@ -27,10 +31,10 @@ func (m MockProvider) Name() string {
 }
 
 // UpdateRecords implements the Provider interface.
-func (m *MockProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
+func (m *MockProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
 	m.CallCount++
 	if m.ShouldError {
-		return errors.New("mock error")
+		return UpdateResult{}, errors.New("mock error")
 	}
-	return nil
+	return UpdateResult{Changed: !m.NoChange, Previous: m.Previous}, nil
 }
