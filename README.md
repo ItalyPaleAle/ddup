@@ -89,7 +89,7 @@ You can find an example of the configuration file, and a description of every op
 
 ### Domains and Endpoints
 
-- `webhooks`: Optional webhooks called on events (see `config.sample.yaml`): `url`, `method`, `headers`, `events` (`dns_updated`, `dns_update_failed`, `all_unhealthy`), `body` (Go template; JSON event if omitted; templates can use `.Subject`, `.Text`, `join` and `json`, see the email example, which uses the Cloudflare Email Service API), `timeout`, `attempts`. Deliveries are retried with exponential backoff.
+- `webhooks`: Optional webhooks called on events (see `config.sample.yaml`): `url`, `method`, `headers`, `events` (`dns_updated`, `dns_update_failed`, `all_unhealthy`), `body` (Go template; JSON event if omitted; templates can use `.Subject`, `.Text`, `join` and `json`, see the email example), `timeout`, `attempts`. Deliveries are retried with exponential backoff.
 - `domains`: Array of domains to manage
   - `recordName`: The DNS record to update (e.g., "api.example.com")
   - `provider`: Name of the DNS provider (from the [`providers` map](#providers-configuration))
@@ -238,10 +238,15 @@ providers:
 
 Webhooks are called when something changes (`dns_updated`, `dns_update_failed`, `all_unhealthy`). Each webhook can filter events, set headers, and render its body from a Go template. See `config.sample.yaml` for ntfy, email and generic JSON examples.
 
+#### Email with Resend (or another HTTP email API)
+
+The `email` example in `config.sample.yaml` posts to the [Resend API](https://resend.com/docs/api-reference/emails/send-email) with a bearer API key. Verify your sending domain in Resend, and use an address on it as `from`. Other providers with an HTTP API (Mailgun, Postmark, SendGrid) work the same way: change the URL, auth header and JSON fields.
+
 #### Email with Cloudflare Email Service
 
-The `email` example in `config.sample.yaml` sends mail through the [Cloudflare Email Service REST API](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/) (`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send`). Requirements:
+The commented-out Cloudflare example in `config.sample.yaml` sends mail through the [Cloudflare Email Service REST API](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/) (`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send`). Requirements:
 
+- The account must be entitled to Email Sending, which can require a paid Cloudflare plan (the API answers with code 10105 otherwise).
 - Onboard the sender domain in the Cloudflare dashboard (Compute → Email Service → Email Sending → Onboard Domain). Cloudflare adds MX, SPF, DKIM and DMARC records on the `cf-bounce` subdomain, which takes about 5-15 minutes. The domain must be onboarded on the same account that owns the API token, and `from` must be an address on it.
 - API token: create a custom token with the **Account → Email Sending → Edit** permission, with the account that owns the domain under Account Resources. Cloudflare's docs name this permission "Email Sending: Edit". It needs nothing else.
 - Use a token separate from the DNS token used by the `cloudflare` provider (which needs **Zone → DNS → Edit**), so that each token can do only one thing.
