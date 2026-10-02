@@ -38,11 +38,11 @@ func TestNotifier_FilteringTemplatesAndRetry(t *testing.T) {
 			Body: "{{ .Domain }} -> {{ join .Healthy \",\" }}", Headers: map[string]config.SecretString{"Title": "{{ .Subject }}"}},
 		{Name: "other", URL: config.SecretString(srv.URL), Method: "POST", Events: []string{EventAllUnhealthy}, Attempts: 1, Timeout: time.Second},
 	}
-	n, err := New(t.Context(), hooks)
+	n, err := New(hooks)
 	require.NoError(t, err)
 	n.baseBackoff = time.Millisecond
 
-	n.Notify(Event{Type: EventDNSUpdated, Domain: "a.example.com", Healthy: []string{"1.1.1.1", "2.2.2.2"}})
+	n.Notify(t.Context(), Event{Type: EventDNSUpdated, Domain: "a.example.com", Healthy: []string{"1.1.1.1", "2.2.2.2"}})
 	n.Wait(5 * time.Second)
 
 	select {
@@ -58,7 +58,7 @@ func TestNotifier_FilteringTemplatesAndRetry(t *testing.T) {
 
 func TestNotifier_DefaultJSONAndNil(t *testing.T) {
 	var nilNotifier *Notifier
-	nilNotifier.Notify(Event{})
+	nilNotifier.Notify(t.Context(), Event{})
 	nilNotifier.Wait(time.Millisecond)
 
 	ch := make(chan string, 1)
@@ -68,9 +68,9 @@ func TestNotifier_DefaultJSONAndNil(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	n, err := New(t.Context(), []config.ConfigWebhook{{Name: "j", URL: config.SecretString(srv.URL), Method: "POST", Attempts: 1, Timeout: time.Second}})
+	n, err := New([]config.ConfigWebhook{{Name: "j", URL: config.SecretString(srv.URL), Method: "POST", Attempts: 1, Timeout: time.Second}})
 	require.NoError(t, err)
-	n.Notify(Event{Type: EventAllUnhealthy, Domain: "a.example.com"})
+	n.Notify(t.Context(), Event{Type: EventAllUnhealthy, Domain: "a.example.com"})
 	n.Wait(5 * time.Second)
 	assert.Contains(t, <-ch, `"event":"all_unhealthy"`)
 }
@@ -91,7 +91,7 @@ func TestSampleEmailWebhook(t *testing.T) {
 	}
 	require.GreaterOrEqual(t, emailIdx, 0, "sample config must include an email webhook")
 
-	n, err := New(t.Context(), cfg.Webhooks)
+	n, err := New(cfg.Webhooks)
 	require.NoError(t, err)
 	body, ctype, headers, err := n.hooks[emailIdx].render(Event{
 		Type: EventAllUnhealthy, Domain: "a.example.com", Time: time.Unix(0, 0).UTC(),
@@ -112,15 +112,15 @@ func TestSampleEmailWebhook(t *testing.T) {
 }
 
 func TestNew_DryRunCatchesTemplateErrors(t *testing.T) {
-	_, err := New(t.Context(), []config.ConfigWebhook{{Name: "w", URL: "https://x.example.com", Body: `{{ env "DDUP_TEST_UNSET_VAR" }}`}})
+	_, err := New([]config.ConfigWebhook{{Name: "w", URL: "https://x.example.com", Body: `{{ env "DDUP_TEST_UNSET_VAR" }}`}})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "DDUP_TEST_UNSET_VAR is not set")
 
-	_, err = New(t.Context(), []config.ConfigWebhook{{Name: "w", URL: "https://x.example.com", Body: `{{ .NoSuchField }}`}})
+	_, err = New([]config.ConfigWebhook{{Name: "w", URL: "https://x.example.com", Body: `{{ .NoSuchField }}`}})
 	require.Error(t, err)
 
 	t.Setenv("DDUP_TEST_SET_VAR", "ops@example.com")
-	n, err := New(t.Context(), []config.ConfigWebhook{{Name: "w", URL: "https://x.example.com", Body: `to={{ env "DDUP_TEST_SET_VAR" }}`}})
+	n, err := New([]config.ConfigWebhook{{Name: "w", URL: "https://x.example.com", Body: `to={{ env "DDUP_TEST_SET_VAR" }}`}})
 	require.NoError(t, err)
 	body, _, _, err := n.hooks[0].render(Event{})
 	require.NoError(t, err)

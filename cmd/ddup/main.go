@@ -101,7 +101,7 @@ func main() {
 	}
 
 	// Init webhook notifier; this is nil if no webhooks are configured
-	notifier, err := notify.New(ctx, cfg.Webhooks)
+	notifier, err := notify.New(cfg.Webhooks)
 	if err != nil {
 		shutdowns.Run(log)
 		utils.FatalError(log, "Failed to init webhooks", err)

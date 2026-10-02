@@ -34,7 +34,7 @@ func TestForceCheckEndpoint(t *testing.T) {
 		t.Helper()
 		s, err := NewServer(NewServerOpts{HealthChecker: fp})
 		require.NoError(t, err)
-		req := httptest.NewRequest(http.MethodPost, "/api/check", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/api/check", nil)
 		for k, v := range headers {
 			req.Header.Set(k, v)
 		}
@@ -74,7 +74,7 @@ func TestForceCheckEndpoint(t *testing.T) {
 		fp := &fakeProvider{}
 		s, err := NewServer(NewServerOpts{HealthChecker: fp})
 		require.NoError(t, err)
-		req := httptest.NewRequest(http.MethodGet, "/api/check", nil)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/check", nil)
 		req.Header.Set(headerRequestedBy, requestedByValue)
 		rec := httptest.NewRecorder()
 		s.handler.ServeHTTP(rec, req)

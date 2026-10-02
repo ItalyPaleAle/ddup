@@ -43,7 +43,7 @@ func (s *SecretString) UnmarshalYAML(node *yaml.Node) error {
 		if path == "" {
 			return fmt.Errorf("line %d: !file requires a file path", node.Line)
 		}
-		b, err := os.ReadFile(path)
+		b, err := os.ReadFile(path) //nolint:gosec // The path comes from the config file, which is trusted
 		if err != nil {
 			return fmt.Errorf("line %d: failed to read file for !file: %w", node.Line, err)
 		}

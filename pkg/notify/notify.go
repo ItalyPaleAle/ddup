@@ -51,9 +51,9 @@ func (e Event) Subject() string {
 	case EventDNSUpdated:
 		return fmt.Sprintf("%s now points to %s", e.Domain, strings.Join(e.Healthy, ", "))
 	case EventDNSUpdateFailed:
-		return fmt.Sprintf("DNS update failed for %s", e.Domain)
+		return "DNS update failed for " + e.Domain
 	case EventAllUnhealthy:
-		return fmt.Sprintf("No healthy endpoints for %s", e.Domain)
+		return "No healthy endpoints for " + e.Domain
 	default:
 		return e.Type + " " + e.Domain
 	}
@@ -108,21 +108,19 @@ func (e Event) Text() string {
 // Deliveries are retried with exponential backoff, so a destination that is temporarily unreachable (for example while ingress is down) still gets the event
 // A nil Notifier is valid and does nothing
 type Notifier struct {
-	ctx         context.Context
 	hooks       []*hook
 	client      *http.Client
 	baseBackoff time.Duration
 	wg          sync.WaitGroup
 }
 
-// New creates a Notifier; deliveries stop when ctx is canceled
-func New(ctx context.Context, webhooks []config.ConfigWebhook) (*Notifier, error) {
+// New creates a Notifier
+func New(webhooks []config.ConfigWebhook) (*Notifier, error) {
 	if len(webhooks) == 0 {
 		return nil, nil //nolint:nilnil
 	}
 
 	n := &Notifier{
-		ctx:         ctx,
 		client:      &http.Client{},
 		baseBackoff: 2 * time.Second,
 		hooks:       make([]*hook, 0, len(webhooks)),
@@ -155,7 +153,8 @@ func New(ctx context.Context, webhooks []config.ConfigWebhook) (*Notifier, error
 }
 
 // Notify sends the event to every webhook subscribed to it, in the background
-func (n *Notifier) Notify(ev Event) {
+// Deliveries, including retries, stop when ctx is canceled
+func (n *Notifier) Notify(ctx context.Context, ev Event) {
 	if n == nil {
 		return
 	}
@@ -167,11 +166,9 @@ func (n *Notifier) Notify(ev Event) {
 		if len(h.cfg.Events) > 0 && !slices.Contains(h.cfg.Events, ev.Type) {
 			continue
 		}
-		n.wg.Add(1)
-		go func() {
-			defer n.wg.Done()
-			n.deliver(h, ev)
-		}()
+		n.wg.Go(func() {
+			n.deliver(ctx, h, ev)
+		})
 	}
 }
 
@@ -191,30 +188,30 @@ func (n *Notifier) Wait(timeout time.Duration) {
 	}
 }
 
-func (n *Notifier) deliver(h *hook, ev Event) {
+func (n *Notifier) deliver(ctx context.Context, h *hook, ev Event) {
 	log := slog.With("webhook", h.cfg.Name, "event", ev.Type, "domain", ev.Domain)
 
 	body, contentType, headers, err := h.render(ev)
 	if err != nil {
-		log.ErrorContext(n.ctx, "Failed to render webhook", "error", err)
+		log.ErrorContext(ctx, "Failed to render webhook", "error", err)
 		return
 	}
 
 	backoff := n.baseBackoff
 	for attempt := 1; ; attempt++ {
-		err = n.send(h, body, contentType, headers)
+		err = n.send(ctx, h, body, contentType, headers)
 		if err == nil {
-			log.DebugContext(n.ctx, "Webhook delivered", "attempt", attempt)
+			log.DebugContext(ctx, "Webhook delivered", "attempt", attempt)
 			return
 		}
 		if attempt >= h.cfg.Attempts {
-			log.ErrorContext(n.ctx, "Webhook delivery failed, giving up", "attempts", attempt, "error", err)
+			log.ErrorContext(ctx, "Webhook delivery failed, giving up", "attempts", attempt, "error", err)
 			return
 		}
 
-		log.WarnContext(n.ctx, "Webhook delivery failed, will retry", "attempt", attempt, "retryIn", backoff, "error", err)
+		log.WarnContext(ctx, "Webhook delivery failed, will retry", "attempt", attempt, "retryIn", backoff, "error", err)
 		select {
-		case <-n.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-time.After(backoff):
 		}
@@ -251,8 +248,8 @@ func (h *hook) render(ev Event) (body []byte, contentType string, headers map[st
 	return body, contentType, headers, nil
 }
 
-func (n *Notifier) send(h *hook, body []byte, contentType string, headers map[string]string) error {
-	ctx, cancel := context.WithTimeout(n.ctx, h.cfg.Timeout)
+func (n *Notifier) send(ctx context.Context, h *hook, body []byte, contentType string, headers map[string]string) error {
+	ctx, cancel := context.WithTimeout(ctx, h.cfg.Timeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, h.cfg.Method, h.cfg.URL.String(), bytes.NewReader(body))
