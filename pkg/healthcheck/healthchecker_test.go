@@ -1,14 +1,20 @@
 package healthcheck
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
+	"github.com/italypaleale/ddup/pkg/notify"
 )
 
 func TestHealthChecker_AllHealthy(t *testing.T) {
@@ -385,4 +391,147 @@ func TestHealthChecker_MultipleDomains(t *testing.T) {
 
 	assert.Equal(t, 1, mockProvider1.CallCount)
 	assert.Equal(t, 1, mockProvider2.CallCount)
+}
+
+func TestHealthChecker_RecoverAfter(t *testing.T) {
+	mockProvider := dns.NewMockProvider(false)
+	endpoints := []*config.ConfigEndpoint{
+		{Name: "endpoint1", IP: "1.1.1.1"},
+		{Name: "endpoint2", IP: "2.2.2.2"},
+	}
+	mockChecker := &checker.MockChecker{
+		Domain:       "example.com",
+		MaxAttempts:  1,
+		RecoverAfter: 3,
+		Results: []checker.Result{
+			{Endpoint: endpoints[0], Healthy: true},
+			{Endpoint: endpoints[1], Healthy: false, Error: errors.New("down")},
+		},
+	}
+	hc := &HealthChecker{
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {
+				checker:    mockChecker,
+				ttl:        60,
+				healthyIPs: []string{"1.1.1.1", "2.2.2.2"},
+				failedIPs:  make(map[string]int),
+				provider:   mockProvider,
+			},
+		},
+	}
+	dc := hc.domainCheckers["example.com"]
+
+	// endpoint2 is removed after one failure
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, []string{"1.1.1.1"}, dc.healthyIPs)
+	assert.Equal(t, 1, mockProvider.CallCount)
+
+	// It comes back up, but is only re-added on the third consecutive success
+	mockChecker.Results[1] = checker.Result{Endpoint: endpoints[1], Healthy: true}
+	hc.checkAndUpdateDNS(t.Context())
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, []string{"1.1.1.1"}, dc.healthyIPs, "still recovering after 2 successes")
+	assert.Equal(t, 1, mockProvider.CallCount)
+
+	// A failure resets the counter
+	mockChecker.Results[1] = checker.Result{Endpoint: endpoints[1], Healthy: false, Error: errors.New("down")}
+	hc.checkAndUpdateDNS(t.Context())
+	mockChecker.Results[1] = checker.Result{Endpoint: endpoints[1], Healthy: true}
+	hc.checkAndUpdateDNS(t.Context())
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, []string{"1.1.1.1"}, dc.healthyIPs, "counter was reset by the failure")
+
+	hc.checkAndUpdateDNS(t.Context())
+	assert.ElementsMatch(t, []string{"1.1.1.1", "2.2.2.2"}, dc.healthyIPs)
+	assert.Equal(t, 2, mockProvider.CallCount)
+	assert.Empty(t, dc.failedIPs)
+}
+
+func TestHealthChecker_FirstRunIgnoresRecoverAfter(t *testing.T) {
+	mockProvider := dns.NewMockProvider(false)
+	ep := &config.ConfigEndpoint{Name: "endpoint1", IP: "1.1.1.1"}
+	hc := &HealthChecker{
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {
+				checker:   &checker.MockChecker{Domain: "example.com", MaxAttempts: 2, RecoverAfter: 5, Results: []checker.Result{{Endpoint: ep, Healthy: true}}},
+				ttl:       60,
+				failedIPs: make(map[string]int),
+				provider:  mockProvider,
+			},
+		},
+	}
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, []string{"1.1.1.1"}, hc.domainCheckers["example.com"].healthyIPs)
+}
+
+func TestHealthChecker_Webhooks(t *testing.T) {
+	events := make(chan notify.Event, 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var ev notify.Event
+		_ = json.NewDecoder(r.Body).Decode(&ev)
+		events <- ev
+	}))
+	defer srv.Close()
+
+	n, err := notify.New(t.Context(), []config.ConfigWebhook{{Name: "t", URL: srv.URL, Method: "POST", Attempts: 1, Timeout: time.Second}})
+	require.NoError(t, err)
+
+	mockProvider := dns.NewMockProvider(false)
+	ep1 := &config.ConfigEndpoint{Name: "endpoint1", IP: "1.1.1.1"}
+	ep2 := &config.ConfigEndpoint{Name: "endpoint2", IP: "2.2.2.2"}
+	mockChecker := &checker.MockChecker{
+		Domain:      "example.com",
+		MaxAttempts: 1,
+		Results:     []checker.Result{{Endpoint: ep1, Healthy: true}, {Endpoint: ep2, Healthy: true}},
+	}
+	hc := &HealthChecker{
+		notifier: n,
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: mockProvider},
+		},
+	}
+
+	next := func() notify.Event {
+		n.Wait(5 * time.Second)
+		select {
+		case ev := <-events:
+			return ev
+		default:
+			return notify.Event{}
+		}
+	}
+
+	// Startup: records are published
+	hc.checkAndUpdateDNS(t.Context())
+	ev := next()
+	assert.Equal(t, notify.EventDNSUpdated, ev.Type)
+	assert.ElementsMatch(t, []string{"1.1.1.1", "2.2.2.2"}, ev.Healthy)
+
+	// Nothing changes: no event
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Empty(t, next().Type)
+
+	// Everything goes down: one all_unhealthy event, and not repeated on the next cycle
+	mockChecker.Results = []checker.Result{{Endpoint: ep1, Healthy: false, Error: errors.New("x")}, {Endpoint: ep2, Healthy: false, Error: errors.New("x")}}
+	hc.checkAndUpdateDNS(t.Context())
+	ev = next()
+	assert.Equal(t, notify.EventAllUnhealthy, ev.Type)
+	assert.Len(t, ev.Endpoints, 2)
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Empty(t, next().Type)
+
+	// Recovery of one endpoint publishes it
+	mockChecker.Results[0] = checker.Result{Endpoint: ep1, Healthy: true}
+	hc.checkAndUpdateDNS(t.Context())
+	ev = next()
+	assert.Equal(t, notify.EventDNSUpdated, ev.Type)
+	assert.Equal(t, []string{"1.1.1.1"}, ev.Healthy)
+
+	// Provider errors are notified once per distinct error
+	mockProvider.ShouldError = true
+	mockChecker.Results[1] = checker.Result{Endpoint: ep2, Healthy: true}
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, notify.EventDNSUpdateFailed, next().Type)
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Empty(t, next().Type)
 }

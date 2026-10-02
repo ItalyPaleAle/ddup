@@ -11,6 +11,12 @@ domains:
     healthChecks:
       timeout: "2s"
       attempts: 3
+      # Consecutive successes needed to re-add an endpoint that was removed (default 1)
+      recoverAfter: 3
+      # Request method, GET (default) or HEAD
+      method: "HEAD"
+      # Status codes that mean healthy: codes, ranges or classes (default ["2xx"])
+      expectStatus: ["200", "418"]
     endpoints:
       - name: "server1"
         url: "http://192.168.1.100:8080/health"
@@ -39,6 +45,22 @@ providers:
     cloudflare:
       apiToken: "your-cloudflare-api-token"
       zoneId: "your-zone-id"
+
+# Webhooks called on events: dns_updated, dns_update_failed, all_unhealthy (default: all)
+# Failed deliveries are retried with exponential backoff
+# Without "body", the event is sent as JSON. Otherwise body and header values are Go templates
+# with fields .Type .Domain .Time .Healthy .Previous .Endpoints .Error, method .Subject, and funcs join and json
+webhooks:
+  - name: "ntfy"
+    url: "https://ntfy.example.com/ddup"
+    events: ["dns_updated", "all_unhealthy"]
+    headers:
+      Title: "ddup: {{ .Subject }}"
+    body: "Healthy: {{ join .Healthy \", \" }}"
+    attempts: 5
+    timeout: "10s"
+  - name: "audit"
+    url: "https://hooks.example.com/ddup"
 
 # Enable the web server
 server:

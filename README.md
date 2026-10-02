@@ -89,6 +89,7 @@ You can find an example of the configuration file, and a description of every op
 
 ### Domains and Endpoints
 
+- `webhooks`: Optional webhooks called on events (see `config.sample.yaml`): `url`, `method`, `headers`, `events` (`dns_updated`, `dns_update_failed`, `all_unhealthy`), `body` (Go template; JSON event if omitted), `timeout`, `attempts`. Deliveries are retried with exponential backoff.
 - `domains`: Array of domains to manage
   - `recordName`: The DNS record to update (e.g., "api.example.com")
   - `provider`: Name of the DNS provider (from the [`providers` map](#providers-configuration))
@@ -96,6 +97,9 @@ You can find an example of the configuration file, and a description of every op
   - `healthChecks`: Configuration for health checks
     - `timeout`: Request timeout (default: "3s")
     - `attempts`: Maximum number of consecutive attempts before considering the endpoint unhealthy (default: 2)
+    - `recoverAfter`: Consecutive successful checks needed before an endpoint that was removed from DNS is added back (default: 1)
+    - `method`: `GET` (default) or `HEAD`
+    - `expectStatus`: Status codes that mean healthy, as codes (`"418"`), ranges (`"200-299"`) or classes (`"2xx"`). Default: `["2xx"]`. Redirects are not followed
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status

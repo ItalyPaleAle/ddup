@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -382,4 +383,61 @@ func TestCheckEndpoint_SuccessStatusCodes(t *testing.T) {
 			assert.Greater(t, result.Duration, time.Duration(0), "Duration should be greater than 0")
 		})
 	}
+}
+
+func TestCheckEndpoint_ExpectStatusAndMethod(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.ConfigHealthChecks
+		code    int
+		healthy bool
+		method  string
+	}{
+		{name: "default accepts 200", code: 200, healthy: true, method: http.MethodGet},
+		{name: "default rejects 418", code: 418, healthy: false, method: http.MethodGet},
+		{name: "default rejects redirects", code: 302, healthy: false, method: http.MethodGet},
+		{name: "custom code", cfg: config.ConfigHealthChecks{ExpectStatus: []string{"418"}}, code: 418, healthy: true, method: http.MethodGet},
+		{name: "custom code rejects 200", cfg: config.ConfigHealthChecks{ExpectStatus: []string{"418"}}, code: 200, healthy: false, method: http.MethodGet},
+		{name: "class and range", cfg: config.ConfigHealthChecks{ExpectStatus: []string{"2xx", "301-302"}}, code: 302, healthy: true, method: http.MethodGet},
+		{name: "HEAD", cfg: config.ConfigHealthChecks{Method: "HEAD", ExpectStatus: []string{"418"}}, code: 418, healthy: true, method: http.MethodHead},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRT := &MockRoundTripper{
+				Response: &http.Response{StatusCode: tc.code, Header: make(http.Header), Body: http.NoBody},
+			}
+			c := New("test.example.com", nil, tc.cfg, nil)
+			c.client.Transport = mockRT
+
+			result := c.checkEndpoint(t.Context(), &config.ConfigEndpoint{URL: "http://example.com/health", IP: "1.1.1.1"})
+			assert.Equal(t, tc.healthy, result.Healthy)
+			assert.Equal(t, tc.method, mockRT.CapturedRequest.Method)
+		})
+	}
+}
+
+func TestClientForHost_ConcurrentAndCached(t *testing.T) {
+	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil)
+
+	var wg sync.WaitGroup
+	clients := make([]*http.Client, 20)
+	for i := range clients {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			clients[i] = c.clientForHost("app.example.com")
+		}()
+	}
+	wg.Wait()
+
+	for _, cl := range clients {
+		assert.Same(t, clients[0], cl, "clients should be cached per host")
+	}
+	assert.Nil(t, c.client.Transport, "base client must not be modified")
+
+	tr, ok := clients[0].Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.Equal(t, "app.example.com", tr.TLSClientConfig.ServerName)
+	assert.NotSame(t, clients[0], c.clientForHost("other.example.com"))
 }

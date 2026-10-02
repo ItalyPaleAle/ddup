@@ -55,3 +55,43 @@ func TestValidateEndpointIP(t *testing.T) {
 		})
 	}
 }
+
+func TestStatusMatcher(t *testing.T) {
+	m, err := ParseStatusMatcher([]string{"2xx", "301-302", "418"})
+	require.NoError(t, err)
+	for _, code := range []int{200, 299, 301, 302, 418} {
+		assert.True(t, m.Match(code), code)
+	}
+	for _, code := range []int{199, 300, 303, 404, 500} {
+		assert.False(t, m.Match(code), code)
+	}
+
+	assert.True(t, StatusMatcher{}.Match(204), "zero value uses default")
+	for _, bad := range []string{"", "abc", "6xx", "299-200", "99", "600"} {
+		_, err = ParseStatusMatcher([]string{bad})
+		require.Error(t, err, bad)
+	}
+}
+
+func TestValidateWebhooks(t *testing.T) {
+	cfg := &Config{Webhooks: []ConfigWebhook{{URL: "https://ntfy.example.com/topic", Events: []string{"dns_updated"}, Body: "{{ .Domain }}"}}}
+	require.NoError(t, cfg.validateWebhooks())
+	assert.Equal(t, "ntfy.example.com", cfg.Webhooks[0].Name)
+	assert.Equal(t, "POST", cfg.Webhooks[0].Method)
+	assert.Equal(t, 5, cfg.Webhooks[0].Attempts)
+
+	for name, w := range map[string]ConfigWebhook{
+		"bad url":      {URL: "ftp://x"},
+		"bad event":    {URL: "https://x.example.com", Events: []string{"nope"}},
+		"bad template": {URL: "https://x.example.com", Body: "{{ .Domain"},
+		"bad header":   {URL: "https://x.example.com", Headers: map[string]string{"X": "{{"}},
+	} {
+		cfg = &Config{Webhooks: []ConfigWebhook{w}}
+		require.Error(t, cfg.validateWebhooks(), name)
+	}
+}
+
+func TestValidateWebhooks_TemplateFuncs(t *testing.T) {
+	cfg := &Config{Webhooks: []ConfigWebhook{{URL: "https://x.example.com", Body: `{{ join .Healthy ", " }} {{ json .Endpoints }}`}}}
+	require.NoError(t, cfg.validateWebhooks())
+}
