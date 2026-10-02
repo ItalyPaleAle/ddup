@@ -234,6 +234,21 @@ providers:
       endpoint: "eu"
 ```
 
+### Webhooks
+
+Webhooks are called when something changes (`dns_updated`, `dns_update_failed`, `all_unhealthy`). Each webhook can filter events, set headers, and render its body from a Go template. See `config.sample.yaml` for ntfy, email and generic JSON examples.
+
+#### Email with Cloudflare Email Service
+
+The `email` example in `config.sample.yaml` sends mail through the [Cloudflare Email Service REST API](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/) (`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send`). Requirements:
+
+- Onboard the sender domain in the Cloudflare dashboard (Compute → Email Service → Email Sending → Onboard Domain). Cloudflare adds MX, SPF, DKIM and DMARC records on the `cf-bounce` subdomain, which takes about 5-15 minutes. The domain must be onboarded on the same account that owns the API token, and `from` must be an address on it.
+- API token: create a custom token with the **Account → Email Sending → Edit** permission, with the account that owns the domain under Account Resources. Cloudflare's docs name this permission "Email Sending: Edit". It needs nothing else.
+- Use a token separate from the DNS token used by the `cloudflare` provider (which needs **Zone → DNS → Edit**), so that each token can do only one thing.
+- Replace `your-account-id` in the URL with your [account ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/).
+
+If the API answers 403 with code 10102, the token lacks the permission. Code 10105 means the account isn't entitled to Email Sending, and 10203 means sending is disabled for the zone or account.
+
 ### Server Settings
 
 - `enabled`: Enable the server (disabled by default)

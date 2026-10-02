@@ -65,7 +65,7 @@ webhooks:
     timeout: "10s"
   # Email through the Cloudflare Email Service REST API (https://developers.cloudflare.com/email-service/api/send-emails/rest-api/)
   # The domain must be onboarded to Email Service, "from" must be an address on it, and the API token needs the
-  # Account > Email Sending > Edit permission. Other HTTP email APIs (Resend, Mailgun, Postmark, ...) work the same way:
+  # Account > Email Sending > Edit permission (separate from the DNS token, which needs Zone > DNS > Edit; see README). Other HTTP email APIs (Resend, Mailgun, Postmark, ...) work the same way:
   # change the url, auth header and JSON fields. Using "json" makes sure values are correctly escaped in the JSON body
   - name: "email"
     url: "https://api.cloudflare.com/client/v4/accounts/your-account-id/email/sending/send"
