@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	"github.com/italypaleale/ddup/pkg/healthcheck"
@@ -100,4 +101,14 @@ func (m mockStatusProvider) GetAllDomainsStatus() map[string]healthcheck.DomainS
 
 func (m mockStatusProvider) GetDomainStatus(domain string) *healthcheck.DomainStatus {
 	return nil
+}
+
+func (m mockStatusProvider) ForceCheck(ctx context.Context) error {
+	// Simulate a check taking a moment
+	select {
+	case <-time.After(1500 * time.Millisecond):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err() //nolint:wrapcheck
+	}
 }

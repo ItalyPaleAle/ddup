@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/ui/card'
 import { Badge } from '@/ui/badge'
 import { Button } from '@/ui/button'
-import { RefreshCw, Activity, AlertTriangle, CheckCircle, XCircle, Clock, Search } from 'lucide-react'
+import { RefreshCw, Activity, AlertTriangle, CheckCircle, XCircle, Clock, Search, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface DomainStatusEndpoint {
@@ -32,6 +32,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [isChecking, setIsChecking] = useState(false)
 
   const fetchDomains = useCallback(async (): Promise<void> => {
     setIsLoading(true)
@@ -126,6 +127,33 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     await fetchDomains()
   }
 
+  // Asks the server to run health checks right now (instead of waiting for the next interval), then shows the result
+  const checkNowClicked = async (): Promise<void> => {
+    setIsChecking(true)
+    setError(null)
+    try {
+      const response = await fetch(endpoint + '/api/check', {
+        method: 'POST',
+        // The server requires this header, which blocks cross-site requests
+        headers: { 'X-Requested-By': 'ddup-dashboard' },
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status} ${response.statusText}`)
+      }
+
+      // The response includes the updated status
+      const data: DomainsResponse = await response.json()
+      setDomains(Object.entries(data).map(([name, status]) => ({ name, status })))
+      setLastUpdated(new Date())
+    } catch (err) {
+      console.error('Failed to run check:', err)
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
+      setError(`Failed to run check: ${errorMessage}`)
+    } finally {
+      setIsChecking(false)
+    }
+  }
+
   const getDomainStatus = (domain: Domain) => {
     if (domain.status.error) {
       return 'unhealthy'
@@ -183,6 +211,18 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
               >
                 <Activity className="h-4 w-4" />
                 Auto-refresh {autoRefresh ? 'ON' : 'OFF'}
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={checkNowClicked}
+                disabled={isChecking || isLoading}
+                title="Run health checks now, instead of waiting for the next interval"
+                className="flex items-center gap-2"
+              >
+                <Play className={cn('h-4 w-4', isChecking && 'animate-pulse')} />
+                {isChecking ? 'Checking…' : 'Check now'}
               </Button>
 
               <Button
