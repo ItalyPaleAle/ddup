@@ -1,15 +1,19 @@
 package notify
 
 import (
+	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	yaml "sigs.k8s.io/yaml/goyaml.v3"
 
 	"github.com/italypaleale/ddup/pkg/config"
 )
@@ -69,4 +73,40 @@ func TestNotifier_DefaultJSONAndNil(t *testing.T) {
 	n.Notify(Event{Type: EventAllUnhealthy, Domain: "a.example.com"})
 	n.Wait(5 * time.Second)
 	assert.Contains(t, <-ch, `"event":"all_unhealthy"`)
+}
+
+func TestSampleEmailWebhook(t *testing.T) {
+	// Load config.sample.yaml, ensure it validates, then render its email body template and ensure it produces valid JSON, even with quotes in the data
+	raw, err := os.ReadFile("../../config.sample.yaml")
+	require.NoError(t, err)
+	cfg := config.GetDefaultConfig()
+	require.NoError(t, yaml.Unmarshal(raw, cfg))
+	require.NoError(t, cfg.Validate(slog.Default()), "config.sample.yaml must validate")
+
+	var emailIdx = -1
+	for i := range cfg.Webhooks {
+		if cfg.Webhooks[i].Name == "email" {
+			emailIdx = i
+		}
+	}
+	require.GreaterOrEqual(t, emailIdx, 0, "sample config must include an email webhook")
+
+	n, err := New(t.Context(), cfg.Webhooks)
+	require.NoError(t, err)
+	body, ctype, headers, err := n.hooks[emailIdx].render(Event{
+		Type: EventAllUnhealthy, Domain: "a.example.com", Time: time.Unix(0, 0).UTC(),
+		Previous:  []string{"1.1.1.1"},
+		Endpoints: []EndpointState{{Name: `say "hi"`, IP: "1.1.1.1", Error: `status "500"`}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "application/json", headers["Content-Type"])
+	_ = ctype
+
+	var parsed struct {
+		Subject string `json:"subject"`
+		Text    string `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(body, &parsed), string(body))
+	assert.Equal(t, "[ddup] No healthy endpoints for a.example.com", parsed.Subject)
+	assert.Contains(t, parsed.Text, `say "hi" (1.1.1.1): UNHEALTHY (status "500")`)
 }

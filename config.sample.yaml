@@ -49,7 +49,7 @@ providers:
 # Webhooks called on events: dns_updated, dns_update_failed, all_unhealthy (default: all)
 # Failed deliveries are retried with exponential backoff
 # Without "body", the event is sent as JSON. Otherwise body and header values are Go templates
-# with fields .Type .Domain .Time .Healthy .Previous .Endpoints .Error, method .Subject, and funcs join and json
+# with fields .Type .Domain .Time .Healthy .Previous .Endpoints .Error, methods .Subject and .Text, and funcs join and json
 webhooks:
   - name: "ntfy"
     url: "https://ntfy.example.com/ddup"
@@ -59,6 +59,16 @@ webhooks:
     body: "Healthy: {{ join .Healthy \", \" }}"
     attempts: 5
     timeout: "10s"
+  # Email through any HTTP email API; this example uses Resend (https://resend.com/docs/api-reference/emails/send-email)
+  # Mailgun, Postmark, SendGrid and similar work the same way: change the url, auth header and JSON fields
+  # Using "json" makes sure values are correctly escaped in the JSON body
+  - name: "email"
+    url: "https://api.resend.com/emails"
+    events: ["dns_updated", "dns_update_failed", "all_unhealthy"]
+    headers:
+      Authorization: "Bearer your-api-key"
+      Content-Type: "application/json"
+    body: '{"from": "ddup@example.com", "to": ["postmaster@example.com"], "subject": {{ json (printf "[ddup] %s" .Subject) }}, "text": {{ json .Text }}}'
   - name: "audit"
     url: "https://hooks.example.com/ddup"
 

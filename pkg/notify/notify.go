@@ -65,6 +65,36 @@ type hook struct {
 	headers map[string]*template.Template
 }
 
+// Text returns a plain-text multi-line description of the event, useful as the body of an email or chat message
+func (e Event) Text() string {
+	var b strings.Builder
+	b.WriteString(e.Subject() + "\n\n")
+	fmt.Fprintf(&b, "Event: %s\nDomain: %s\nTime: %s\n", e.Type, e.Domain, e.Time.Format(time.RFC3339))
+	if len(e.Previous) > 0 {
+		fmt.Fprintf(&b, "Previous records: %s\n", strings.Join(e.Previous, ", "))
+	}
+	if len(e.Healthy) > 0 {
+		fmt.Fprintf(&b, "Current records: %s\n", strings.Join(e.Healthy, ", "))
+	}
+	if e.Error != "" {
+		fmt.Fprintf(&b, "Error: %s\n", e.Error)
+	}
+	if len(e.Endpoints) > 0 {
+		b.WriteString("\nEndpoints:\n")
+		for _, ep := range e.Endpoints {
+			status := "healthy"
+			if !ep.Healthy {
+				status = "UNHEALTHY"
+				if ep.Error != "" {
+					status += " (" + ep.Error + ")"
+				}
+			}
+			fmt.Fprintf(&b, "  %s (%s): %s\n", ep.Name, ep.IP, status)
+		}
+	}
+	return b.String()
+}
+
 // Notifier delivers events to webhooks without blocking the caller
 // Deliveries are retried with exponential backoff, so a destination that is temporarily unreachable (for example while ingress is down) still gets the event
 // A nil Notifier is valid and does nothing

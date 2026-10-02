@@ -89,7 +89,7 @@ You can find an example of the configuration file, and a description of every op
 
 ### Domains and Endpoints
 
-- `webhooks`: Optional webhooks called on events (see `config.sample.yaml`): `url`, `method`, `headers`, `events` (`dns_updated`, `dns_update_failed`, `all_unhealthy`), `body` (Go template; JSON event if omitted), `timeout`, `attempts`. Deliveries are retried with exponential backoff.
+- `webhooks`: Optional webhooks called on events (see `config.sample.yaml`): `url`, `method`, `headers`, `events` (`dns_updated`, `dns_update_failed`, `all_unhealthy`), `body` (Go template; JSON event if omitted; templates can use `.Subject`, `.Text`, `join` and `json`, see the email example), `timeout`, `attempts`. Deliveries are retried with exponential backoff.
 - `domains`: Array of domains to manage
   - `recordName`: The DNS record to update (e.g., "api.example.com")
   - `provider`: Name of the DNS provider (from the [`providers` map](#providers-configuration))
