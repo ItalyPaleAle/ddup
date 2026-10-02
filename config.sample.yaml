@@ -63,16 +63,17 @@ webhooks:
     body: "Healthy: {{ join .Healthy \", \" }}"
     attempts: 5
     timeout: "10s"
-  # Email through any HTTP email API; this example uses Resend (https://resend.com/docs/api-reference/emails/send-email)
-  # Mailgun, Postmark, SendGrid and similar work the same way: change the url, auth header and JSON fields
-  # Using "json" makes sure values are correctly escaped in the JSON body
+  # Email through the Cloudflare Email Service REST API (https://developers.cloudflare.com/email-service/api/send-emails/rest-api/)
+  # The domain must be onboarded to Email Service, "from" must be an address on it, and the API token needs the
+  # Account > Email Sending > Edit permission. Other HTTP email APIs (Resend, Mailgun, Postmark, ...) work the same way:
+  # change the url, auth header and JSON fields. Using "json" makes sure values are correctly escaped in the JSON body
   - name: "email"
-    url: "https://api.resend.com/emails"
+    url: "https://api.cloudflare.com/client/v4/accounts/your-account-id/email/sending/send"
     events: ["dns_updated", "dns_update_failed", "all_unhealthy"]
     headers:
-      Authorization: "Bearer your-api-key"
+      Authorization: "Bearer your-api-token"
       Content-Type: "application/json"
-    body: '{"from": "ddup@example.com", "to": ["postmaster@example.com"], "subject": {{ json (printf "[ddup] %s" .Subject) }}, "text": {{ json .Text }}}'
+    body: '{"from": "ddup@example.com", "to": "postmaster@example.com", "subject": {{ json (printf "[ddup] %s" .Subject) }}, "text": {{ json .Text }}}'
   - name: "audit"
     url: "https://hooks.example.com/ddup"
 
