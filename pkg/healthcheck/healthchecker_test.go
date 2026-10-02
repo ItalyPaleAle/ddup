@@ -535,3 +535,45 @@ func TestHealthChecker_Webhooks(t *testing.T) {
 	hc.checkAndUpdateDNS(t.Context())
 	assert.Empty(t, next().Type)
 }
+
+func TestHealthChecker_NoNotificationWhenDNSAlreadyUpToDate(t *testing.T) {
+	events := make(chan notify.Event, 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var ev notify.Event
+		_ = json.NewDecoder(r.Body).Decode(&ev)
+		events <- ev
+	}))
+	defer srv.Close()
+
+	n, err := notify.New(t.Context(), []config.ConfigWebhook{{Name: "t", URL: srv.URL, Method: "POST", Attempts: 1, Timeout: time.Second}})
+	require.NoError(t, err)
+
+	// The provider reports that DNS already matched, like on startup after a restart
+	mockProvider := dns.NewMockProvider(false)
+	mockProvider.NoChange = true
+	ep := &config.ConfigEndpoint{Name: "endpoint1", IP: "1.1.1.1"}
+	mockChecker := &checker.MockChecker{Domain: "example.com", MaxAttempts: 2, Results: []checker.Result{{Endpoint: ep, Healthy: true}}}
+	hc := &HealthChecker{
+		notifier: n,
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: mockProvider},
+		},
+	}
+
+	hc.checkAndUpdateDNS(t.Context())
+	n.Wait(5 * time.Second)
+
+	assert.Equal(t, 1, mockProvider.CallCount)
+	assert.Equal(t, []string{"1.1.1.1"}, hc.domainCheckers["example.com"].healthyIPs, "state is still recorded")
+	assert.Empty(t, events, "no event when DNS did not change")
+
+	// A real change carries what DNS held before
+	mockProvider.NoChange = false
+	mockProvider.Previous = []string{"9.9.9.9"}
+	mockChecker.Results = []checker.Result{{Endpoint: ep, Healthy: true}, {Endpoint: &config.ConfigEndpoint{Name: "e2", IP: "2.2.2.2"}, Healthy: true}}
+	hc.checkAndUpdateDNS(t.Context())
+	n.Wait(5 * time.Second)
+	ev := <-events
+	assert.Equal(t, notify.EventDNSUpdated, ev.Type)
+	assert.Equal(t, []string{"9.9.9.9"}, ev.Previous)
+}

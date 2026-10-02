@@ -159,7 +159,8 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		if !utils.ElementsMatch(currentHealthyIPs, newHealthyIPs) {
 			// Update DNS records
 			if len(newHealthyIPs) > 0 {
-				err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
+				var res dns.UpdateResult
+				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					dc.setError("Error updating DNS records: " + err.Error())
@@ -175,10 +176,16 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 					continue
 				}
 
-				domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs)
 				dc.swapNotifiedError("")
-				event.Type = notify.EventDNSUpdated
-				hc.notifier.Notify(event)
+				if res.Changed {
+					domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs, "previous", res.Previous)
+					event.Type = notify.EventDNSUpdated
+					event.Previous = res.Previous
+					hc.notifier.Notify(event)
+				} else {
+					// For example on startup, when DNS already reflects the healthy endpoints
+					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", newHealthyIPs)
+				}
 			} else {
 				domainLog.WarnContext(ctx, "No healthy endpoints found, not updating DNS")
 			}

@@ -47,8 +47,9 @@ func TestCloudflareProvider(t *testing.T) {
 		})
 
 		// Test creating records
-		err := provider.UpdateRecords(t.Context(), "example.com", 300, []string{"1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "example.com", 300, []string{"1.1.1.1"})
 		require.NoError(t, err)
+		assert.True(t, res.Changed)
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
@@ -121,8 +122,9 @@ func TestCloudflareProvider(t *testing.T) {
 		})
 
 		// Test deleting records (passing empty IPs array)
-		err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
 		require.NoError(t, err)
+		assert.True(t, res.Changed)
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
@@ -195,8 +197,9 @@ func TestCloudflareProvider(t *testing.T) {
 		})
 
 		// Test updating records with new IPs (keep 5.6.7.8, remove 1.2.3.4, add 9.10.11.12)
-		err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"5.6.7.8", "9.10.11.12"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"5.6.7.8", "9.10.11.12"})
 		require.NoError(t, err)
+		assert.True(t, res.Changed)
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
@@ -242,8 +245,10 @@ func TestCloudflareProvider(t *testing.T) {
 		setCloudflareEmptyAAAAResponse(mockTransport, "api.example.com")
 
 		// Test updating with the same IP (no changes needed)
-		err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4"})
 		require.NoError(t, err)
+		assert.False(t, res.Changed)
+		assert.Equal(t, []string{"1.2.3.4"}, res.Previous)
 
 		// Verify only the GET request was made (no DELETE or POST)
 		requests := mockTransport.GetRequests()
@@ -283,7 +288,7 @@ func TestCloudflareProvider(t *testing.T) {
 		})
 
 		// Test creating multiple records for the same domain
-		err := provider.UpdateRecords(t.Context(), "multi.example.com", 300, []string{"1.1.1.1", "2.2.2.2"})
+		_, err := provider.UpdateRecords(t.Context(), "multi.example.com", 300, []string{"1.1.1.1", "2.2.2.2"})
 		require.NoError(t, err)
 
 		// Verify the requests were made
@@ -330,7 +335,7 @@ func TestCloudflareProvider(t *testing.T) {
 		})
 
 		// Test that API errors are properly handled
-		err := provider.UpdateRecords(t.Context(), "error.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "error.example.com", 300, []string{"1.1.1.1"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "API error")
 		assert.Contains(t, err.Error(), "1003")
@@ -348,7 +353,7 @@ func TestCloudflareProvider(t *testing.T) {
 		})
 
 		// Test that HTTP errors are handled (this will succeed in getting records but fail parsing the response)
-		err := provider.UpdateRecords(t.Context(), "http-error.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "http-error.example.com", 300, []string{"1.1.1.1"})
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "API error")
 	})
