@@ -13,10 +13,10 @@ domains:
       attempts: 3
       # Consecutive successes needed to re-add an endpoint that was removed (default 1)
       recoverAfter: 3
-      # Request method, GET (default) or HEAD
+      # Request method: GET (default) or HEAD
       method: "HEAD"
-      # Status codes that mean healthy: codes, ranges or classes (default ["2xx"])
-      expectStatus: ["200", "418"]
+      # Status code that means healthy: an exact code or "2xx" (default "2xx")
+      expectStatus: "204"
     endpoints:
       - name: "server1"
         url: "http://192.168.1.100:8080/health"

@@ -35,7 +35,6 @@ type checker struct {
 	cfg       config.ConfigHealthChecks
 	metrics   *appmetrics.AppMetrics
 	client    *http.Client
-	status    config.StatusMatcher
 
 	// Clients used for endpoints that set a custom host over TLS, keyed by host
 	hostClientsLock sync.Mutex
@@ -66,19 +65,12 @@ func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig co
 		healthCheckConfig.Attempts = DefaultAttempts
 	}
 
-	// Validation ensures the status specs are valid; if not, we fall back to the default
-	status, err := config.ParseStatusMatcher(healthCheckConfig.ExpectStatus)
-	if err != nil {
-		status = config.DefaultStatusMatcher()
-	}
-
 	return &checker{
 		domain:    domain,
 		endpoints: endpoints,
 		cfg:       healthCheckConfig,
 		metrics:   metrics,
 		client:    client,
-		status:    status,
 	}
 }
 
@@ -168,7 +160,7 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 	_ = resp.Body.Close() //nolint:errcheck
 
 	// Check if status code indicates health
-	if !c.status.Match(resp.StatusCode) {
+	if !c.cfg.StatusMatches(resp.StatusCode) {
 		return Result{
 			Endpoint: endpoint,
 			Healthy:  false,

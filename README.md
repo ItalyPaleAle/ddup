@@ -98,7 +98,7 @@ You can find an example of the configuration file, and a description of every op
     - `attempts`: Maximum number of consecutive attempts before considering the endpoint unhealthy (default: 2)
     - `recoverAfter`: Consecutive successful checks needed before an endpoint that was removed from DNS is added back (default: 1)
     - `method`: `GET` (default) or `HEAD`
-    - `expectStatus`: Status codes that mean healthy, as codes (`"418"`), ranges (`"200-299"`) or classes (`"2xx"`). Default: `["2xx"]`. Redirects are not followed
+    - `expectStatus`: Status code that means healthy: an exact code (like `204`) or `2xx` for any 2xx code. Default: `2xx`. Redirects are not followed
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status

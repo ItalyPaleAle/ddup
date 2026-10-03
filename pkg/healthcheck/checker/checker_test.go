@@ -396,10 +396,10 @@ func TestCheckEndpoint_ExpectStatusAndMethod(t *testing.T) {
 		{name: "default accepts 200", code: 200, healthy: true, method: http.MethodGet},
 		{name: "default rejects 418", code: 418, healthy: false, method: http.MethodGet},
 		{name: "default rejects redirects", code: 302, healthy: false, method: http.MethodGet},
-		{name: "custom code", cfg: config.ConfigHealthChecks{ExpectStatus: []string{"418"}}, code: 418, healthy: true, method: http.MethodGet},
-		{name: "custom code rejects 200", cfg: config.ConfigHealthChecks{ExpectStatus: []string{"418"}}, code: 200, healthy: false, method: http.MethodGet},
-		{name: "class and range", cfg: config.ConfigHealthChecks{ExpectStatus: []string{"2xx", "301-302"}}, code: 302, healthy: true, method: http.MethodGet},
-		{name: "HEAD", cfg: config.ConfigHealthChecks{Method: "HEAD", ExpectStatus: []string{"418"}}, code: 418, healthy: true, method: http.MethodHead},
+		{name: "custom code", cfg: config.ConfigHealthChecks{ExpectStatus: "418"}, code: 418, healthy: true, method: http.MethodGet},
+		{name: "custom code rejects 200", cfg: config.ConfigHealthChecks{ExpectStatus: "418"}, code: 200, healthy: false, method: http.MethodGet},
+		{name: "2xx class", cfg: config.ConfigHealthChecks{ExpectStatus: "2xx"}, code: 204, healthy: true, method: http.MethodGet},
+		{name: "HEAD", cfg: config.ConfigHealthChecks{Method: "HEAD", ExpectStatus: "418"}, code: 418, healthy: true, method: http.MethodHead},
 	}
 
 	for _, tc := range tests {

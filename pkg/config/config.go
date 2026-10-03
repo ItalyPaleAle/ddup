@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/netip"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -74,14 +75,34 @@ type ConfigHealthChecks struct {
 	// Defaults to 1
 	RecoverAfter int `yaml:"recoverAfter"`
 
-	// HTTP method for the health check request
+	// HTTP method for the health check request: GET or HEAD
 	// Defaults to GET
 	Method string `yaml:"method"`
 
-	// HTTP status codes that indicate a healthy endpoint
-	// Each item is a code ("200"), an inclusive range ("200-299") or a class ("2xx")
-	// Defaults to ["2xx"]
-	ExpectStatus []string `yaml:"expectStatus"`
+	// HTTP status code that indicates a healthy endpoint: either an exact code (like "204") or "2xx" for any 2xx code
+	// Defaults to "2xx"
+	ExpectStatus string `yaml:"expectStatus"`
+}
+
+// StatusMatches returns true if the HTTP status code indicates a healthy endpoint
+// The value of ExpectStatus must have been validated
+func (c ConfigHealthChecks) StatusMatches(code int) bool {
+	if c.ExpectStatus == "" || c.ExpectStatus == "2xx" {
+		return code >= 200 && code <= 299
+	}
+	expected, _ := strconv.Atoi(c.ExpectStatus)
+	return code == expected
+}
+
+func validateExpectStatus(v string) error {
+	if v == "" || v == "2xx" {
+		return nil
+	}
+	code, err := strconv.Atoi(v)
+	if err != nil || code < 100 || code > 599 {
+		return fmt.Errorf("expectStatus must be a status code (like 204) or 2xx, got %q", v)
+	}
+	return nil
 }
 
 // ConfigEndpoint represents a single endpoint to health check
@@ -257,9 +278,9 @@ func (c *Config) Validate(logger *slog.Logger) error {
 		default:
 			return fmt.Errorf("domain %s is invalid: healthChecks.method must be GET or HEAD", d.RecordName)
 		}
-		_, err := ParseStatusMatcher(d.HealthChecks.ExpectStatus)
+		err := validateExpectStatus(d.HealthChecks.ExpectStatus)
 		if err != nil {
-			return fmt.Errorf("domain %s is invalid: healthChecks.expectStatus: %w", d.RecordName, err)
+			return fmt.Errorf("domain %s is invalid: healthChecks.%w", d.RecordName, err)
 		}
 		if d.HealthChecks.RecoverAfter < 0 {
 			return fmt.Errorf("domain %s is invalid: healthChecks.recoverAfter must not be negative", d.RecordName)

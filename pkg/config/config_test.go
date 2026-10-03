@@ -56,19 +56,64 @@ func TestValidateEndpointIP(t *testing.T) {
 	}
 }
 
-func TestStatusMatcher(t *testing.T) {
-	m, err := ParseStatusMatcher([]string{"2xx", "301-302", "418"})
-	require.NoError(t, err)
-	for _, code := range []int{200, 299, 301, 302, 418} {
-		assert.True(t, m.Match(code), code)
+func TestStatusMatches(t *testing.T) {
+	tests := []struct {
+		name   string
+		expect string
+		match  []int
+		reject []int
+	}{
+		{name: "empty uses 2xx", expect: "", match: []int{200, 204, 299}, reject: []int{199, 300, 404, 500}},
+		{name: "2xx", expect: "2xx", match: []int{200, 204, 299}, reject: []int{199, 300, 404, 500}},
+		{name: "exact code", expect: "204", match: []int{204}, reject: []int{200, 203, 205, 404}},
+		{name: "exact non-2xx code", expect: "418", match: []int{418}, reject: []int{200, 417, 419}},
+		{name: "lowest valid code", expect: "100", match: []int{100}, reject: []int{101, 200}},
+		{name: "highest valid code", expect: "599", match: []int{599}, reject: []int{598, 200}},
 	}
-	for _, code := range []int{199, 300, 303, 404, 500} {
-		assert.False(t, m.Match(code), code)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			hc := ConfigHealthChecks{ExpectStatus: tc.expect}
+			for _, code := range tc.match {
+				assert.True(t, hc.StatusMatches(code), "code %d", code)
+			}
+			for _, code := range tc.reject {
+				assert.False(t, hc.StatusMatches(code), "code %d", code)
+			}
+		})
+	}
+}
+
+func TestValidateExpectStatus(t *testing.T) {
+	for _, ok := range []string{"", "2xx", "200", "204", "301", "404", "100", "599"} {
+		require.NoError(t, validateExpectStatus(ok), "%q", ok)
 	}
 
-	assert.True(t, StatusMatcher{}.Match(204), "zero value uses default")
-	for _, bad := range []string{"", "abc", "6xx", "299-200", "99", "600"} {
-		_, err = ParseStatusMatcher([]string{bad})
-		require.Error(t, err, bad)
+	// Only 2xx is supported as a class, and codes must be in the valid range
+	for _, bad := range []string{"3xx", "4xx", "5xx", "2XX", "2x", "abc", "99", "600", "0", "-200", "200-299", "200,204", " 200", "20.0"} {
+		err := validateExpectStatus(bad)
+		require.Error(t, err, "%q", bad)
+		assert.Contains(t, err.Error(), "expectStatus")
 	}
+}
+
+func TestValidateExpectStatus_InConfig(t *testing.T) {
+	newConfig := func(expect string) *Config {
+		return &Config{
+			Providers: map[string]ConfigProvider{"test": {Cloudflare: &CloudflareConfig{}}},
+			Domains: []ConfigDomain{{
+				RecordName:   "test.example.com",
+				Provider:     "test",
+				HealthChecks: ConfigHealthChecks{ExpectStatus: expect},
+				Endpoints:    []*ConfigEndpoint{{URL: "https://test.example.com/health", IP: "192.0.2.1"}},
+			}},
+		}
+	}
+
+	require.NoError(t, newConfig("").Validate(slog.Default()))
+	require.NoError(t, newConfig("204").Validate(slog.Default()))
+
+	err := newConfig("3xx").Validate(slog.Default())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "test.example.com")
+	assert.Contains(t, err.Error(), "healthChecks.expectStatus")
 }
