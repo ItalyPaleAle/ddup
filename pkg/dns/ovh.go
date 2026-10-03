@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -86,16 +88,16 @@ func (o *OVHProvider) Name() string {
 }
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
-func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
+func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
 	canonicalIPs, err := canonicalizeIPs(ips)
 	if err != nil {
-		return err
+		return UpdateResult{}, err
 	}
 
 	// First, get existing A and AAAA records.
 	existingRecords, err := o.getExistingRecords(ctx, domain)
 	if err != nil {
-		return fmt.Errorf("error getting existing records: %w", err)
+		return UpdateResult{}, fmt.Errorf("error getting existing records: %w", err)
 	}
 
 	// Map of existing IPs and record IDs
@@ -103,9 +105,13 @@ func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int,
 	for _, record := range existingRecords {
 		ip, err := canonicalizeIP(record.Target)
 		if err != nil {
-			return fmt.Errorf("invalid IP address in existing record %d: %w", record.ID, err)
+			return UpdateResult{}, fmt.Errorf("invalid IP address in existing record %d: %w", record.ID, err)
 		}
 		existingIPs[ip] = record.ID
+	}
+
+	result := UpdateResult{
+		Previous: slices.Sorted(maps.Keys(existingIPs)),
 	}
 
 	// Map of IPs we want to preserve
@@ -127,9 +133,11 @@ func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int,
 
 		err = o.createRecord(ctx, domain, ip, ttl)
 		if err != nil {
-			return fmt.Errorf("error creating record for IP %s: %w", ip, err)
+			return UpdateResult{}, fmt.Errorf("error creating record for IP %s: %w", ip, err)
 		}
+
 		createdIPs[ip] = struct{}{}
+		result.Changed = true
 	}
 
 	// Delete records for IPs that are no longer healthy
@@ -143,11 +151,13 @@ func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int,
 
 		err = o.deleteRecord(ctx, recordID)
 		if err != nil {
-			return fmt.Errorf("error deleting record %d for IP %s: %w", recordID, ip, err)
+			return UpdateResult{}, fmt.Errorf("error deleting record %d for IP %s: %w", recordID, ip, err)
 		}
+
+		result.Changed = true
 	}
 
-	return nil
+	return result, nil
 }
 
 // OVHRecord represents a DNS record from OVH API
