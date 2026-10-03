@@ -117,3 +117,26 @@ func TestValidateExpectStatus_InConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "test.example.com")
 	assert.Contains(t, err.Error(), "healthChecks.expectStatus")
 }
+
+func TestValidateWebhooks(t *testing.T) {
+	cfg := &Config{Webhooks: []ConfigWebhook{{URL: "https://ntfy.example.com/topic", Events: []string{"dns_updated"}, Body: "{{ .Domain }}"}}}
+	require.NoError(t, cfg.validateWebhooks())
+	assert.Equal(t, "ntfy.example.com", cfg.Webhooks[0].Name)
+	assert.Equal(t, "POST", cfg.Webhooks[0].Method)
+	assert.Equal(t, 5, cfg.Webhooks[0].Attempts)
+
+	for name, w := range map[string]ConfigWebhook{
+		"bad url":      {URL: "ftp://x"},
+		"bad event":    {URL: "https://x.example.com", Events: []string{"nope"}},
+		"bad template": {URL: "https://x.example.com", Body: "{{ .Domain"},
+		"bad header":   {URL: "https://x.example.com", Headers: map[string]string{"X": "{{"}},
+	} {
+		cfg = &Config{Webhooks: []ConfigWebhook{w}}
+		require.Error(t, cfg.validateWebhooks(), name)
+	}
+}
+
+func TestValidateWebhooks_TemplateFuncs(t *testing.T) {
+	cfg := &Config{Webhooks: []ConfigWebhook{{URL: "https://x.example.com", Body: `{{ join .Healthy ", " }} {{ json .Endpoints }}`}}}
+	require.NoError(t, cfg.validateWebhooks())
+}

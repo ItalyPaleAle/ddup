@@ -14,6 +14,7 @@ import (
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
+	"github.com/italypaleale/ddup/pkg/notify"
 	"github.com/italypaleale/ddup/pkg/utils"
 )
 
@@ -23,6 +24,8 @@ type HealthChecker struct {
 	domainCheckers map[string]*domainChecker
 	// Requests to run a check right away; handled by Run, so checks never overlap
 	forceCh chan forceRequest
+	// Optional; may be nil
+	notifier *notify.Notifier
 }
 
 // If a check completed more recently than this, a forced check returns without running another
@@ -37,7 +40,7 @@ type forceRequest struct {
 var ErrNotRunning = errors.New("health checker is not running")
 
 // NewHealthChecker creates a new HealthChecker instance
-func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.AppMetrics) (*HealthChecker, error) {
+func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.AppMetrics, notifier *notify.Notifier) (*HealthChecker, error) {
 	cfg := config.Get()
 
 	dcs := make(map[string]*domainChecker, len(cfg.Domains))
@@ -58,6 +61,7 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 	return &HealthChecker{
 		domainCheckers: dcs,
 		forceCh:        make(chan forceRequest, 1),
+		notifier:       notifier,
 	}, nil
 }
 
@@ -137,8 +141,14 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		recoverAfter := dc.checker.GetRecoverAfter()
 		recovering := dc.getRecovering()
 		newHealthyIPs := make([]string, 0, len(results))
+		endpointStates := make([]notify.EndpointState, 0, len(results))
 		for _, result := range results {
 			ip := result.Endpoint.IP
+			state := notify.EndpointState{Name: result.Endpoint.Name, IP: ip, Healthy: result.Healthy}
+			if result.Error != nil {
+				state.Error = result.Error.Error()
+			}
+			endpointStates = append(endpointStates, state)
 
 			// If the endpoint is healthy, save it in the healthy list and remove any record of recent failed attempts
 			if result.Healthy {
@@ -178,6 +188,22 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		}
 		dc.setRecovering(recovering)
 
+		event := notify.Event{
+			Domain:    domainName,
+			Healthy:   newHealthyIPs,
+			Previous:  currentHealthyIPs,
+			Endpoints: endpointStates,
+		}
+
+		// Notify when we transition to having no healthy endpoints; we don't repeat the notification on every cycle
+		allDown := len(newHealthyIPs) == 0
+		if allDown && !dc.swapAllDown(true) {
+			event.Type = notify.EventAllUnhealthy
+			hc.notifier.Notify(ctx, event)
+		} else if !allDown {
+			dc.swapAllDown(false)
+		}
+
 		// Check if healthy IPs have changed
 		if !utils.ElementsMatch(currentHealthyIPs, newHealthyIPs) {
 			// Update DNS records
@@ -188,12 +214,23 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					dc.setError("Error updating DNS records: " + err.Error())
 
+					// Notify once per distinct error
+					if dc.swapNotifiedError(err.Error()) != err.Error() {
+						event.Type = notify.EventDNSUpdateFailed
+						event.Error = err.Error()
+						hc.notifier.Notify(ctx, event)
+					}
+
 					// Continue, so we don't update the cached previous IPs
 					continue
 				}
 
+				dc.swapNotifiedError("")
 				if res.Changed {
 					domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs, "previous", res.Previous)
+					event.Type = notify.EventDNSUpdated
+					event.Previous = res.Previous
+					hc.notifier.Notify(ctx, event)
 				} else {
 					// For example on startup, when DNS already reflects the healthy endpoints
 					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", newHealthyIPs)

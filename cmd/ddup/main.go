@@ -15,6 +15,7 @@ import (
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
+	"github.com/italypaleale/ddup/pkg/notify"
 	"github.com/italypaleale/ddup/pkg/server"
 	"github.com/italypaleale/ddup/pkg/signals"
 	"github.com/italypaleale/ddup/pkg/utils"
@@ -99,13 +100,26 @@ func main() {
 		dnsProviders[name] = provider
 	}
 
+	// Init webhook notifier; this is nil if no webhooks are configured
+	notifier, err := notify.New(cfg.Webhooks)
+	if err != nil {
+		shutdowns.Run(log)
+		utils.FatalError(log, "Failed to init webhooks", err)
+		return
+	}
+	// Give in-flight webhook deliveries a moment to complete on shutdown
+	shutdowns.Add(func(context.Context) error {
+		notifier.Wait(3 * time.Second)
+		return nil
+	})
+
 	// List of services to run
 	services := make([]servicerunner.Service, 0, 2)
 
 	// Initialize health checker
 	// If there's a non-nil statusProvider, it means we're in the "dashboarddev" mode where we use static data
 	if statusProvider == nil {
-		hc, err := healthcheck.NewHealthChecker(dnsProviders, metrics)
+		hc, err := healthcheck.NewHealthChecker(dnsProviders, metrics, notifier)
 		if err != nil {
 			shutdowns.Run(log)
 			utils.FatalError(log, "Failed to init health checker", err)
