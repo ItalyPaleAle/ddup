@@ -50,7 +50,8 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 
 	// Endpoints in the unhealthy list could also be in the healthy one,
 	// if they failed a recent health check but still less than the max attempts
-	published := selectPublication(dc.endpoints, healthy).values()
+	byTarget := dc.getEndpoints()
+	published := selectPublication(byTarget, healthy).values()
 	newEndpoint := func(target string, healthy bool, failureCount int) DomainStatusEndpoint {
 		e := DomainStatusEndpoint{
 			Healthy:      healthy,
@@ -59,7 +60,7 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 			Active:       healthy && slices.Contains(published, target),
 			FailureCount: failureCount,
 		}
-		ep := dc.endpoints[target]
+		ep := byTarget[target]
 		if ep != nil {
 			e.Priority = ep.Priority
 			e.Proxied = ep.Proxied

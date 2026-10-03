@@ -759,3 +759,65 @@ func TestHealthChecker_TierChangeEvent(t *testing.T) {
 	assert.Contains(t, ev.Subject(), "now points to tunnel.example.com")
 	assert.Contains(t, ev.Text(), "Priority: 1 (was 0)")
 }
+
+func TestHealthChecker_DynamicIP(t *testing.T) {
+	mockProvider := dns.NewMockProvider(false)
+	// A DDNS-style endpoint: no fixed target, proxied, with a lookup that returns the current address
+	home := &config.ConfigEndpoint{Name: "home", Proxied: true, IPLookup: &config.ConfigIPLookup{URLs: []string{"https://ip.example.com"}}}
+	mockChecker := &checker.MockChecker{Domain: "home.example.com", MaxAttempts: 2}
+	hc := &HealthChecker{
+		domainCheckers: map[string]*domainChecker{
+			"home.example.com": {checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: mockProvider},
+		},
+	}
+	dc := hc.domainCheckers["home.example.com"]
+
+	run := func(target string, healthy bool) {
+		t.Helper()
+		var err error
+		if !healthy {
+			err = errors.New("lookup failed")
+		}
+		mockChecker.Results = []checker.Result{{Endpoint: home, Target: target, Healthy: healthy, Error: err}}
+		hc.checkAndUpdateDNS(t.Context())
+	}
+
+	// First lookup publishes the address, with the settings of the endpoint
+	run("203.0.113.1", true)
+	assert.Equal(t, 1, mockProvider.CallCount)
+	assert.Equal(t, []dns.Target{{Value: "203.0.113.1", Proxied: true}}, mockProvider.LastTargets)
+
+	// Nothing changes
+	run("203.0.113.1", true)
+	assert.Equal(t, 1, mockProvider.CallCount)
+
+	// The address changes: DNS is updated, and the proxied setting carries over
+	run("203.0.113.2", true)
+	assert.Equal(t, 2, mockProvider.CallCount)
+	assert.Equal(t, []dns.Target{{Value: "203.0.113.2", Proxied: true}}, mockProvider.LastTargets)
+	assert.Equal(t, []string{"203.0.113.2"}, dc.healthyIPs)
+
+	// A failed lookup is reported against the last address, and DNS is left alone while there are retries left
+	run("203.0.113.2", false)
+	assert.Equal(t, 2, mockProvider.CallCount)
+	assert.Equal(t, []string{"203.0.113.2"}, dc.healthyIPs)
+	assert.Equal(t, 1, dc.failedIPs["203.0.113.2"])
+
+	// A new lookup that works resets it
+	run("203.0.113.2", true)
+	assert.Empty(t, dc.failedIPs)
+
+	// An endpoint that has never found an address is ignored, and DNS is not touched
+	other := &config.ConfigEndpoint{Name: "other", IPLookup: &config.ConfigIPLookup{URLs: []string{"https://ip.example.com"}}}
+	mockChecker.Results = []checker.Result{{Endpoint: other, Target: "", Healthy: false, Error: errors.New("lookup failed")}}
+	dc.healthyIPs = nil
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 2, mockProvider.CallCount)
+	assert.Empty(t, dc.failedIPs)
+
+	// Old addresses are forgotten, so the endpoints of the domain don't grow forever
+	for i := 3; i < 8; i++ {
+		run("203.0.113."+string(rune('0'+i)), true)
+	}
+	assert.LessOrEqual(t, len(dc.getEndpoints()), 2)
+}

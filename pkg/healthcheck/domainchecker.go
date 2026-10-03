@@ -18,6 +18,7 @@ type domainChecker struct {
 	failedIPs  map[string]int
 	provider   dns.Provider
 	// Endpoints by target (IP or CNAME hostname); may be nil, in which case all targets have priority 0 and are not proxied
+	// Endpoints that look up their IP address are added when their address is found, and removed when it's not used any more
 	endpoints   map[string]*config.ConfigEndpoint
 	lastUpdated time.Time
 	lastError   string
@@ -90,4 +91,44 @@ func (dc *domainChecker) swapNotifiedError(v string) string {
 	prev := dc.notifiedError
 	dc.notifiedError = v
 	return prev
+}
+
+// getEndpoints returns a copy of the endpoints by target
+func (dc *domainChecker) getEndpoints() map[string]*config.ConfigEndpoint {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	return maps.Clone(dc.endpoints)
+}
+
+// noteTargets records the endpoints that look up their IP address under the address they found
+// Endpoints whose address is not in the keep list (the current and previous targets) are forgotten
+func (dc *domainChecker) noteTargets(results []checker.Result, keep ...[]string) {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	if dc.endpoints == nil {
+		dc.endpoints = make(map[string]*config.ConfigEndpoint)
+	}
+
+	keepSet := make(map[string]struct{})
+	for _, list := range keep {
+		for _, t := range list {
+			keepSet[t] = struct{}{}
+		}
+	}
+
+	for _, r := range results {
+		if r.Endpoint.Dynamic() && r.Target != "" {
+			dc.endpoints[r.Target] = r.Endpoint
+			keepSet[r.Target] = struct{}{}
+		}
+	}
+
+	for target, ep := range dc.endpoints {
+		_, ok := keepSet[target]
+		if !ok && ep.Dynamic() {
+			delete(dc.endpoints, target)
+		}
+	}
 }

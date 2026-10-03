@@ -91,7 +91,7 @@ You can find an example of the configuration file, and a description of every op
 
 - `webhooks`: Optional webhooks called on events (see `config.sample.yaml`): `url`, `method`, `headers`, `events` (`dns_updated`, `dns_update_failed`, `all_unhealthy`), `body` (Go template; JSON event if omitted; templates can use `.Subject`, `.Text`, `join` and `json`, see the email example), `timeout`, `attempts`. Deliveries are retried with exponential backoff.
 - `domains`: Array of domains to manage
-  - `recordName`: The DNS record to update (e.g., "api.example.com")
+  - `recordName`: The DNS record to update (e.g., "api.example.com").
   - `provider`: Name of the DNS provider (from the [`providers` map](#providers-configuration))
   - `ttl`: Time to live for DNS records. A short value is preferred to ensure faster failover from failed deployments. The default value is 120 (seconds, equivalent to 2 minutes)
   - `healthChecks`: Configuration for health checks
@@ -102,9 +102,10 @@ You can find an example of the configuration file, and a description of every op
     - `expectStatus`: Status code that means healthy: an exact code (like `204`) or `2xx` for any 2xx code. Default: `2xx`. Redirects are not followed
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
-    - `url`: HTTP URL to check for health status
-    - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records. Exactly one of `ip` and `cname` is required
-    - `cname`: A hostname to publish as a CNAME record when healthy (Cloudflare only). A CNAME can't coexist with other records, so an endpoint with `cname` must be the only one with its `priority`. Exactly one of `ip` and `cname` is required
+    - `url`: HTTP URL to check for health status. Optional for endpoints that use `ipLookup`, which are then not health-checked
+    - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records. Exactly one of `ip`, `cname` and `ipLookup` is required
+    - `cname`: A hostname to publish as a CNAME record when healthy (Cloudflare only). A CNAME can't coexist with other records, so an endpoint with `cname` must be the only one with its `priority`. Exactly one of `ip`, `cname` and `ipLookup` is required
+    - `ipLookup`: Looks up the IP address to publish by calling a service that returns the caller's public IP address (like ipify). See [Dynamic DNS](#dynamic-dns). Exactly one of `ip`, `cname` and `ipLookup` is required
     - `proxied`: If true, the record is proxied by Cloudflare (Cloudflare only). Proxied records use Cloudflare's automatic TTL. All endpoints with the same `priority` must use the same value
     - `priority`: Endpoints with a lower value are preferred (default: 0). See [Failover with priorities](#failover-with-priorities)
     - `host`: Optional hostname to include in the requests, when the request is made to an IP address or to a hostname different from the desired one
@@ -125,6 +126,34 @@ endpoints:
 Both VPS IPs are published while they're healthy, a single IP if only one is, and the proxied CNAME if neither is. If nothing is healthy, ddup leaves DNS unchanged and sends the `all_unhealthy` webhook.
 
 When the kind of record changes (A/AAAA to CNAME or the reverse), ddup overwrites an existing record in place so the name is never left without records. If Cloudflare rejects that, ddup falls back to deleting the record and creating the new one. Webhook events include `published`, `tier` and `previousTier`, and dns_updated emails say when the priority changed.
+
+### Dynamic DNS
+
+An endpoint can find its IP address by calling a service that returns the caller's public IP address, so a record follows the public IP of the network ddup runs in (dynamic DNS):
+
+```yaml
+domains:
+  - recordName: "home.example.com"
+    provider: "example-provider-1"
+    ttl: 300
+    endpoints:
+      - name: "home"
+        ipLookup:
+          # Tried in order; the first that works is used
+          urls:
+            - "https://api.ipify.org"
+            - "https://ipv4.icanhazip.com"
+          # Optional: 4 or 6. A response with the other version is an error
+          family: 4
+```
+
+- With no `url` the endpoint isn't health-checked: it's healthy as long as the lookup works. With a `url`, the endpoint is also health-checked as usual, and the looked-up address is what's published.
+- By default the response must be just the IP address, as plain text. Use `pattern` for other formats: a regular expression with exactly one capture group, for example `"ip":"([^"]+)"` for ipify's JSON (`https://api.ipify.org?format=json`), or `(?m)^ip=(\S+)` for `https://1.1.1.1/cdn-cgi/trace`.
+- The type of record follows the address: IPv4 creates an `A` record and IPv6 an `AAAA` record. A service reports the version it's reached over, so use `family` (and a service that only answers over that version, like `https://api6.ipify.org`) to choose.
+- The lookup runs on every check, but lookups with the same settings in the same interval share one call. When the address changes, the record is updated and the `dns_updated` webhook is sent. If the lookup fails, the last address stays published until `attempts` consecutive failures, and with no healthy endpoint ddup leaves DNS unchanged and sends `all_unhealthy`.
+- Private, loopback and other non-public addresses are rejected.
+- `proxied` works with a lookup (Cloudflare only), and a lookup can be combined with [priorities](#failover-with-priorities).
+- ddup replaces every `A`/`AAAA` record at the name that isn't the looked-up address, so don't point it at a name that has other records.
 
 ### Providers Configuration
 

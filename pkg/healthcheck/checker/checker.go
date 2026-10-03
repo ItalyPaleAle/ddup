@@ -39,11 +39,18 @@ type checker struct {
 	// Clients used for endpoints that set a custom host over TLS, keyed by host
 	hostClientsLock sync.RWMutex
 	hostClients     map[string]*http.Client
+
+	// Last IP address found for each endpoint that looks it up
+	lastIPsLock sync.Mutex
+	lastIPs     map[*config.ConfigEndpoint]string
 }
 
 // Result represents the result of a health check
 type Result struct {
 	Endpoint *config.ConfigEndpoint
+	// What the endpoint publishes: an IP address or a CNAME hostname
+	// For endpoints that look up their IP address this is the address that was found, or the last one found if the lookup failed, and it's empty if there's none yet
+	Target   string
 	Healthy  bool
 	Error    error
 	Duration time.Duration
@@ -110,8 +117,54 @@ func (c *checker) GetRecoverAfter() int {
 	return max(c.cfg.RecoverAfter, 1)
 }
 
-// checkEndpoint performs a health check on a single endpoint
+// checkEndpoint finds the target of the endpoint (looking up its IP address, if needed), and performs a health check on it
 func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndpoint) Result {
+	if !endpoint.Dynamic() {
+		res := c.healthCheck(ctx, endpoint)
+		res.Target = endpoint.Target()
+		return res
+	}
+
+	start := time.Now()
+	ip, err := lookupIP(ctx, endpoint.IPLookup, c.cfg.Timeout)
+	if err != nil {
+		// Keep reporting the last IP address we found, so the failure counts against it like a failed health check
+		return Result{
+			Endpoint: endpoint,
+			Target:   c.getLastIP(endpoint),
+			Healthy:  false,
+			Error:    err,
+			Duration: time.Since(start),
+		}
+	}
+	c.setLastIP(endpoint, ip)
+
+	// Without a URL the endpoint is not health-checked, so it's healthy when the lookup works
+	res := Result{Endpoint: endpoint, Healthy: true, Duration: time.Since(start)}
+	if endpoint.URL != "" {
+		res = c.healthCheck(ctx, endpoint)
+	}
+	res.Target = ip
+	return res
+}
+
+func (c *checker) getLastIP(endpoint *config.ConfigEndpoint) string {
+	c.lastIPsLock.Lock()
+	defer c.lastIPsLock.Unlock()
+	return c.lastIPs[endpoint]
+}
+
+func (c *checker) setLastIP(endpoint *config.ConfigEndpoint, ip string) {
+	c.lastIPsLock.Lock()
+	defer c.lastIPsLock.Unlock()
+	if c.lastIPs == nil {
+		c.lastIPs = make(map[*config.ConfigEndpoint]string)
+	}
+	c.lastIPs[endpoint] = ip
+}
+
+// healthCheck performs a health check on a single endpoint
+func (c *checker) healthCheck(ctx context.Context, endpoint *config.ConfigEndpoint) Result {
 	start := time.Now()
 
 	// Create a context with timeout for this specific endpoint

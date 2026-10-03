@@ -158,7 +158,7 @@ func TestValidateEndpoints_TiersAndTargets(t *testing.T) {
 			{URL: "https://a", IP: "1.1.1.1"}, {URL: "https://c", CNAME: "tunnel.example.com", Proxied: true, Priority: 1},
 		}},
 		{name: "ip and cname", provider: cloudflare, endpoints: []*ConfigEndpoint{{URL: "https://a", IP: "1.1.1.1", CNAME: "a.example.com"}}, errSubstr: "mutually exclusive"},
-		{name: "neither ip nor cname", provider: cloudflare, endpoints: []*ConfigEndpoint{{URL: "https://a"}}, errSubstr: "one of ip and cname is required"},
+		{name: "neither ip nor cname", provider: cloudflare, endpoints: []*ConfigEndpoint{{URL: "https://a"}}, errSubstr: "one of ip, cname and ipLookup is required"},
 		{name: "cname with other endpoints in the same priority", provider: cloudflare, endpoints: []*ConfigEndpoint{
 			{URL: "https://a", IP: "1.1.1.1"}, {URL: "https://c", CNAME: "tunnel.example.com"},
 		}, errSubstr: "can't coexist"},
@@ -205,5 +205,57 @@ func TestValidateEndpoints_TiersAndTargets(t *testing.T) {
 		require.NoError(t, cfg.Validate(slog.Default()))
 		assert.Equal(t, "tunnel.example.com", cfg.Domains[0].Endpoints[0].CNAME)
 		assert.Equal(t, "tunnel.example.com", cfg.Domains[0].Endpoints[0].Target())
+	})
+}
+
+func TestValidateEndpoints_IPLookup(t *testing.T) {
+	cloudflare := ConfigProvider{Cloudflare: &CloudflareConfig{}}
+
+	tests := []struct {
+		name      string
+		endpoint  *ConfigEndpoint
+		errSubstr string
+	}{
+		{name: "lookup without a health check URL", endpoint: &ConfigEndpoint{IPLookup: &ConfigIPLookup{URLs: []string{"https://api.ipify.org"}}}},
+		{name: "lookup with family and pattern", endpoint: &ConfigEndpoint{URL: "https://home.example.com/health", Proxied: true, IPLookup: &ConfigIPLookup{
+			URLs: []string{"https://api6.ipify.org?format=json", "https://example.com/ip"}, Family: 6, Pattern: `"ip":"([^"]+)"`,
+		}}},
+		{name: "no URLs", endpoint: &ConfigEndpoint{IPLookup: &ConfigIPLookup{}}, errSubstr: "at least one URL"},
+		{name: "relative URL", endpoint: &ConfigEndpoint{IPLookup: &ConfigIPLookup{URLs: []string{"/ip"}}}, errSubstr: "absolute http(s) URL"},
+		{name: "bad family", endpoint: &ConfigEndpoint{IPLookup: &ConfigIPLookup{URLs: []string{"https://x.example.com"}, Family: 5}}, errSubstr: "family must be 4 or 6"},
+		{name: "bad pattern", endpoint: &ConfigEndpoint{IPLookup: &ConfigIPLookup{URLs: []string{"https://x.example.com"}, Pattern: "("}}, errSubstr: "pattern is invalid"},
+		{name: "pattern needs one group", endpoint: &ConfigEndpoint{IPLookup: &ConfigIPLookup{URLs: []string{"https://x.example.com"}, Pattern: `\d+`}}, errSubstr: "exactly one capture group"},
+		{name: "lookup and ip", endpoint: &ConfigEndpoint{IP: "1.1.1.1", IPLookup: &ConfigIPLookup{URLs: []string{"https://x.example.com"}}}, errSubstr: "mutually exclusive"},
+		{name: "lookup and cname", endpoint: &ConfigEndpoint{CNAME: "a.example.com", URL: "https://a", IPLookup: &ConfigIPLookup{URLs: []string{"https://x.example.com"}}}, errSubstr: "mutually exclusive"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{
+				Providers: map[string]ConfigProvider{"p": cloudflare},
+				Domains:   []ConfigDomain{{RecordName: "home.example.com", Provider: "p", Endpoints: []*ConfigEndpoint{tc.endpoint}}},
+			}
+			err := cfg.Validate(slog.Default())
+			if tc.errSubstr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errSubstr)
+				return
+			}
+			require.NoError(t, err)
+			assert.NotEmpty(t, tc.endpoint.Name, "name defaults to a URL")
+			assert.True(t, tc.endpoint.Dynamic())
+			assert.Empty(t, tc.endpoint.Target())
+		})
+	}
+
+	t.Run("several dynamic endpoints don't collide", func(t *testing.T) {
+		lookup := func() *ConfigIPLookup { return &ConfigIPLookup{URLs: []string{"https://api.ipify.org"}} }
+		cfg := &Config{
+			Providers: map[string]ConfigProvider{"p": cloudflare},
+			Domains: []ConfigDomain{{RecordName: "home.example.com", Provider: "p", Endpoints: []*ConfigEndpoint{
+				{IPLookup: lookup()}, {IPLookup: lookup(), Priority: 1},
+			}}},
+		}
+		require.NoError(t, cfg.Validate(slog.Default()))
 	})
 }

@@ -154,17 +154,22 @@ type ConfigEndpoint struct {
 	Name string `yaml:"name"`
 
 	// Health check URL
-	// +required
+	// Required, unless the endpoint uses `ipLookup`: then the endpoint is not health-checked, and is healthy as long as the IP address can be looked up
 	URL string `yaml:"url"`
 
 	// IP address to include in DNS records when healthy
 	// IPv4 addresses create A records and IPv6 addresses create AAAA records
-	// Exactly one of `ip` and `cname` is required
+	// Exactly one of `ip`, `cname` and `ipLookup` is required
 	IP string `yaml:"ip"`
+
+	// Looks up the IP address to publish by calling a service that returns the caller's public IP address, like ipify
+	// This is for dynamic DNS: the record follows the public IP address of the network ddup runs in
+	// Exactly one of `ip`, `cname` and `ipLookup` is required
+	IPLookup *ConfigIPLookup `yaml:"ipLookup"`
 
 	// Hostname to publish as a CNAME record when healthy
 	// A CNAME record can't coexist with other records, so an endpoint with a `cname` must be alone in its priority
-	// Exactly one of `ip` and `cname` is required
+	// Exactly one of `ip`, `cname` and `ipLookup` is required
 	CNAME string `yaml:"cname"`
 
 	// If true, the record is proxied by the DNS provider (Cloudflare only)
@@ -182,7 +187,30 @@ type ConfigEndpoint struct {
 	Host string `yaml:"host"`
 }
 
+// ConfigIPLookup configures how an endpoint's IP address is looked up
+type ConfigIPLookup struct {
+	// URLs of services that return the caller's IP address; they are tried in order, and the first that works is used
+	// By default the response body is expected to contain only the IP address, as plain text
+	// +required
+	URLs []string `yaml:"urls"`
+
+	// Expected IP version, 4 or 6; a response with the other version is an error
+	// This is how you choose between an A and an AAAA record, as the service you call decides which version it sees
+	// If empty, any version is accepted
+	Family int `yaml:"family"`
+
+	// Optional regular expression with exactly one capture group, to extract the IP address from the response (for example from JSON)
+	// Example: `"ip":"([^"]+)"`
+	Pattern string `yaml:"pattern"`
+}
+
+// Dynamic returns true if the IP address of the endpoint is looked up
+func (e *ConfigEndpoint) Dynamic() bool {
+	return e.IPLookup != nil
+}
+
 // Target returns what the endpoint publishes in DNS: its IP address, or its CNAME hostname
+// It's empty for endpoints that look up their IP address, as it's not known until the lookup runs
 func (e *ConfigEndpoint) Target() string {
 	if e.CNAME != "" {
 		return e.CNAME
@@ -375,14 +403,26 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 	tiers := make(map[int]*tier)
 
 	for ei, v := range d.Endpoints {
-		if v.URL == "" {
+		if v.URL == "" && !v.Dynamic() {
 			return fmt.Errorf("domain %s endpoint %d is invalid: URL is empty", d.RecordName, ei)
 		}
-		if v.IP == "" && v.CNAME == "" {
-			return fmt.Errorf("domain %s endpoint %d is invalid: one of ip and cname is required", d.RecordName, ei)
+		var kinds int
+		for _, set := range []bool{v.IP != "", v.CNAME != "", v.Dynamic()} {
+			if set {
+				kinds++
+			}
 		}
-		if v.IP != "" && v.CNAME != "" {
-			return fmt.Errorf("domain %s endpoint %d is invalid: ip and cname are mutually exclusive", d.RecordName, ei)
+		if kinds == 0 {
+			return fmt.Errorf("domain %s endpoint %d is invalid: one of ip, cname and ipLookup is required", d.RecordName, ei)
+		}
+		if kinds > 1 {
+			return fmt.Errorf("domain %s endpoint %d is invalid: ip, cname and ipLookup are mutually exclusive", d.RecordName, ei)
+		}
+		if v.Dynamic() {
+			err := v.IPLookup.validate()
+			if err != nil {
+				return fmt.Errorf("domain %s endpoint %d is invalid: ipLookup %w", d.RecordName, ei, err)
+			}
 		}
 		if v.Priority < 0 {
 			return fmt.Errorf("domain %s endpoint %d is invalid: priority must not be negative", d.RecordName, ei)
@@ -394,7 +434,7 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 				return fmt.Errorf("domain %s endpoint %d is invalid: IP %q is not a valid IPv4 or IPv6 address", d.RecordName, ei, v.IP)
 			}
 			v.IP = ip.String()
-		} else {
+		} else if v.CNAME != "" {
 			cname, err := normalizeHostname(v.CNAME)
 			if err != nil {
 				return fmt.Errorf("domain %s endpoint %d is invalid: cname %w", d.RecordName, ei, err)
@@ -406,14 +446,20 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 			return fmt.Errorf("domain %s endpoint %d is invalid: cname and proxied are only supported by the Cloudflare provider", d.RecordName, ei)
 		}
 
-		_, dup := targets[v.Target()]
-		if dup {
-			return fmt.Errorf("domain %s endpoint %d is invalid: %s is used by more than one endpoint", d.RecordName, ei, v.Target())
+		// The target of endpoints that look up their IP address is not known yet
+		if !v.Dynamic() {
+			_, dup := targets[v.Target()]
+			if dup {
+				return fmt.Errorf("domain %s endpoint %d is invalid: %s is used by more than one endpoint", d.RecordName, ei, v.Target())
+			}
+			targets[v.Target()] = struct{}{}
 		}
-		targets[v.Target()] = struct{}{}
 
 		if v.Name == "" {
 			v.Name = v.URL
+			if v.Name == "" {
+				v.Name = v.IPLookup.URLs[0]
+			}
 		}
 
 		t := tiers[v.Priority]
@@ -434,6 +480,31 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 		}
 	}
 
+	return nil
+}
+
+func (l *ConfigIPLookup) validate() error {
+	if len(l.URLs) == 0 {
+		return errors.New("requires at least one URL")
+	}
+	for _, raw := range l.URLs {
+		u, err := url.Parse(raw)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("URL %q is not an absolute http(s) URL", raw)
+		}
+	}
+	if l.Family != 0 && l.Family != 4 && l.Family != 6 {
+		return errors.New("family must be 4 or 6")
+	}
+	if l.Pattern != "" {
+		re, err := regexp.Compile(l.Pattern)
+		if err != nil {
+			return fmt.Errorf("pattern is invalid: %w", err)
+		}
+		if re.NumSubexp() != 1 {
+			return errors.New("pattern must have exactly one capture group")
+		}
+	}
 	return nil
 }
 

@@ -63,6 +63,21 @@ domains:
         proxied: true
         priority: 1
 
+  # Dynamic DNS: the record follows the public IP address of the network ddup runs in.
+  # With no "url" the endpoint isn't health-checked; it's healthy while the lookup works
+  - recordName: "home.example.com"
+    provider: "example-provider-1"
+    ttl: 300
+    endpoints:
+      - name: "home"
+        ipLookup:
+          # Tried in order; the first that works is used
+          urls:
+            - "https://api.ipify.org"
+            - "https://ipv4.icanhazip.com"
+          # 4 or 6: a response with the other version is an error. Use "pattern" for responses that aren't just the IP address
+          family: 4
+
 # Provider Configuration
 providers:
   example-provider-1:
