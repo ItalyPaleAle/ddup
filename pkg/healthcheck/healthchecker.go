@@ -20,7 +20,6 @@ import (
 type HealthChecker struct {
 	// Key is domain name
 	domainCheckers map[string]*domainChecker
-	// Optional; may be nil
 }
 
 // NewHealthChecker creates a new HealthChecker instance

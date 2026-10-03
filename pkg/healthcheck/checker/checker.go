@@ -37,7 +37,7 @@ type checker struct {
 	client    *http.Client
 
 	// Clients used for endpoints that set a custom host over TLS, keyed by host
-	hostClientsLock sync.Mutex
+	hostClientsLock sync.RWMutex
 	hostClients     map[string]*http.Client
 }
 
@@ -180,10 +180,19 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 // clientForHost returns an HTTP client that sends the given host as SNI in TLS handshakes
 // Clients are created once per host and shared, and the base client is never modified, so this is safe for concurrent use
 func (c *checker) clientForHost(host string) *http.Client {
+	// Most calls find an existing client, so check with a read lock first
+	c.hostClientsLock.RLock()
+	client := c.hostClients[host]
+	c.hostClientsLock.RUnlock()
+	if client != nil {
+		return client
+	}
+
 	c.hostClientsLock.Lock()
 	defer c.hostClientsLock.Unlock()
 
-	client := c.hostClients[host]
+	// Check again, as another goroutine may have created the client while we waited for the write lock
+	client = c.hostClients[host]
 	if client != nil {
 		return client
 	}
