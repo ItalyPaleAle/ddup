@@ -103,7 +103,8 @@ You can find an example of the configuration file, and a description of every op
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status
-    - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records.
+    - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records. Exactly one of `ip` and `cname` is required
+    - `cname`: A hostname to publish as a CNAME record when healthy (Cloudflare only). A CNAME can't coexist with other records, so an endpoint with `cname` must be the only one with its `priority`. Exactly one of `ip` and `cname` is required
     - `proxied`: If true, the record is proxied by Cloudflare (Cloudflare only). Proxied records use Cloudflare's automatic TTL. All endpoints with the same `priority` must use the same value
     - `priority`: Endpoints with a lower value are preferred (default: 0). See [Failover with priorities](#failover-with-priorities)
     - `host`: Optional hostname to include in the requests, when the request is made to an IP address or to a hostname different from the desired one
@@ -112,18 +113,18 @@ You can find an example of the configuration file, and a description of every op
 
 By default every healthy endpoint is published (round-robin DNS). Give endpoints a `priority` to use some of them only as a fallback: ddup publishes just the healthy endpoints with the lowest priority value, and when none of those are healthy it publishes the next priority, going back as soon as the preferred ones recover (after `recoverAfter` successful checks, if set). Endpoints that are not published are still health-checked and shown as "standby" in the dashboard.
 
-For example, with two VPS at priority 0 and a proxied fallback address:
+For example, with two VPS at priority 0 and a Cloudflare Tunnel as the fallback:
 
 ```yaml
 endpoints:
   - { name: vps-us, url: "https://vps-us.example.com/health", ip: "192.0.2.10" }
   - { name: vps-eu, url: "https://vps-eu.example.com/health", ip: "192.0.2.20" }
-  - { name: tunnel, url: "https://tunnel-health.example.com/health", ip: "192.0.2.30", proxied: true, priority: 1 }
+  - { name: tunnel, url: "https://tunnel-health.example.com/health", cname: "tunnel.example.com", proxied: true, priority: 1 }
 ```
 
-Both VPS IPs are published while they're healthy, a single IP if only one is, and the proxied fallback address if neither is. If nothing is healthy, ddup leaves DNS unchanged and sends the `all_unhealthy` webhook.
+Both VPS IPs are published while they're healthy, a single IP if only one is, and the proxied CNAME if neither is. If nothing is healthy, ddup leaves DNS unchanged and sends the `all_unhealthy` webhook.
 
-Webhook events include `published`, `tier` and `previousTier`, and dns_updated emails say when the priority changed.
+When the kind of record changes (A/AAAA to CNAME or the reverse), ddup overwrites an existing record in place so the name is never left without records. If Cloudflare rejects that, ddup falls back to deleting the record and creating the new one. Webhook events include `published`, `tier` and `previousTier`, and dns_updated emails say when the priority changed.
 
 ### Providers Configuration
 

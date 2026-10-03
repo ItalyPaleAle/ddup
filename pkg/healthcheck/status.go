@@ -16,9 +16,9 @@ type DomainStatus struct {
 
 type DomainStatusEndpoint struct {
 	Healthy bool `json:"healthy"`
-	// IP address
+	// IP address, or CNAME hostname
 	IP string `json:"ip"`
-	// Record type published for the endpoint: A or AAAA
+	// Record type published for the endpoint: A, AAAA or CNAME
 	Type     string `json:"type"`
 	Proxied  bool   `json:"proxied,omitempty"`
 	Priority int    `json:"priority"`

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/italypaleale/ddup/pkg/config"
@@ -57,14 +58,15 @@ type desiredRecord struct {
 
 // UpdateRecords updates DNS records for the given domain so they point to the targets
 //
-// Targets are A/AAAA records (IP addresses), and each can be proxied by Cloudflare.
+// Targets are either A/AAAA records (IP addresses) or a single CNAME record, since a CNAME can't coexist with other records.
+// When the type of records changes, an existing record is converted in place, so the name never has no records.
 func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error) {
 	desired, err := canonicalizeTargets(targets)
 	if err != nil {
 		return UpdateResult{}, err
 	}
 
-	// Get the existing A and AAAA records
+	// Get the existing A, AAAA and CNAME records
 	existing, err := c.getExistingRecords(ctx, domain)
 	if err != nil {
 		return UpdateResult{}, fmt.Errorf("error getting existing records: %w", err)
@@ -109,6 +111,54 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 		}
 	}
 
+	// If the type of records changes (A/AAAA to CNAME, CNAME to A/AAAA, or the target of a CNAME changes) we overwrite an existing record in place
+	// Cloudflare doesn't allow a CNAME to coexist with other records, so creating the new record before deleting the old one is not possible,
+	// and deleting first would leave the name without records for a moment (which resolvers could cache)
+	if len(missing) > 0 && len(remaining) > 0 {
+		convertIdx := slices.IndexFunc(remaining, func(r CloudflareRecord) bool { return r.Type == recordTypeCNAME })
+		if convertIdx < 0 && missing[0].recordType == recordTypeCNAME {
+			convertIdx = 0
+		}
+
+		if convertIdx >= 0 {
+			// A CNAME can't coexist with other records, so when converting to one we first delete the other records
+			// The record that is converted keeps serving until the last moment
+			if missing[0].recordType == recordTypeCNAME {
+				for i, other := range remaining {
+					if i == convertIdx {
+						continue
+					}
+					slog.DebugContext(ctx, "Deleting record", "type", other.Type, "value", other.Content, "recordID", other.ID)
+					err = c.deleteRecord(ctx, other.ID)
+					if err != nil {
+						return UpdateResult{}, fmt.Errorf("error deleting record %s for %s: %w", other.ID, other.Content, err)
+					}
+					result.Changed = true
+				}
+				remaining = []CloudflareRecord{remaining[convertIdx]}
+				convertIdx = 0
+			}
+
+			rec := remaining[convertIdx]
+			slog.DebugContext(ctx, "Overwriting record in place", "from", rec.Type, "to", missing[0].recordType, "value", missing[0].value)
+			err = c.updateRecord(ctx, rec.ID, domain, missing[0], ttl)
+			if err == nil {
+				result.Changed = true
+				remaining = slices.Delete(remaining, convertIdx, convertIdx+1)
+				missing = missing[1:]
+			} else {
+				// Fall back to deleting the record first, which can leave the name without records for a moment
+				slog.WarnContext(ctx, "Could not overwrite record in place, deleting it first", "recordID", rec.ID, "error", err)
+				err = c.deleteRecord(ctx, rec.ID)
+				if err != nil {
+					return UpdateResult{}, fmt.Errorf("error deleting record %s for %s: %w", rec.ID, rec.Content, err)
+				}
+				result.Changed = true
+				remaining = slices.Delete(remaining, convertIdx, convertIdx+1)
+			}
+		}
+	}
+
 	// Create replacements before removing stale records so a failed create does not leave the domain empty
 	for _, d := range missing {
 		slog.DebugContext(ctx, "Creating record", "type", d.recordType, "value", d.value, "proxied", d.proxied)
@@ -134,17 +184,24 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 	return result, nil
 }
 
-// canonicalizeTargets validates targets, canonicalizes IPs, and removes duplicates
+// canonicalizeTargets validates targets, canonicalizes IPs and hostnames, and removes duplicates
 func canonicalizeTargets(targets []Target) ([]desiredRecord, error) {
 	desired := make([]desiredRecord, 0, len(targets))
 	seen := make(map[string]struct{}, len(targets))
+	var hasCNAME bool
 	for _, t := range targets {
-		value, err := canonicalizeIP(t.Value)
-		if err != nil {
-			return nil, err
+		d := desiredRecord{recordType: t.RecordType(), proxied: t.Proxied}
+		if d.recordType == recordTypeCNAME {
+			hasCNAME = true
+			d.value = strings.TrimSuffix(strings.ToLower(t.Value), ".")
+		} else {
+			var err error
+			d.value, err = canonicalizeIP(t.Value)
+			if err != nil {
+				return nil, err
+			}
 		}
 
-		d := desiredRecord{recordType: t.RecordType(), value: value, proxied: t.Proxied}
 		key := d.recordType + "|" + d.value
 		_, dup := seen[key]
 		if dup {
@@ -154,11 +211,17 @@ func canonicalizeTargets(targets []Target) ([]desiredRecord, error) {
 		desired = append(desired, d)
 	}
 
+	if hasCNAME && len(desired) > 1 {
+		return nil, errors.New("a CNAME target can't be published together with other targets")
+	}
 	return desired, nil
 }
 
 // canonicalRecordContent returns the content of the record in canonical form, so it can be compared with desired records
 func canonicalRecordContent(r CloudflareRecord) string {
+	if r.Type == recordTypeCNAME {
+		return strings.TrimSuffix(strings.ToLower(r.Content), ".")
+	}
 	ip, err := canonicalizeIP(r.Content)
 	if err != nil {
 		// Leave as-is; it won't match any desired record and will be removed
@@ -198,7 +261,7 @@ func (ce CloudflareError) String() string {
 func (c *CloudflareProvider) getExistingRecords(ctx context.Context, domain string) ([]CloudflareRecord, error) {
 	var records []CloudflareRecord
 
-	for _, recordType := range []string{recordTypeA, recordTypeAAAA} {
+	for _, recordType := range []string{recordTypeA, recordTypeAAAA, recordTypeCNAME} {
 		typeRecords, err := c.getExistingRecordsByType(ctx, domain, recordType)
 		if err != nil {
 			return nil, err

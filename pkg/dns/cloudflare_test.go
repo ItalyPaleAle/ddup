@@ -27,7 +27,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
-		setCloudflareEmptyAAAAResponse(mockTransport, "example.com")
+		setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport, "example.com")
 
 		// Mock response for creating a record
 		mockTransport.SetResponse(http.MethodPost, "/client/v4/zones/test-zone-id/dns_records", &MockResponse{
@@ -53,7 +53,7 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET A, GET AAAA, POST
+		require.Len(t, requests, 4) // GET A, GET AAAA, GET CNAME, POST
 
 		// Verify the GET request
 		getReq := requests[0]
@@ -65,7 +65,7 @@ func TestCloudflareProvider(t *testing.T) {
 		assert.Equal(t, "application/json", getReq.Header.Get("Content-Type"))
 
 		// Verify the POST request
-		postReq := requests[2]
+		postReq := requests[3]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		assert.Equal(t, "/client/v4/zones/test-zone-id/dns_records", postReq.URL.Path)
 		assert.Equal(t, "Bearer test-token", postReq.Header.Get("Authorization"))
@@ -106,7 +106,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
-		setCloudflareEmptyAAAAResponse(mockTransport, "www.example.com")
+		setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport, "www.example.com")
 
 		// Mock response for deleting a record
 		mockTransport.SetResponse(http.MethodDelete, "/client/v4/zones/test-zone-id/dns_records/record-456", &MockResponse{
@@ -128,9 +128,9 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3) // GET A, GET AAAA, DELETE
+		require.Len(t, requests, 4) // GET A, GET AAAA, GET CNAME, DELETE
 
-		deleteReq := requests[2]
+		deleteReq := requests[3]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/client/v4/zones/test-zone-id/dns_records/record-456", deleteReq.URL.Path)
 		assert.Equal(t, "Bearer test-token", deleteReq.Header.Get("Authorization"))
@@ -164,7 +164,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
-		setCloudflareEmptyAAAAResponse(mockTransport, "api.example.com")
+		setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport, "api.example.com")
 
 		// Mock response for deleting first record (IP no longer healthy)
 		mockTransport.SetResponse(http.MethodDelete, "/client/v4/zones/test-zone-id/dns_records/record-789", &MockResponse{
@@ -203,14 +203,14 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 4) // GET A, GET AAAA, POST, DELETE
+		require.Len(t, requests, 5) // GET A, GET AAAA, GET CNAME, POST, DELETE
 
-		deleteReq := requests[3]
+		deleteReq := requests[4]
 		assert.Equal(t, http.MethodDelete, deleteReq.Method)
 		assert.Equal(t, "/client/v4/zones/test-zone-id/dns_records/record-789", deleteReq.URL.Path)
 
 		// Verify we created a new record
-		postReq := requests[2]
+		postReq := requests[3]
 		assert.Equal(t, http.MethodPost, postReq.Method)
 		body, err := io.ReadAll(postReq.Body)
 		require.NoError(t, err)
@@ -242,7 +242,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
-		setCloudflareEmptyAAAAResponse(mockTransport, "api.example.com")
+		setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport, "api.example.com")
 
 		// Test updating with the same IP (no changes needed)
 		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, IPTargets("1.2.3.4"))
@@ -252,7 +252,7 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify only the GET request was made (no DELETE or POST)
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 2) // GET A, GET AAAA,
+		require.Len(t, requests, 3) // GET A, GET AAAA, GET CNAME
 	})
 
 	t.Run("Multiple IPs for domain", func(t *testing.T) {
@@ -268,7 +268,7 @@ func TestCloudflareProvider(t *testing.T) {
 			}`,
 			Headers: map[string]string{"Content-Type": "application/json"},
 		})
-		setCloudflareEmptyAAAAResponse(mockTransport, "multi.example.com")
+		setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport, "multi.example.com")
 
 		// Mock response for creating first record
 		mockTransport.SetResponse(http.MethodPost, "/client/v4/zones/test-zone-id/dns_records", &MockResponse{
@@ -293,10 +293,10 @@ func TestCloudflareProvider(t *testing.T) {
 
 		// Verify the requests were made
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 4) // GET A, GET AAAA, + 2 POST requests
+		require.Len(t, requests, 5) // GET A, GET AAAA, GET CNAME + 2 POST requests
 
-		postReq1 := requests[2]
-		postReq2 := requests[3]
+		postReq1 := requests[3]
+		postReq2 := requests[4]
 		assert.Equal(t, http.MethodPost, postReq1.Method)
 		assert.Equal(t, http.MethodPost, postReq2.Method)
 
@@ -411,6 +411,18 @@ func TestCloudflareProvider(t *testing.T) {
 func newCloudflareTestProviderWithMock() (*CloudflareProvider, *MockHTTPTransport) {
 	mockClient, mockTransport := NewMockHTTPClient()
 
+	// Unless a test sets CNAME records explicitly, there are none
+	mockTransport.Fallback = func(req *http.Request) *MockResponse {
+		if req.Method == http.MethodGet && req.URL.Query().Get("type") == "CNAME" {
+			return &MockResponse{
+				StatusCode: http.StatusOK,
+				Body:       `{"success":true,"errors":[],"result":[]}`,
+				Headers:    map[string]string{"Content-Type": "application/json"},
+			}
+		}
+		return nil
+	}
+
 	provider := &CloudflareProvider{
 		name:       "test",
 		apiToken:   "test-token",
@@ -421,9 +433,10 @@ func newCloudflareTestProviderWithMock() (*CloudflareProvider, *MockHTTPTranspor
 	return provider, mockTransport
 }
 
-// setCloudflareEmptyAAAAResponse mocks no AAAA records for the domain
-func setCloudflareEmptyAAAAResponse(mockTransport *MockHTTPTransport, domain string) {
+// setCloudflareEmptyAAAAAndCNAMEResponses mocks no AAAA and no CNAME records for the domain
+func setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport *MockHTTPTransport, domain string) {
 	setCloudflareRecordsResponse(mockTransport, domain, "AAAA", "")
+	setCloudflareRecordsResponse(mockTransport, domain, "CNAME", "")
 }
 
 // setCloudflareRecordsResponse mocks the records of the type returned for the domain; resultJSON is the content of the result array

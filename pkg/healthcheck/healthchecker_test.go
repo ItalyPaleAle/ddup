@@ -641,7 +641,7 @@ func TestHealthChecker_PriorityTiers(t *testing.T) {
 	mockProvider := dns.NewMockProvider(false)
 	us := &config.ConfigEndpoint{Name: "us", IP: "1.1.1.1"}
 	eu := &config.ConfigEndpoint{Name: "eu", IP: "2.2.2.2"}
-	tunnel := &config.ConfigEndpoint{Name: "tunnel", IP: "3.3.3.3", Proxied: true, Priority: 1}
+	tunnel := &config.ConfigEndpoint{Name: "tunnel", CNAME: "tunnel.example.com", Proxied: true, Priority: 1}
 
 	up := func(ep *config.ConfigEndpoint) checker.Result { return checker.Result{Endpoint: ep, Healthy: true} }
 	down := func(ep *config.ConfigEndpoint) checker.Result {
@@ -656,7 +656,7 @@ func TestHealthChecker_PriorityTiers(t *testing.T) {
 				ttl:       60,
 				failedIPs: make(map[string]int),
 				provider:  mockProvider,
-				endpoints: map[string]*config.ConfigEndpoint{"1.1.1.1": us, "2.2.2.2": eu, "3.3.3.3": tunnel},
+				endpoints: map[string]*config.ConfigEndpoint{"1.1.1.1": us, "2.2.2.2": eu, "tunnel.example.com": tunnel},
 			},
 		},
 	}
@@ -683,13 +683,13 @@ func TestHealthChecker_PriorityTiers(t *testing.T) {
 	activeByIP := map[string]bool{}
 	for _, e := range status.Endpoints {
 		activeByIP[e.IP] = e.Active
-		if e.IP == "3.3.3.3" {
-			assert.Equal(t, "A", e.Type)
+		if e.IP == "tunnel.example.com" {
+			assert.Equal(t, "CNAME", e.Type)
 			assert.Equal(t, 1, e.Priority)
 			assert.True(t, e.Proxied)
 		}
 	}
-	assert.Equal(t, map[string]bool{"1.1.1.1": true, "2.2.2.2": true, "3.3.3.3": false}, activeByIP)
+	assert.Equal(t, map[string]bool{"1.1.1.1": true, "2.2.2.2": true, "tunnel.example.com": false}, activeByIP)
 
 	// The standby going down doesn't change what's published, so DNS isn't touched
 	run(up(us), up(eu), down(tunnel))
@@ -702,10 +702,10 @@ func TestHealthChecker_PriorityTiers(t *testing.T) {
 	assert.Equal(t, []string{"2.2.2.2"}, published())
 	assert.Equal(t, 2, mockProvider.CallCount)
 
-	// Both preferred endpoints are down: fall back to the proxied fallback address
+	// Both preferred endpoints are down: fall back to the proxied CNAME
 	run(down(us), down(eu), up(tunnel))
 	require.Len(t, mockProvider.LastTargets, 1)
-	assert.Equal(t, dns.Target{Value: "3.3.3.3", Proxied: true}, mockProvider.LastTargets[0])
+	assert.Equal(t, dns.Target{Value: "tunnel.example.com", Proxied: true}, mockProvider.LastTargets[0])
 	assert.Equal(t, 3, mockProvider.CallCount)
 
 	// Recovery of a preferred endpoint goes back to it
@@ -731,14 +731,14 @@ func TestHealthChecker_TierChangeEvent(t *testing.T) {
 	require.NoError(t, err)
 
 	us := &config.ConfigEndpoint{Name: "us", IP: "1.1.1.1"}
-	tunnel := &config.ConfigEndpoint{Name: "tunnel", IP: "3.3.3.3", Proxied: true, Priority: 1}
+	tunnel := &config.ConfigEndpoint{Name: "tunnel", CNAME: "tunnel.example.com", Proxied: true, Priority: 1}
 	mockChecker := &checker.MockChecker{Domain: "example.com", MaxAttempts: 1}
 	hc := &HealthChecker{
 		notifier: n,
 		domainCheckers: map[string]*domainChecker{
 			"example.com": {
 				checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: dns.NewMockProvider(false),
-				endpoints: map[string]*config.ConfigEndpoint{"1.1.1.1": us, "3.3.3.3": tunnel},
+				endpoints: map[string]*config.ConfigEndpoint{"1.1.1.1": us, "tunnel.example.com": tunnel},
 			},
 		},
 	}
@@ -753,9 +753,9 @@ func TestHealthChecker_TierChangeEvent(t *testing.T) {
 	n.Wait(5 * time.Second)
 	ev := <-events
 	assert.Equal(t, notify.EventDNSUpdated, ev.Type)
-	assert.Equal(t, []string{"3.3.3.3"}, ev.Published)
+	assert.Equal(t, []string{"tunnel.example.com"}, ev.Published)
 	assert.Equal(t, 1, ev.Tier)
 	assert.Equal(t, 0, ev.PreviousTier)
-	assert.Contains(t, ev.Subject(), "now points to 3.3.3.3")
+	assert.Contains(t, ev.Subject(), "now points to tunnel.example.com")
 	assert.Contains(t, ev.Text(), "Priority: 1 (was 0)")
 }

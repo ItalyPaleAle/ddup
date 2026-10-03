@@ -10,21 +10,25 @@ import (
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
-// Target is something a DNS record points to: an IP address (A or AAAA record)
+// Target is something a DNS record points to: an IP address (A or AAAA record) or a hostname (CNAME record)
 type Target struct {
-	// IP address
+	// IP address or hostname
 	Value string
 	// If true, the record is proxied by the provider (supported by Cloudflare only)
 	Proxied bool
 }
 
-// RecordType returns the type of record for this target: A or AAAA
+// RecordType returns the type of record for this target: A, AAAA or CNAME
 func (t Target) RecordType() string {
 	parsed, err := netip.ParseAddr(t.Value)
-	if err == nil && parsed.Is4() {
+	switch {
+	case err != nil:
+		return recordTypeCNAME
+	case parsed.Is4():
 		return recordTypeA
+	default:
+		return recordTypeAAAA
 	}
-	return recordTypeAAAA
 }
 
 // IPTargets returns plain (not proxied) targets for IP addresses
@@ -36,15 +40,15 @@ func IPTargets(ips ...string) []Target {
 	return targets
 }
 
-// ErrUnsupportedTarget is returned by providers that can't publish a kind of target, such as proxied records
+// ErrUnsupportedTarget is returned by providers that can't publish a kind of target, such as CNAME records or proxied records
 var ErrUnsupportedTarget = errors.New("target is not supported by this DNS provider")
 
 // ipsFromTargets returns the IP addresses for providers that only support plain A/AAAA records
 func ipsFromTargets(provider string, targets []Target) ([]string, error) {
 	ips := make([]string, len(targets))
 	for i, t := range targets {
-		if t.Proxied {
-			return nil, fmt.Errorf("%w: provider %s only supports records that are not proxied, got %q", ErrUnsupportedTarget, provider, t.Value)
+		if t.Proxied || t.RecordType() == recordTypeCNAME {
+			return nil, fmt.Errorf("%w: provider %s only supports A and AAAA records that are not proxied, got %q", ErrUnsupportedTarget, provider, t.Value)
 		}
 		ips[i] = t.Value
 	}
@@ -56,7 +60,7 @@ type UpdateResult struct {
 	// True if any record was created, changed or deleted
 	// False if the records already matched the desired IPs
 	Changed bool
-	// Sorted, canonical IPs that were in DNS before the update
+	// Sorted, canonical IPs and hostnames that were in DNS before the update
 	Previous []string
 }
 

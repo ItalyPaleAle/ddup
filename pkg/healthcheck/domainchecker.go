@@ -17,7 +17,7 @@ type domainChecker struct {
 	healthyIPs []string
 	failedIPs  map[string]int
 	provider   dns.Provider
-	// Endpoints by target (IP address); may be nil, in which case all targets have priority 0 and are not proxied
+	// Endpoints by target (IP or CNAME hostname); may be nil, in which case all targets have priority 0 and are not proxied
 	endpoints   map[string]*config.ConfigEndpoint
 	lastUpdated time.Time
 	lastError   string

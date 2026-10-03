@@ -31,7 +31,7 @@ type Event struct {
 	Type   string    `json:"event"`
 	Domain string    `json:"domain"`
 	Time   time.Time `json:"time"`
-	// All healthy targets (IP addresses)
+	// All healthy targets (IP addresses or CNAME hostnames)
 	Healthy []string `json:"healthy"`
 	// The healthy targets that are published in DNS: those with the lowest priority value
 	Published []string `json:"published"`
@@ -47,7 +47,7 @@ type Event struct {
 // EndpointState is the result of the latest health check for an endpoint
 type EndpointState struct {
 	Name string `json:"name"`
-	// IP address
+	// IP address, or CNAME hostname
 	IP       string `json:"ip"`
 	Priority int    `json:"priority"`
 	Healthy  bool   `json:"healthy"`

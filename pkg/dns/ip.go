@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	recordTypeA    = "A"
-	recordTypeAAAA = "AAAA"
+	recordTypeA     = "A"
+	recordTypeAAAA  = "AAAA"
+	recordTypeCNAME = "CNAME"
 )
 
 // recordTypeForIP returns the DNS record type appropriate for an IP address.

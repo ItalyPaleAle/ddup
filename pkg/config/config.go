@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"net/url"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -158,8 +159,13 @@ type ConfigEndpoint struct {
 
 	// IP address to include in DNS records when healthy
 	// IPv4 addresses create A records and IPv6 addresses create AAAA records
-	// +required
+	// Exactly one of `ip` and `cname` is required
 	IP string `yaml:"ip"`
+
+	// Hostname to publish as a CNAME record when healthy
+	// A CNAME record can't coexist with other records, so an endpoint with a `cname` must be alone in its priority
+	// Exactly one of `ip` and `cname` is required
+	CNAME string `yaml:"cname"`
 
 	// If true, the record is proxied by the DNS provider (Cloudflare only)
 	// All endpoints with the same priority must use the same value
@@ -176,8 +182,11 @@ type ConfigEndpoint struct {
 	Host string `yaml:"host"`
 }
 
-// Target returns what the endpoint publishes in DNS: its IP address
+// Target returns what the endpoint publishes in DNS: its IP address, or its CNAME hostname
 func (e *ConfigEndpoint) Target() string {
+	if e.CNAME != "" {
+		return e.CNAME
+	}
 	return e.IP
 }
 
@@ -359,6 +368,8 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 
 	targets := make(map[string]struct{}, len(d.Endpoints))
 	type tier struct {
+		count   int
+		cname   bool
 		proxied bool
 	}
 	tiers := make(map[int]*tier)
@@ -367,21 +378,32 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 		if v.URL == "" {
 			return fmt.Errorf("domain %s endpoint %d is invalid: URL is empty", d.RecordName, ei)
 		}
-		if v.IP == "" {
-			return fmt.Errorf("domain %s endpoint %d is invalid: IP is empty", d.RecordName, ei)
+		if v.IP == "" && v.CNAME == "" {
+			return fmt.Errorf("domain %s endpoint %d is invalid: one of ip and cname is required", d.RecordName, ei)
+		}
+		if v.IP != "" && v.CNAME != "" {
+			return fmt.Errorf("domain %s endpoint %d is invalid: ip and cname are mutually exclusive", d.RecordName, ei)
 		}
 		if v.Priority < 0 {
 			return fmt.Errorf("domain %s endpoint %d is invalid: priority must not be negative", d.RecordName, ei)
 		}
 
-		ip, err := netip.ParseAddr(v.IP)
-		if err != nil {
-			return fmt.Errorf("domain %s endpoint %d is invalid: IP %q is not a valid IPv4 or IPv6 address", d.RecordName, ei, v.IP)
+		if v.IP != "" {
+			ip, err := netip.ParseAddr(v.IP)
+			if err != nil {
+				return fmt.Errorf("domain %s endpoint %d is invalid: IP %q is not a valid IPv4 or IPv6 address", d.RecordName, ei, v.IP)
+			}
+			v.IP = ip.String()
+		} else {
+			cname, err := normalizeHostname(v.CNAME)
+			if err != nil {
+				return fmt.Errorf("domain %s endpoint %d is invalid: cname %w", d.RecordName, ei, err)
+			}
+			v.CNAME = cname
 		}
-		v.IP = ip.String()
 
-		if v.Proxied && !cloudflare {
-			return fmt.Errorf("domain %s endpoint %d is invalid: proxied is only supported by the Cloudflare provider", d.RecordName, ei)
+		if (v.CNAME != "" || v.Proxied) && !cloudflare {
+			return fmt.Errorf("domain %s endpoint %d is invalid: cname and proxied are only supported by the Cloudflare provider", d.RecordName, ei)
 		}
 
 		_, dup := targets[v.Target()]
@@ -399,12 +421,40 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 			t = &tier{proxied: v.Proxied}
 			tiers[v.Priority] = t
 		}
+		t.count++
+		t.cname = t.cname || v.CNAME != ""
 		if t.proxied != v.Proxied {
 			return fmt.Errorf("domain %s endpoint %d is invalid: endpoints with priority %d must all have the same value for proxied", d.RecordName, ei, v.Priority)
 		}
 	}
 
+	for priority, t := range tiers {
+		if t.cname && t.count > 1 {
+			return fmt.Errorf("domain %s is invalid: priority %d has a cname endpoint and other endpoints, but a CNAME record can't coexist with other records; give the cname endpoint its own priority", d.RecordName, priority)
+		}
+	}
+
 	return nil
+}
+
+var hostnameLabelRegexp = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$`)
+
+// normalizeHostname lowercases a hostname, removes the trailing dot, and checks that it's valid and isn't an IP address
+func normalizeHostname(name string) (string, error) {
+	name = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+	if name == "" || len(name) > 253 {
+		return "", fmt.Errorf("%q is not a valid hostname", name)
+	}
+	_, err := netip.ParseAddr(name)
+	if err == nil {
+		return "", fmt.Errorf("%q is an IP address; use ip instead", name)
+	}
+	for label := range strings.SplitSeq(name, ".") {
+		if !hostnameLabelRegexp.MatchString(label) {
+			return "", fmt.Errorf("%q is not a valid hostname", name)
+		}
+	}
+	return name, nil
 }
 
 // WebhookTemplateFuncs are the functions available in webhook body and header templates

@@ -88,7 +88,7 @@ func (m mockStatusProvider) GetAllDomainsStatus() map[string]healthcheck.DomainS
 			Endpoints: []healthcheck.DomainStatusEndpoint{
 				{IP: "4.4.1.1", Type: "A", Healthy: false, Priority: 0, FailureCount: 4},
 				{IP: "4.4.2.2", Type: "A", Healthy: false, Priority: 0, FailureCount: 9},
-				{IP: "4.4.3.3", Type: "A", Proxied: true, Healthy: true, Priority: 1, Active: true},
+				{IP: "tunnel.example.com", Type: "CNAME", Proxied: true, Healthy: true, Priority: 1, Active: true},
 			},
 		},
 		"emptyendpoints.test": {

@@ -41,7 +41,8 @@ domains:
 
   # Failover tiers: only the healthy endpoints with the lowest "priority" are published (default 0), and ddup falls back to the next
   # priority when none are healthy. Endpoints with the same priority are all published (round-robin).
-  # "proxied" is supported by the Cloudflare provider only; all endpoints with the same priority must use the same "proxied"
+  # An endpoint publishes either an "ip" (A/AAAA record) or a "cname" (CNAME record, which must be alone in its priority).
+  # "proxied" and "cname" are supported by the Cloudflare provider only; all endpoints with the same priority must use the same "proxied"
   - recordName: "failover.example.com"
     provider: "example-provider-1"
     ttl: 60
@@ -56,9 +57,9 @@ domains:
       - name: "vps-eu"
         url: "https://vps-eu.example.com/health"
         ip: "192.0.2.20"
-      - name: "proxied-fallback"
-        url: "https://fallback-health.example.com/health"
-        ip: "192.0.2.30"
+      - name: "tunnel"
+        url: "https://tunnel-health.example.com/health"
+        cname: "tunnel.example.com"
         proxied: true
         priority: 1
 

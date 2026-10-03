@@ -44,9 +44,9 @@ func TestCloudflareProviderIPv6(t *testing.T) {
 	require.NoError(t, err)
 
 	requests := mockTransport.GetRequests()
-	require.Len(t, requests, 3)
+	require.Len(t, requests, 4)
 
-	body, err := io.ReadAll(requests[2].Body)
+	body, err := io.ReadAll(requests[3].Body)
 	require.NoError(t, err)
 
 	var req map[string]any
@@ -180,7 +180,7 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 
 		_, err := provider.UpdateRecords(t.Context(), domain, 60, IPTargets(expandedIP))
 		require.NoError(t, err)
-		assert.Len(t, mockTransport.GetRequests(), 2)
+		assert.Len(t, mockTransport.GetRequests(), 3)
 	})
 
 	t.Run("OVH", func(t *testing.T) {
@@ -249,7 +249,7 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 					`"content":"192.0.2.1","ttl":60}]}`,
 			},
 		)
-		setCloudflareEmptyAAAAResponse(mockTransport, domain)
+		setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport, domain)
 		mockTransport.SetResponse(
 			http.MethodPost,
 			"/client/v4/zones/test-zone-id/dns_records",
@@ -261,8 +261,8 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 		assert.Contains(t, err.Error(), "error creating record")
 
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3)
-		assert.Equal(t, http.MethodPost, requests[2].Method)
+		require.Len(t, requests, 4)
+		assert.Equal(t, http.MethodPost, requests[3].Method)
 	})
 
 	t.Run("OVH", func(t *testing.T) {

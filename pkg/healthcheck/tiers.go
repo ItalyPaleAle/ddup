@@ -33,7 +33,7 @@ func (p publication) values() []string {
 	return values
 }
 
-// selectPublication picks what to publish for the healthy targets (IP addresses)
+// selectPublication picks what to publish for the healthy targets (IPs or CNAME hostnames)
 // Only the healthy endpoints with the lowest priority value are published. Targets that don't match a known endpoint count as priority 0
 func selectPublication(endpoints map[string]*config.ConfigEndpoint, healthy []string) publication {
 	var pub publication
