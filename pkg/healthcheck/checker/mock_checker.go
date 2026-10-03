@@ -10,7 +10,9 @@ import (
 type MockChecker struct {
 	Domain      string
 	MaxAttempts int
-	Results     []Result
+	// Defaults to 1 if not set
+	RecoverAfter int
+	Results      []Result
 }
 
 // CheckAll implements the public part of Checker interface.
@@ -26,4 +28,9 @@ func (m *MockChecker) GetDomain() string {
 // GetMaxAttempts implements the public part of Checker interface.
 func (m *MockChecker) GetMaxAttempts() int {
 	return m.MaxAttempts
+}
+
+// GetRecoverAfter implements the public part of Checker interface.
+func (m *MockChecker) GetRecoverAfter() int {
+	return max(m.RecoverAfter, 1)
 }

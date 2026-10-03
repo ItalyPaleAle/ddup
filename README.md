@@ -96,6 +96,9 @@ You can find an example of the configuration file, and a description of every op
   - `healthChecks`: Configuration for health checks
     - `timeout`: Request timeout (default: "3s")
     - `attempts`: Maximum number of consecutive attempts before considering the endpoint unhealthy (default: 2)
+    - `recoverAfter`: Consecutive successful checks needed before an endpoint that was removed from DNS is added back (default: 1)
+    - `method`: `GET` (default) or `HEAD`
+    - `expectStatus`: Status code that means healthy: an exact code (like `204`) or `2xx` for any 2xx code. Default: `2xx`. Redirects are not followed
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status
@@ -167,13 +170,19 @@ providers:
 Required settings:
 
 - `zoneId`: Cloudflare Zone ID for your domain
-- `apiToken`: Cloudflare API token with Zone:Edit permissions
+- `apiToken`: Cloudflare API token with permission to edit DNS records in that zone (see below)
 
 To get the credentials:
 
-- API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token
-  - Grant `Zone:Edit` permissions for your domain
-- Zone ID: Found in the domain overview page
+- API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token → Create Custom Token
+  - Permissions: **Zone → DNS → Edit** (this is the only permission ddup needs)
+  - Zone Resources: **Include → Specific zone →** your domain
+  - It must be an API token (sent as a Bearer token), not the Global API Key
+- Zone ID: Found on the domain's Overview page, in the right sidebar
+
+Cloudflare cannot scope a token to a single record, so the token can edit every DNS record in the zone. Use a token dedicated to ddup rather than sharing one with other tools.
+
+ddup does not set the `proxied` flag, so the records it creates are DNS-only (not proxied by Cloudflare).
 
 Example:
 
@@ -226,6 +235,12 @@ providers:
 - `enabled`: Enable the server (disabled by default)
 - `bind`: Address to bind to (defaults to `127.0.0.1`)
 - `port`: Port to listen on (defaults to `7401`)
+
+The server has no authentication, so keep it on a trusted network. It exposes:
+
+- `GET /api/status` and `GET /api/status/{recordname}`: current status of the domains
+- `POST /api/check`: runs health checks for all domains right away (the dashboard's "Check now" button), and returns the updated status. The request must include the header `X-Requested-By: ddup-dashboard`, which keeps other websites from triggering it through a visitor's browser. If a check finished less than 5 seconds ago, no new one is run. A forced check counts towards `attempts` and `recoverAfter` like a scheduled one, and the next scheduled check is then a full `interval` later
+- `GET /healthz`: returns 204 when the server is up
 
 ### Logging Settings
 
