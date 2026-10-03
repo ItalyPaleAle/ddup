@@ -23,6 +23,13 @@ import (
 const (
 	headerContentType = "Content-Type"
 	jsonContentType   = "application/json; charset=utf-8"
+
+	// State-changing requests must set this header with the value below
+	// Browsers don't allow cross-origin pages to set custom headers without a CORS preflight, which ddup doesn't allow, so this blocks cross-site requests
+	headerRequestedBy = "X-Requested-By"
+	requestedByValue  = "ddup-dashboard"
+
+	forceCheckTimeout = 60 * time.Second
 )
 
 // Server is the server based on Gin
@@ -98,6 +105,29 @@ func (s *Server) initAppServer() (err error) {
 	})
 
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
+		respondWithJSON(r.Context(), w, s.hc.GetAllDomainsStatus())
+	})
+
+	mux.HandleFunc("POST /api/check", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(headerRequestedBy) != requestedByValue {
+			errCheckForbidden.WriteResponse(r.Context(), w)
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), forceCheckTimeout)
+		defer cancel()
+
+		err := s.hc.ForceCheck(ctx)
+		switch {
+		case errors.Is(err, context.DeadlineExceeded):
+			errCheckTimeout.WriteResponse(r.Context(), w)
+			return
+		case err != nil:
+			errCheckFailed.Clone(withInnerError(err)).WriteResponse(r.Context(), w)
+			return
+		}
+
+		// Respond with the new status
 		respondWithJSON(r.Context(), w, s.hc.GetAllDomainsStatus())
 	})
 

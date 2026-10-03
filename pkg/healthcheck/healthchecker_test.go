@@ -1,10 +1,13 @@
 package healthcheck
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
@@ -456,4 +459,68 @@ func TestHealthChecker_FirstRunIgnoresRecoverAfter(t *testing.T) {
 	}
 	hc.checkAndUpdateDNS(t.Context())
 	assert.Equal(t, []string{"1.1.1.1"}, hc.domainCheckers["example.com"].healthyIPs)
+}
+
+func TestHealthChecker_ForceCheck(t *testing.T) {
+	// Not running: no Run loop to handle the request
+	var idle HealthChecker
+	err := idle.ForceCheck(t.Context())
+	require.ErrorIs(t, err, ErrNotRunning)
+
+	mockProvider := dns.NewMockProvider(false)
+	ep1 := &config.ConfigEndpoint{Name: "endpoint1", IP: "1.1.1.1"}
+	mockChecker := &checker.MockChecker{Domain: "example.com", MaxAttempts: 2, Results: []checker.Result{{Endpoint: ep1, Healthy: true}}}
+	hc := &HealthChecker{
+		forceCh: make(chan forceRequest, 1),
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: mockProvider},
+		},
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cfg := config.Get()
+	prev := cfg.Interval
+	cfg.Interval = time.Hour
+
+	runDone := make(chan struct{})
+	go func() {
+		defer close(runDone)
+		_ = hc.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		// Stop Run before restoring the shared config
+		cancel()
+		<-runDone
+		cfg.Interval = prev
+	})
+
+	// The initial run publishes the endpoint
+	require.Eventually(t, func() bool {
+		return len(hc.GetDomainStatus("example.com").Endpoints) == 1
+	}, 5*time.Second, 5*time.Millisecond)
+
+	// A check that ran moments ago is reused, so a forced check returns right away without running another
+	reqCtx, reqCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer reqCancel()
+	err = hc.ForceCheck(reqCtx)
+	require.NoError(t, err)
+	assert.Equal(t, 1, mockProvider.CallCount)
+
+	// After the minimum interval, a forced check runs for real: here it finds the endpoint down and which is recorded in the state
+	time.Sleep(minForceInterval + 100*time.Millisecond)
+	reqCtx2, reqCancel2 := context.WithTimeout(ctx, 5*time.Second)
+	defer reqCancel2()
+	mockChecker.Results = []checker.Result{{Endpoint: ep1, Healthy: false, Error: errors.New("down")}}
+	before := hc.GetDomainStatus("example.com").LastUpdated
+	err = hc.ForceCheck(reqCtx2)
+	require.NoError(t, err)
+	st := hc.GetDomainStatus("example.com")
+	assert.True(t, st.LastUpdated.After(before), "a forced check updates the domain state")
+	assert.Equal(t, 1, st.Endpoints[0].FailureCount)
+
+	// A canceled context returns an error
+	canceled, c2 := context.WithCancel(t.Context())
+	c2()
+	err = hc.ForceCheck(canceled)
+	require.Error(t, err)
 }
