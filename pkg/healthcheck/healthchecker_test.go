@@ -821,3 +821,45 @@ func TestHealthChecker_DynamicIP(t *testing.T) {
 	}
 	assert.LessOrEqual(t, len(dc.getEndpoints()), 2)
 }
+
+func TestHealthChecker_DynamicIP_SameAddressFromTwoLookups(t *testing.T) {
+	mockProvider := dns.NewMockProvider(false)
+	primary := &config.ConfigEndpoint{Name: "primary", IPLookup: &config.ConfigIPLookup{URLs: []string{"https://a.example.com"}}}
+	fallback := &config.ConfigEndpoint{Name: "fallback", IPLookup: &config.ConfigIPLookup{URLs: []string{"https://b.example.com"}}}
+	mockChecker := &checker.MockChecker{Domain: "home.example.com", MaxAttempts: 2}
+	hc := &HealthChecker{
+		domainCheckers: map[string]*domainChecker{
+			"home.example.com": {checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: mockProvider},
+		},
+	}
+
+	// Both lookups find the same address: it must be published once
+	mockChecker.Results = []checker.Result{
+		{Endpoint: primary, Target: "203.0.113.1", Healthy: true},
+		{Endpoint: fallback, Target: "203.0.113.1", Healthy: true},
+	}
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 1, mockProvider.CallCount)
+	assert.Equal(t, []dns.Target{{Value: "203.0.113.1"}}, mockProvider.LastTargets)
+	assert.Equal(t, []string{"203.0.113.1"}, hc.domainCheckers["home.example.com"].healthyIPs)
+}
+
+func TestDedupeResults(t *testing.T) {
+	a := &config.ConfigEndpoint{Name: "a", IPLookup: &config.ConfigIPLookup{URLs: []string{"https://a.example.com"}}}
+	b := &config.ConfigEndpoint{Name: "b", IPLookup: &config.ConfigIPLookup{URLs: []string{"https://b.example.com"}}}
+	static := &config.ConfigEndpoint{Name: "static", IP: "198.51.100.1"}
+	noAddr := &config.ConfigEndpoint{Name: "none", IPLookup: &config.ConfigIPLookup{URLs: []string{"https://c.example.com"}}}
+
+	in := []checker.Result{
+		{Endpoint: a, Target: "203.0.113.1", Healthy: false},
+		{Endpoint: b, Target: "203.0.113.1", Healthy: true},
+		{Endpoint: static, Target: "198.51.100.1", Healthy: true},
+		{Endpoint: noAddr},
+		{Endpoint: noAddr},
+	}
+	out := dedupeResults(in)
+	require.Len(t, out, 4)
+	assert.Equal(t, "b", out[0].Endpoint.Name, "a healthy result wins over an unhealthy one")
+	assert.Equal(t, "static", out[1].Endpoint.Name)
+	assert.Equal(t, "none", out[2].Endpoint.Name, "results without a target are kept")
+}

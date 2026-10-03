@@ -154,3 +154,19 @@ func TestCheckEndpoint_Dynamic(t *testing.T) {
 		assert.Equal(t, "tunnel.example.com", res.Target)
 	})
 }
+
+func TestLookupIP_ErrorsDoNotLeakURLSecrets(t *testing.T) {
+	lookupCacheTTL = 0
+	t.Cleanup(func() { lookupCacheTTL = lookupCacheTTLDefault })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	srv.Close() // Connection refused: net/http puts the full URL in the error
+
+	spec := &config.ConfigIPLookup{URLs: []string{srv.URL + "/ip?token=s3cret"}}
+	_, err := lookupIP(t.Context(), spec, time.Second)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "s3cret")
+	assert.Contains(t, err.Error(), srv.URL+"/ip")
+}

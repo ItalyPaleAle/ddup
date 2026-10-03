@@ -139,7 +139,7 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		failedIPs = maps.Clone(failedIPs)
 
 		// Perform health checks for this domain
-		results := dc.checker.CheckAll(ctx)
+		results := dedupeResults(dc.checker.CheckAll(ctx))
 
 		// Collect healthy IPs
 		maxAttempts := dc.checker.GetMaxAttempts()

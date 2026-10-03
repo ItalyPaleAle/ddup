@@ -458,7 +458,8 @@ func (c *Config) validateEndpoints(d *ConfigDomain) error {
 		if v.Name == "" {
 			v.Name = v.URL
 			if v.Name == "" {
-				v.Name = v.IPLookup.URLs[0]
+				// Lookup URLs can carry a token in the query string or userinfo, so only the non-secret parts are used in names
+				v.Name = RedactURL(v.IPLookup.URLs[0])
 			}
 		}
 
@@ -506,6 +507,19 @@ func (l *ConfigIPLookup) validate() error {
 		}
 	}
 	return nil
+}
+
+// RedactURL removes the userinfo, query string and fragment of a URL, as they can contain secrets
+// It's meant for logs and display names; a value that isn't a valid URL is replaced entirely
+func RedactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return "(invalid URL)"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }
 
 var hostnameLabelRegexp = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$`)

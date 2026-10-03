@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -56,7 +57,7 @@ func lookupIP(ctx context.Context, spec *config.ConfigIPLookup, timeout time.Dur
 	for _, u := range spec.URLs {
 		ip, err := lookupIPFromURL(ctx, u, spec.Family, pattern, timeout)
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", u, err))
+			errs = append(errs, fmt.Errorf("%s: %w", config.RedactURL(u), err))
 			continue
 		}
 
@@ -69,19 +70,19 @@ func lookupIP(ctx context.Context, spec *config.ConfigIPLookup, timeout time.Dur
 	return "", fmt.Errorf("IP lookup failed: %w", errors.Join(errs...))
 }
 
-func lookupIPFromURL(ctx context.Context, url string, family int, pattern *regexp.Regexp, timeout time.Duration) (string, error) {
+func lookupIPFromURL(ctx context.Context, rawURL string, family int, pattern *regexp.Regexp, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("creating request: %w", err)
+		return "", fmt.Errorf("creating request: %w", stripURL(err))
 	}
 	req.Header.Set("User-Agent", "ddup/1.0")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request failed: %w", err)
+		return "", fmt.Errorf("request failed: %w", stripURL(err))
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
@@ -128,6 +129,15 @@ func parseLookupResponse(body string, family int, pattern *regexp.Regexp) (strin
 	}
 
 	return addr.String(), nil
+}
+
+// stripURL removes the URL from net/http errors, as it can contain a token; only the cause is kept
+func stripURL(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
 }
 
 func truncate(s string, n int) string {

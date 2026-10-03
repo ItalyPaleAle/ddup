@@ -132,3 +132,32 @@ func (dc *domainChecker) noteTargets(results []checker.Result, keep ...[]string)
 		}
 	}
 }
+
+// dedupeResults keeps one result per target
+// Endpoints that look up their IP address can find the same one (for example, a primary and a fallback lookup service), and a target must be published only once
+// If one of the results is healthy it wins; otherwise the first is kept
+func dedupeResults(results []checker.Result) []checker.Result {
+	index := make(map[string]int, len(results))
+	out := make([]checker.Result, 0, len(results))
+	for _, r := range results {
+		target := r.Target
+		if target == "" {
+			target = r.Endpoint.Target()
+		}
+		// Results without a target are kept as they are, since they can't clash with anything
+		if target == "" {
+			out = append(out, r)
+			continue
+		}
+
+		i, ok := index[target]
+		switch {
+		case !ok:
+			index[target] = len(out)
+			out = append(out, r)
+		case r.Healthy && !out[i].Healthy:
+			out[i] = r
+		}
+	}
+	return out
+}

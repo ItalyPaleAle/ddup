@@ -152,6 +152,9 @@ domains:
 - The type of record follows the address: IPv4 creates an `A` record and IPv6 an `AAAA` record. A service reports the version it's reached over, so use `family` (and a service that only answers over that version, like `https://api6.ipify.org`) to choose.
 - The lookup runs on every check, but lookups with the same settings in the same interval share one call. When the address changes, the record is updated and the `dns_updated` webhook is sent. If the lookup fails, the last address stays published until `attempts` consecutive failures, and with no healthy endpoint ddup leaves DNS unchanged and sends `all_unhealthy`.
 - Private, loopback and other non-public addresses are rejected.
+- A changed address is published right away: `recoverAfter` applies only to endpoints that were removed after failing, not to a new address.
+- If two endpoints look up the same address (for example a primary and a fallback service), it is published once.
+- Lookup URLs can contain a token. Error messages and the default endpoint name leave out the query string and credentials, but set `name` explicitly if the path itself is sensitive.
 - `proxied` works with a lookup (Cloudflare only), and a lookup can be combined with [priorities](#failover-with-priorities).
 - ddup replaces every `A`/`AAAA` record at the name that isn't the looked-up address, so don't point it at a name that has other records.
 
