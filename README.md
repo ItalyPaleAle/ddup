@@ -220,13 +220,20 @@ providers:
 Required settings:
 
 - `zoneId`: Cloudflare Zone ID for your domain
-- `apiToken`: Cloudflare API token with Zone:Edit permissions
+- `apiToken`: Cloudflare API token with permission to edit DNS records in that zone (see below)
 
 To get the credentials:
 
-- API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token
-  - Grant `Zone:Edit` permissions for your domain
-- Zone ID: Found in the domain overview page
+- API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token → Create Custom Token
+  - Permissions: **Zone → DNS → Edit**. This is the only permission ddup needs: it lists, creates and deletes `A` and `AAAA` records in the zone
+  - Zone Resources: **Include → Specific zone →** your domain
+  - It must be an API token (sent as a Bearer token), not the Global API Key
+  - Not needed: Zone → Zone → Read (ddup is given the zone ID and never looks it up), any account-level permission, or Zone → Zone → Edit (a different, broader permission)
+- Zone ID: Found on the domain's Overview page, in the right sidebar
+
+Cloudflare cannot scope a token to a single record, so the token can edit every DNS record in the zone. Use a token dedicated to ddup rather than sharing one with other tools.
+
+ddup does not set the `proxied` flag, so the records it creates are DNS-only (not proxied by Cloudflare).
 
 Example:
 
@@ -273,6 +280,26 @@ providers:
       zoneName: "example.com"
       endpoint: "eu"
 ```
+
+### Webhooks
+
+Webhooks are called when something changes (`dns_updated`, `dns_update_failed`, `all_unhealthy`). Each webhook can filter events, set headers, and render its body from a Go template. See `config.sample.yaml` for ntfy, email and generic JSON examples.
+
+#### Email with Resend (or another HTTP email API)
+
+The `email` example in `config.sample.yaml` posts to the [Resend API](https://resend.com/docs/api-reference/emails/send-email) with a bearer API key. Verify your sending domain in Resend, and use an address on it as `from`. Other providers with an HTTP API (Mailgun, Postmark, SendGrid) work the same way: change the URL, auth header and JSON fields.
+
+#### Email with Cloudflare Email Service
+
+The commented-out Cloudflare example in `config.sample.yaml` sends mail through the [Cloudflare Email Service REST API](https://developers.cloudflare.com/email-service/api/send-emails/rest-api/) (`POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send`). Requirements:
+
+- The account must be entitled to Email Sending, which can require a paid Cloudflare plan (the API answers with code 10105 otherwise).
+- Onboard the sender domain in the Cloudflare dashboard (Compute → Email Service → Email Sending → Onboard Domain). Cloudflare adds MX, SPF, DKIM and DMARC records on the `cf-bounce` subdomain, which takes about 5-15 minutes. The domain must be onboarded on the same account that owns the API token, and `from` must be an address on it.
+- API token: create a custom token with the **Account → Email Sending → Edit** permission, with the account that owns the domain under Account Resources. Cloudflare's docs name this permission "Email Sending: Edit". It needs nothing else.
+- Use a token separate from the DNS token used by the `cloudflare` provider (which needs **Zone → DNS → Edit**), so that each token can do only one thing.
+- Replace `your-account-id` in the URL with your [account ID](https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/).
+
+If the API answers 403 with code 10102, the token lacks the permission. Code 10105 means the account isn't entitled to Email Sending, and 10203 means sending is disabled for the zone or account.
 
 ### Server Settings
 

@@ -108,6 +108,14 @@ webhooks:
       Authorization: "Bearer your-api-key"
       Content-Type: "application/json"
     body: '{"from": "ddup@example.com", "to": ["postmaster@example.com"], "subject": {{ json (printf "[ddup] %s" .Subject) }}, "text": {{ json .Text }}}'
+  # Alternative: Cloudflare Email Service (needs an account entitled to Email Sending; see the README). Replace the entry above with:
+  # - name: "email"
+  #   url: "https://api.cloudflare.com/client/v4/accounts/your-account-id/email/sending/send"
+  #   events: ["dns_updated", "dns_update_failed", "all_unhealthy"]
+  #   headers:
+  #     Authorization: "Bearer your-api-token"   # token with Account > Email Sending > Edit
+  #     Content-Type: "application/json"
+  #   body: '{"from": "ddup@example.com", "to": "postmaster@example.com", "subject": {{ json (printf "[ddup] %s" .Subject) }}, "text": {{ json .Text }}}'
   - name: "audit"
     url: "https://hooks.example.com/ddup"
 
