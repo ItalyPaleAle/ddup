@@ -167,13 +167,19 @@ providers:
 Required settings:
 
 - `zoneId`: Cloudflare Zone ID for your domain
-- `apiToken`: Cloudflare API token with Zone:Edit permissions
+- `apiToken`: Cloudflare API token with permission to edit DNS records in that zone (see below)
 
 To get the credentials:
 
-- API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token
-  - Grant `Zone:Edit` permissions for your domain
-- Zone ID: Found in the domain overview page
+- API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token → Create Custom Token
+  - Permissions: **Zone → DNS → Edit** (this is the only permission ddup needs)
+  - Zone Resources: **Include → Specific zone →** your domain
+  - It must be an API token (sent as a Bearer token), not the Global API Key
+- Zone ID: Found on the domain's Overview page, in the right sidebar
+
+Cloudflare cannot scope a token to a single record, so the token can edit every DNS record in the zone. Use a token dedicated to ddup rather than sharing one with other tools.
+
+ddup does not set the `proxied` flag, so the records it creates are DNS-only (not proxied by Cloudflare).
 
 Example:
 
