@@ -133,8 +133,8 @@ func parseLookupResponse(body string, family int, pattern *regexp.Regexp) (strin
 
 // stripURL removes the URL from net/http errors, as it can contain a token; only the cause is kept
 func stripURL(err error) error {
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
+	urlErr, ok := errors.AsType[*url.Error](err)
+	if ok {
 		return urlErr.Err
 	}
 	return err
