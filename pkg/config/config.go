@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/netip"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -66,6 +68,20 @@ type ConfigHealthChecks struct {
 	// Maximum number of consecutive attempts before considering the endpoint unhealthy
 	// Defaults to 2
 	Attempts int `yaml:"attempts"`
+
+	// Number of consecutive successful checks required before an endpoint that was removed from DNS is added back
+	// Has no effect on endpoints that have not been removed since ddup started
+	// Defaults to 1
+	RecoverAfter int `yaml:"recoverAfter"`
+
+	// HTTP method for the health check request
+	// Defaults to GET
+	Method string `yaml:"method"`
+
+	// HTTP status codes that indicate a healthy endpoint
+	// Each item is a code ("200"), an inclusive range ("200-299") or a class ("2xx")
+	// Defaults to ["2xx"]
+	ExpectStatus []string `yaml:"expectStatus"`
 }
 
 // ConfigEndpoint represents a single endpoint to health check
@@ -211,7 +227,8 @@ func (c *Config) Validate(logger *slog.Logger) error {
 
 	// Validate domains
 	for di := range c.Domains {
-		d := c.Domains[di]
+		// Use a pointer so that defaults and sanitization are persisted
+		d := &c.Domains[di]
 		if d.RecordName == "" {
 			return fmt.Errorf("domain %d is invalid: recordName is empty", di)
 		}
@@ -231,6 +248,21 @@ func (c *Config) Validate(logger *slog.Logger) error {
 		// Default TTL is 120s
 		if d.TTL <= 0 {
 			d.TTL = 120
+		}
+
+		// Validate the health check settings
+		d.HealthChecks.Method = strings.ToUpper(d.HealthChecks.Method)
+		switch d.HealthChecks.Method {
+		case "", http.MethodGet, http.MethodHead:
+		default:
+			return fmt.Errorf("domain %s is invalid: healthChecks.method must be GET or HEAD", d.RecordName)
+		}
+		_, err := ParseStatusMatcher(d.HealthChecks.ExpectStatus)
+		if err != nil {
+			return fmt.Errorf("domain %s is invalid: healthChecks.expectStatus: %w", d.RecordName, err)
+		}
+		if d.HealthChecks.RecoverAfter < 0 {
+			return fmt.Errorf("domain %s is invalid: healthChecks.recoverAfter must not be negative", d.RecordName)
 		}
 
 		// Validate endpoints for this domain

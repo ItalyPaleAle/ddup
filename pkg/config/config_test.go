@@ -55,3 +55,20 @@ func TestValidateEndpointIP(t *testing.T) {
 		})
 	}
 }
+
+func TestStatusMatcher(t *testing.T) {
+	m, err := ParseStatusMatcher([]string{"2xx", "301-302", "418"})
+	require.NoError(t, err)
+	for _, code := range []int{200, 299, 301, 302, 418} {
+		assert.True(t, m.Match(code), code)
+	}
+	for _, code := range []int{199, 300, 303, 404, 500} {
+		assert.False(t, m.Match(code), code)
+	}
+
+	assert.True(t, StatusMatcher{}.Match(204), "zero value uses default")
+	for _, bad := range []string{"", "abc", "6xx", "299-200", "99", "600"} {
+		_, err = ParseStatusMatcher([]string{bad})
+		require.Error(t, err, bad)
+	}
+}
