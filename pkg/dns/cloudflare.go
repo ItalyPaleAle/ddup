@@ -72,7 +72,9 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 		existingIPs[ip] = record.ID
 	}
 
-	result := UpdateResult{Previous: slices.Sorted(maps.Keys(existingIPs))}
+	result := UpdateResult{
+		Previous: slices.Sorted(maps.Keys(existingIPs)),
+	}
 
 	// Map of IPs we want to preserve
 	desiredIPs := make(map[string]struct{})

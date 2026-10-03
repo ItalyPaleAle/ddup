@@ -110,7 +110,9 @@ func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int,
 		existingIPs[ip] = record.ID
 	}
 
-	result := UpdateResult{Previous: slices.Sorted(maps.Keys(existingIPs))}
+	result := UpdateResult{
+		Previous: slices.Sorted(maps.Keys(existingIPs)),
+	}
 
 	// Map of IPs we want to preserve
 	desiredIPs := make(map[string]struct{})
@@ -133,6 +135,7 @@ func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int,
 		if err != nil {
 			return UpdateResult{}, fmt.Errorf("error creating record for IP %s: %w", ip, err)
 		}
+
 		createdIPs[ip] = struct{}{}
 		result.Changed = true
 	}
@@ -150,6 +153,7 @@ func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int,
 		if err != nil {
 			return UpdateResult{}, fmt.Errorf("error deleting record %d for IP %s: %w", recordID, ip, err)
 		}
+
 		result.Changed = true
 	}
 

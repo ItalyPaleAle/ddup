@@ -129,7 +129,6 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 				if res.Changed {
 					domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs, "previous", res.Previous)
 				} else {
-					// For example on startup, when DNS already reflects the healthy endpoints
 					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", newHealthyIPs)
 				}
 			} else {
