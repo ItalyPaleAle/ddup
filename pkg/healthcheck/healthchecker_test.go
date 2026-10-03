@@ -464,7 +464,8 @@ func TestHealthChecker_FirstRunIgnoresRecoverAfter(t *testing.T) {
 func TestHealthChecker_ForceCheck(t *testing.T) {
 	// Not running: no Run loop to handle the request
 	var idle HealthChecker
-	require.ErrorIs(t, idle.ForceCheck(t.Context()), ErrNotRunning)
+	err := idle.ForceCheck(t.Context())
+	require.ErrorIs(t, err, ErrNotRunning)
 
 	mockProvider := dns.NewMockProvider(false)
 	ep1 := &config.ConfigEndpoint{Name: "endpoint1", IP: "1.1.1.1"}
@@ -494,12 +495,15 @@ func TestHealthChecker_ForceCheck(t *testing.T) {
 	})
 
 	// The initial run publishes the endpoint
-	require.Eventually(t, func() bool { return len(hc.GetDomainStatus("example.com").Endpoints) == 1 }, 5*time.Second, 5*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return len(hc.GetDomainStatus("example.com").Endpoints) == 1
+	}, 5*time.Second, 5*time.Millisecond)
 
 	// A check that ran moments ago is reused, so a forced check returns right away without running another
 	reqCtx, reqCancel := context.WithTimeout(ctx, 5*time.Second)
 	defer reqCancel()
-	require.NoError(t, hc.ForceCheck(reqCtx))
+	err = hc.ForceCheck(reqCtx)
+	require.NoError(t, err)
 	assert.Equal(t, 1, mockProvider.CallCount)
 
 	// After the minimum interval, a forced check runs for real: here it finds the endpoint down and which is recorded in the state
@@ -508,13 +512,15 @@ func TestHealthChecker_ForceCheck(t *testing.T) {
 	defer reqCancel2()
 	mockChecker.Results = []checker.Result{{Endpoint: ep1, Healthy: false, Error: errors.New("down")}}
 	before := hc.GetDomainStatus("example.com").LastUpdated
-	require.NoError(t, hc.ForceCheck(reqCtx2))
+	err = hc.ForceCheck(reqCtx2)
+	require.NoError(t, err)
 	st := hc.GetDomainStatus("example.com")
 	assert.True(t, st.LastUpdated.After(before), "a forced check updates the domain state")
 	assert.Equal(t, 1, st.Endpoints[0].FailureCount)
 
 	// A canceled context returns an error
-	canceled, c2 := context.WithCancel(context.Background())
+	canceled, c2 := context.WithCancel(t.Context())
 	c2()
-	require.Error(t, hc.ForceCheck(canceled))
+	err = hc.ForceCheck(canceled)
+	require.Error(t, err)
 }
