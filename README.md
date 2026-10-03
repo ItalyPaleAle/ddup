@@ -172,10 +172,9 @@ Required settings:
 To get the credentials:
 
 - API Token: Go to Cloudflare dashboard → My Profile → API Tokens → Create Token → Create Custom Token
-  - Permissions: **Zone → DNS → Edit**. This is the only permission ddup needs: it lists, creates and deletes `A` and `AAAA` records in the zone
+  - Permissions: **Zone → DNS → Edit** (this is the only permission ddup needs)
   - Zone Resources: **Include → Specific zone →** your domain
   - It must be an API token (sent as a Bearer token), not the Global API Key
-  - Not needed: Zone → Zone → Read (ddup is given the zone ID and never looks it up), any account-level permission, or Zone → Zone → Edit (a different, broader permission)
 - Zone ID: Found on the domain's Overview page, in the right sidebar
 
 Cloudflare cannot scope a token to a single record, so the token can edit every DNS record in the zone. Use a token dedicated to ddup rather than sharing one with other tools.
