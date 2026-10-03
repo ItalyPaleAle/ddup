@@ -106,10 +106,10 @@ func (a *AzureProvider) Name() string {
 }
 
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs.
-func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error {
+func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
 	ipv4, ipv6, err := splitIPs(ips)
 	if err != nil {
-		return err
+		return UpdateResult{}, err
 	}
 
 	recordSets := []struct {
@@ -122,49 +122,40 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 	}
 
 	// Read both record types before making changes, then apply additions before removals.
+	var result UpdateResult
 	for i := range recordSets {
 		recordSets[i].currentIPs, err = a.getExistingIPs(ctx, domain, recordSets[i].recordType)
 		if err != nil {
-			return fmt.Errorf("error getting existing %s records: %w", recordSets[i].recordType, err)
+			return UpdateResult{}, fmt.Errorf("error getting existing %s records: %w", recordSets[i].recordType, err)
+		}
+		result.Previous = append(result.Previous, recordSets[i].currentIPs...)
+	}
+	slices.Sort(result.Previous)
+
+	// Additions first (record types with desired IPs), then removals (record types with none)
+	for _, wantIPs := range []bool{true, false} {
+		for _, recordSet := range recordSets {
+			if (len(recordSet.ips) > 0) != wantIPs {
+				continue
+			}
+			changed, err := a.updateRecordType(ctx, domain, recordSet.recordType, ttl, recordSet.ips, recordSet.currentIPs)
+			if err != nil {
+				return UpdateResult{}, err
+			}
+			result.Changed = result.Changed || changed
 		}
 	}
 
-	for _, recordSet := range recordSets {
-		if len(recordSet.ips) == 0 {
-			continue
-		}
-		err = a.updateRecordType(ctx, domain, recordSet.recordType, ttl, recordSet.ips, recordSet.currentIPs)
-		if err != nil {
-			return err
-		}
-	}
-
-	for _, recordSet := range recordSets {
-		if len(recordSet.ips) > 0 {
-			continue
-		}
-		err = a.updateRecordType(
-			ctx,
-			domain,
-			recordSet.recordType,
-			ttl,
-			recordSet.ips,
-			recordSet.currentIPs,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return result, nil
 }
 
-func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, ips []string, currentIPs []string) error {
+// updateRecordType makes the record set for the type match the IPs, and returns true if it had to write anything
+func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, ips []string, currentIPs []string) (bool, error) {
 	recordName := a.getRecordName(domain)
 
 	if len(ips) == 0 {
 		if len(currentIPs) == 0 {
-			return nil
+			return false, nil
 		}
 
 		slog.DebugContext(
@@ -175,7 +166,7 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 		)
 		err := a.deleteRecord(ctx, recordName, recordType)
 		if err != nil {
-			return fmt.Errorf(
+			return false, fmt.Errorf(
 				"error deleting %s record for domain %s: %w",
 				recordType,
 				domain,
@@ -183,7 +174,7 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 			)
 		}
 
-		return nil
+		return true, nil
 	}
 
 	desired := append([]string(nil), ips...)
@@ -193,7 +184,7 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 	slices.Sort(current)
 
 	if slices.Equal(desired, current) {
-		return nil
+		return false, nil
 	}
 
 	slog.DebugContext(
@@ -212,10 +203,10 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 		ttl,
 	)
 	if err != nil {
-		return fmt.Errorf("error creating/updating %s record for domain %s: %w", recordType, domain, err)
+		return false, fmt.Errorf("error creating/updating %s record for domain %s: %w", recordType, domain, err)
 	}
 
-	return nil
+	return true, nil
 }
 
 // azureARecord represents an A record from the Azure DNS API

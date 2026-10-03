@@ -21,6 +21,10 @@ type domainChecker struct {
 
 	// Consecutive successful checks for endpoints that were removed and are recovering
 	recovering map[string]int
+	// True if the last cycle found no healthy endpoints; used to notify only on transitions
+	allDown bool
+	// Last update error that webhooks were notified about; used to avoid repeating the same notification
+	notifiedError string
 }
 
 func (dc *domainChecker) getState() (healthyIPs []string, failedIPs map[string]int, lastUpdated time.Time, lastError string) {
@@ -63,4 +67,24 @@ func (dc *domainChecker) setRecovering(r map[string]int) {
 	defer dc.lock.Unlock()
 
 	dc.recovering = r
+}
+
+// swapAllDown sets the all-down flag and returns the previous value
+func (dc *domainChecker) swapAllDown(v bool) bool {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	prev := dc.allDown
+	dc.allDown = v
+	return prev
+}
+
+// swapNotifiedError sets the last notified error and returns the previous value
+func (dc *domainChecker) swapNotifiedError(v string) string {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	prev := dc.notifiedError
+	dc.notifiedError = v
+	return prev
 }

@@ -8,12 +8,22 @@ import (
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
+// UpdateResult describes the outcome of a successful UpdateRecords call
+type UpdateResult struct {
+	// True if any record was created, changed or deleted
+	// False if the records already matched the desired IPs
+	Changed bool
+	// Sorted, canonical IPs that were in DNS before the update
+	Previous []string
+}
+
 // Provider defines the interface for DNS providers
 type Provider interface {
 	// Name returns the provider's name
 	Name() string
 	// UpdateRecords updates DNS records for the given domain with the provided IPs
-	UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) error
+	// Providers only write the difference with the existing records, and report whether there was any
+	UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error)
 }
 
 // NewProvider creates a new DNS provider based on the configuration

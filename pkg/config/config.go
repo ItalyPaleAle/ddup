@@ -7,8 +7,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"reflect"
+	"slices"
 	"strings"
+	"text/template"
 	"time"
 )
 
@@ -29,6 +32,9 @@ type Config struct {
 
 	// Server contains configuration for the server
 	Server ConfigServer `yaml:"server"`
+
+	// Webhooks are called when events occur (e.g. DNS records updated, no healthy endpoints)
+	Webhooks []ConfigWebhook `yaml:"webhooks"`
 
 	// Dev is meant for development only; it's undocumented
 	Dev ConfigDev `yaml:"-"`
@@ -82,6 +88,41 @@ type ConfigHealthChecks struct {
 	// Each item is a code ("200"), an inclusive range ("200-299") or a class ("2xx")
 	// Defaults to ["2xx"]
 	ExpectStatus []string `yaml:"expectStatus"`
+}
+
+// ConfigWebhook represents a webhook called when events occur
+type ConfigWebhook struct {
+	// Webhook name, used for logging purposes
+	// Defaults to the URL host
+	Name string `yaml:"name"`
+
+	// URL to call
+	// +required
+	URL string `yaml:"url"`
+
+	// HTTP method
+	// Defaults to POST
+	Method string `yaml:"method"`
+
+	// Additional headers to send
+	// Values are Go templates, rendered with the event
+	Headers map[string]string `yaml:"headers"`
+
+	// Events that trigger this webhook; if empty, all events
+	// Valid values: dns_updated, dns_update_failed, all_unhealthy
+	Events []string `yaml:"events"`
+
+	// Go template for the request body, rendered with the event
+	// If empty, the event is sent as JSON
+	Body string `yaml:"body"`
+
+	// Request timeout for each attempt
+	// Defaults to 10s
+	Timeout time.Duration `yaml:"timeout"`
+
+	// Maximum number of delivery attempts, with exponential backoff starting at 2s
+	// Defaults to 5
+	Attempts int `yaml:"attempts"`
 }
 
 // ConfigEndpoint represents a single endpoint to health check
@@ -284,6 +325,58 @@ func (c *Config) Validate(logger *slog.Logger) error {
 		}
 	}
 
+	return c.validateWebhooks()
+}
+
+// WebhookTemplateFuncs are the functions available in webhook body and header templates
+var WebhookTemplateFuncs = template.FuncMap{
+	"join": strings.Join,
+	"json": func(v any) (string, error) {
+		b, err := json.Marshal(v)
+		return string(b), err
+	},
+}
+
+// WebhookEvents is the list of valid webhook event names
+var WebhookEvents = []string{"dns_updated", "dns_update_failed", "all_unhealthy"}
+
+func (c *Config) validateWebhooks() error {
+	for i := range c.Webhooks {
+		w := &c.Webhooks[i]
+		u, err := url.Parse(w.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return fmt.Errorf("webhook %d is invalid: url must be an absolute http(s) URL", i)
+		}
+		if w.Name == "" {
+			w.Name = u.Host
+		}
+		w.Method = strings.ToUpper(w.Method)
+		if w.Method == "" {
+			w.Method = http.MethodPost
+		}
+		if w.Timeout <= 0 {
+			w.Timeout = 10 * time.Second
+		}
+		if w.Attempts <= 0 {
+			w.Attempts = 5
+		}
+		for _, ev := range w.Events {
+			if !slices.Contains(WebhookEvents, ev) {
+				return fmt.Errorf("webhook %q is invalid: unknown event %q (valid: %s)", w.Name, ev, strings.Join(WebhookEvents, ", "))
+			}
+		}
+		// Templates are parsed again at runtime; this catches syntax errors early
+		_, err = template.New("body").Funcs(WebhookTemplateFuncs).Parse(w.Body)
+		if err != nil {
+			return fmt.Errorf("webhook %q is invalid: body template: %w", w.Name, err)
+		}
+		for k, v := range w.Headers {
+			_, err = template.New(k).Funcs(WebhookTemplateFuncs).Parse(v)
+			if err != nil {
+				return fmt.Errorf("webhook %q is invalid: header %q template: %w", w.Name, k, err)
+			}
+		}
+	}
 	return nil
 }
 

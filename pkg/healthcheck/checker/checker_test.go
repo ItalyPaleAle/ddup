@@ -423,11 +423,9 @@ func TestClientForHost_ConcurrentAndCached(t *testing.T) {
 	var wg sync.WaitGroup
 	clients := make([]*http.Client, 20)
 	for i := range clients {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			clients[i] = c.clientForHost("app.example.com")
-		}()
+		})
 	}
 	wg.Wait()
 
