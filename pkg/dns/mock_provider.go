@@ -16,6 +16,8 @@ type MockProvider struct {
 	NoChange bool
 	// IPs reported as previously in DNS
 	Previous []string
+	// Targets passed to the last UpdateRecords call
+	LastTargets []Target
 }
 
 // NewMockProvider creates a new MockProvider.
@@ -29,8 +31,9 @@ func (m *MockProvider) Name() string {
 }
 
 // UpdateRecords implements the Provider interface.
-func (m *MockProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
+func (m *MockProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error) {
 	m.CallCount++
+	m.LastTargets = targets
 	if m.ShouldError {
 		return UpdateResult{}, errors.New("mock error")
 	}

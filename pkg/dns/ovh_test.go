@@ -40,7 +40,7 @@ func TestOVHProvider(t *testing.T) {
 		})
 
 		// Test creating records
-		res, err := provider.UpdateRecords(t.Context(), "example.com", 300, []string{"1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "example.com", 300, IPTargets("1.1.1.1"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 
@@ -112,7 +112,7 @@ func TestOVHProvider(t *testing.T) {
 		})
 
 		// Test deleting records (passing empty IPs array)
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, IPTargets())
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 
@@ -187,7 +187,7 @@ func TestOVHProvider(t *testing.T) {
 		})
 
 		// Test updating records with new IPs (keep 5.6.7.8, remove 1.2.3.4, add 9.10.11.12)
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"5.6.7.8", "9.10.11.12"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, IPTargets("5.6.7.8", "9.10.11.12"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 
@@ -238,7 +238,7 @@ func TestOVHProvider(t *testing.T) {
 		})
 
 		// Test updating with the same IP (no changes needed)
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, IPTargets("1.2.3.4"))
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 
@@ -273,7 +273,7 @@ func TestOVHProvider(t *testing.T) {
 		})
 
 		// Test creating multiple records for the same subdomain
-		_, err := provider.UpdateRecords(t.Context(), "multi.example.com", 300, []string{"1.1.1.1", "2.2.2.2"})
+		_, err := provider.UpdateRecords(t.Context(), "multi.example.com", 300, IPTargets("1.1.1.1", "2.2.2.2"))
 		require.NoError(t, err)
 
 		// Verify the requests were made
@@ -354,7 +354,7 @@ func TestOVHProvider(t *testing.T) {
 		provider, mockTransport := newOVHTestProviderWithMock()
 
 		// Test with domain not in zone
-		_, err := provider.UpdateRecords(t.Context(), "other.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "other.com", 300, IPTargets("1.1.1.1"))
 		require.Error(t, err)
 		require.ErrorContains(t, err, "is not a subdomain of zone")
 

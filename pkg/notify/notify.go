@@ -28,10 +28,17 @@ const (
 
 // Event is sent to webhooks, and is the data available to body and header templates
 type Event struct {
-	Type      string          `json:"event"`
-	Domain    string          `json:"domain"`
-	Time      time.Time       `json:"time"`
-	Healthy   []string        `json:"healthy"`
+	Type   string    `json:"event"`
+	Domain string    `json:"domain"`
+	Time   time.Time `json:"time"`
+	// All healthy targets (IP addresses)
+	Healthy []string `json:"healthy"`
+	// The healthy targets that are published in DNS: those with the lowest priority value
+	Published []string `json:"published"`
+	// Priority value of the published targets, and of those published before the check
+	Tier         int `json:"tier"`
+	PreviousTier int `json:"previousTier"`
+	// What was in DNS before the update (for dns_updated), or the previously healthy targets
 	Previous  []string        `json:"previous"`
 	Endpoints []EndpointState `json:"endpoints"`
 	Error     string          `json:"error,omitempty"`
@@ -39,17 +46,21 @@ type Event struct {
 
 // EndpointState is the result of the latest health check for an endpoint
 type EndpointState struct {
-	Name    string `json:"name"`
-	IP      string `json:"ip"`
-	Healthy bool   `json:"healthy"`
-	Error   string `json:"error,omitempty"`
+	Name string `json:"name"`
+	// IP address
+	IP       string `json:"ip"`
+	Priority int    `json:"priority"`
+	Healthy  bool   `json:"healthy"`
+	// True if the endpoint is published in DNS
+	Active bool   `json:"active"`
+	Error  string `json:"error,omitempty"`
 }
 
 // Subject returns a short human-readable summary of the event
 func (e Event) Subject() string {
 	switch e.Type {
 	case EventDNSUpdated:
-		return fmt.Sprintf("%s now points to %s", e.Domain, strings.Join(e.Healthy, ", "))
+		return fmt.Sprintf("%s now points to %s", e.Domain, strings.Join(e.targets(), ", "))
 	case EventDNSUpdateFailed:
 		return "DNS update failed for " + e.Domain
 	case EventAllUnhealthy:
@@ -65,6 +76,14 @@ type hook struct {
 	headers map[string]*template.Template
 }
 
+// targets returns what's published in DNS, which is all healthy targets if there's no priority information
+func (e Event) targets() []string {
+	if len(e.Published) > 0 {
+		return e.Published
+	}
+	return e.Healthy
+}
+
 // Text returns a plain-text multi-line description of the event, useful as the body of an email or chat message
 func (e Event) Text() string {
 	var b strings.Builder
@@ -73,8 +92,11 @@ func (e Event) Text() string {
 	if len(e.Previous) > 0 {
 		fmt.Fprintf(&b, "Previous records: %s\n", strings.Join(e.Previous, ", "))
 	}
-	if len(e.Healthy) > 0 {
-		fmt.Fprintf(&b, "Current records: %s\n", strings.Join(e.Healthy, ", "))
+	if len(e.targets()) > 0 {
+		fmt.Fprintf(&b, "Current records: %s\n", strings.Join(e.targets(), ", "))
+	}
+	if e.Type == EventDNSUpdated && e.Tier != e.PreviousTier {
+		fmt.Fprintf(&b, "Priority: %d (was %d)\n", e.Tier, e.PreviousTier)
 	}
 	if e.Error != "" {
 		fmt.Fprintf(&b, "Error: %s\n", e.Error)
@@ -83,6 +105,9 @@ func (e Event) Text() string {
 		b.WriteString("\nEndpoints:\n")
 		for _, ep := range e.Endpoints {
 			status := "healthy"
+			if ep.Healthy && !ep.Active {
+				status = "healthy (standby)"
+			}
 			if !ep.Healthy {
 				status = "UNHEALTHY"
 				if ep.Error != "" {

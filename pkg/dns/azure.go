@@ -106,7 +106,12 @@ func (a *AzureProvider) Name() string {
 }
 
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs.
-func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
+func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error) {
+	ips, err := ipsFromTargets("azure", targets)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	ipv4, ipv6, err := splitIPs(ips)
 	if err != nil {
 		return UpdateResult{}, err

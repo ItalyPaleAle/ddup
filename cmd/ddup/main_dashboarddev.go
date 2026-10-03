@@ -81,6 +81,16 @@ func (m mockStatusProvider) GetAllDomainsStatus() map[string]healthcheck.DomainS
 				{IP: "3.3.3.3", Healthy: false, FailureCount: 7},
 			},
 		},
+		"failover.example": {
+			LastUpdated: now.Add(-3 * time.Second),
+			Provider:    provider1,
+			Error:       "",
+			Endpoints: []healthcheck.DomainStatusEndpoint{
+				{IP: "4.4.1.1", Type: "A", Healthy: false, Priority: 0, FailureCount: 4},
+				{IP: "4.4.2.2", Type: "A", Healthy: false, Priority: 0, FailureCount: 9},
+				{IP: "4.4.3.3", Type: "A", Proxied: true, Healthy: true, Priority: 1, Active: true},
+			},
+		},
 		"emptyendpoints.test": {
 			LastUpdated: now.Add(-24 * time.Hour),
 			Provider:    provider1,

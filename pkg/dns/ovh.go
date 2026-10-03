@@ -88,7 +88,12 @@ func (o *OVHProvider) Name() string {
 }
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
-func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
+func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error) {
+	ips, err := ipsFromTargets("ovh", targets)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	canonicalIPs, err := canonicalizeIPs(ips)
 	if err != nil {
 		return UpdateResult{}, err

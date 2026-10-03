@@ -140,3 +140,48 @@ func TestValidateWebhooks_TemplateFuncs(t *testing.T) {
 	cfg := &Config{Webhooks: []ConfigWebhook{{URL: "https://x.example.com", Body: `{{ join .Healthy ", " }} {{ json .Endpoints }}`}}}
 	require.NoError(t, cfg.validateWebhooks())
 }
+
+func TestValidateEndpoints_TiersAndTargets(t *testing.T) {
+	cloudflare := ConfigProvider{Cloudflare: &CloudflareConfig{}}
+	ovh := ConfigProvider{OVH: &OVHConfig{}}
+
+	tests := []struct {
+		name      string
+		provider  ConfigProvider
+		endpoints []*ConfigEndpoint
+		errSubstr string
+	}{
+		{name: "ips with priorities", provider: cloudflare, endpoints: []*ConfigEndpoint{
+			{URL: "https://a", IP: "1.1.1.1"}, {URL: "https://b", IP: "2.2.2.2"}, {URL: "https://c", IP: "3.3.3.3", Priority: 1},
+		}},
+		{name: "mixed proxied in a priority", provider: cloudflare, endpoints: []*ConfigEndpoint{
+			{URL: "https://a", IP: "1.1.1.1", Proxied: true}, {URL: "https://b", IP: "2.2.2.2"},
+		}, errSubstr: "same value for proxied"},
+		{name: "duplicate target", provider: cloudflare, endpoints: []*ConfigEndpoint{
+			{URL: "https://a", IP: "1.1.1.1"}, {URL: "https://b", IP: "1.1.1.1", Priority: 1},
+		}, errSubstr: "more than one endpoint"},
+		{name: "negative priority", provider: cloudflare, endpoints: []*ConfigEndpoint{{URL: "https://a", IP: "1.1.1.1", Priority: -1}}, errSubstr: "must not be negative"},
+		{name: "missing ip", provider: cloudflare, endpoints: []*ConfigEndpoint{{URL: "https://a"}}, errSubstr: "IP is empty"},
+		{name: "invalid ip", provider: cloudflare, endpoints: []*ConfigEndpoint{{URL: "https://a", IP: "nope"}}, errSubstr: "not a valid IPv4 or IPv6"},
+		{name: "proxied needs cloudflare", provider: ovh, endpoints: []*ConfigEndpoint{{URL: "https://a", IP: "1.1.1.1", Proxied: true}}, errSubstr: "only supported by the Cloudflare provider"},
+		{name: "priorities work with any provider", provider: ovh, endpoints: []*ConfigEndpoint{
+			{URL: "https://a", IP: "1.1.1.1"}, {URL: "https://b", IP: "2.2.2.2", Priority: 1},
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{
+				Providers: map[string]ConfigProvider{"p": tc.provider},
+				Domains:   []ConfigDomain{{RecordName: "app.example.com", Provider: "p", Endpoints: tc.endpoints}},
+			}
+			err := cfg.Validate(slog.Default())
+			if tc.errSubstr != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errSubstr)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

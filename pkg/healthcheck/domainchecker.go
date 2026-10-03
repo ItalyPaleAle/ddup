@@ -5,17 +5,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
 )
 
 type domainChecker struct {
-	lock        sync.Mutex
-	checker     checker.Checker
-	ttl         int
-	healthyIPs  []string
-	failedIPs   map[string]int
-	provider    dns.Provider
+	lock       sync.Mutex
+	checker    checker.Checker
+	ttl        int
+	healthyIPs []string
+	failedIPs  map[string]int
+	provider   dns.Provider
+	// Endpoints by target (IP address); may be nil, in which case all targets have priority 0 and are not proxied
+	endpoints   map[string]*config.ConfigEndpoint
 	lastUpdated time.Time
 	lastError   string
 

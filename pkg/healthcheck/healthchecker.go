@@ -49,7 +49,12 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 		if !ok || provider == nil {
 			return nil, fmt.Errorf("domain '%s' references DNS provider '%s' that is not configured", d.RecordName, d.Provider)
 		}
+		endpoints := make(map[string]*config.ConfigEndpoint, len(d.Endpoints))
+		for _, ep := range d.Endpoints {
+			endpoints[ep.Target()] = ep
+		}
 		dcs[d.RecordName] = &domainChecker{
+			endpoints:  endpoints,
 			checker:    checker.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics),
 			ttl:        d.TTL,
 			failedIPs:  make(map[string]int, 0),
@@ -143,8 +148,8 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		newHealthyIPs := make([]string, 0, len(results))
 		endpointStates := make([]notify.EndpointState, 0, len(results))
 		for _, result := range results {
-			ip := result.Endpoint.IP
-			state := notify.EndpointState{Name: result.Endpoint.Name, IP: ip, Healthy: result.Healthy}
+			ip := result.Endpoint.Target()
+			state := notify.EndpointState{Name: result.Endpoint.Name, IP: ip, Priority: result.Endpoint.Priority, Healthy: result.Healthy}
 			if result.Error != nil {
 				state.Error = result.Error.Error()
 			}
@@ -188,11 +193,22 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		}
 		dc.setRecovering(recovering)
 
+		// Only the healthy endpoints with the lowest priority value are published
+		// The previous publication is derived from the previous healthy endpoints in the same way, so we only touch DNS when what's published changes
+		newPub := selectPublication(dc.endpoints, newHealthyIPs)
+		prevPub := selectPublication(dc.endpoints, currentHealthyIPs)
+		for i := range endpointStates {
+			endpointStates[i].Active = slices.Contains(newPub.values(), endpointStates[i].IP)
+		}
+
 		event := notify.Event{
-			Domain:    domainName,
-			Healthy:   newHealthyIPs,
-			Previous:  currentHealthyIPs,
-			Endpoints: endpointStates,
+			Domain:       domainName,
+			Healthy:      newHealthyIPs,
+			Published:    newPub.values(),
+			Tier:         newPub.priority,
+			PreviousTier: prevPub.priority,
+			Previous:     currentHealthyIPs,
+			Endpoints:    endpointStates,
 		}
 
 		// Notify when we transition to having no healthy endpoints; we don't repeat the notification on every cycle
@@ -204,12 +220,12 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 			dc.swapAllDown(false)
 		}
 
-		// Check if healthy IPs have changed
-		if !utils.ElementsMatch(currentHealthyIPs, newHealthyIPs) {
+		// Check if what we publish has changed
+		if !utils.ElementsMatch(prevPub.keys(), newPub.keys()) {
 			// Update DNS records
 			if len(newHealthyIPs) > 0 {
 				var res dns.UpdateResult
-				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
+				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newPub.targets)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					dc.setError("Error updating DNS records: " + err.Error())
@@ -227,19 +243,19 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 
 				dc.swapNotifiedError("")
 				if res.Changed {
-					domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs, "previous", res.Previous)
+					domainLog.InfoContext(ctx, "Updated DNS records", "targets", event.Published, "priority", newPub.priority, "previous", res.Previous)
 					event.Type = notify.EventDNSUpdated
 					event.Previous = res.Previous
 					hc.notifier.Notify(ctx, event)
 				} else {
 					// For example on startup, when DNS already reflects the healthy endpoints
-					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", newHealthyIPs)
+					domainLog.InfoContext(ctx, "DNS records already up to date", "targets", event.Published, "priority", newPub.priority)
 				}
 			} else {
 				domainLog.WarnContext(ctx, "No healthy endpoints found, not updating DNS")
 			}
 		} else {
-			domainLog.DebugContext(ctx, "Healthy IPs unchanged, skipping DNS update", "healthy", newHealthyIPs)
+			domainLog.DebugContext(ctx, "Published targets unchanged, skipping DNS update", "healthy", newHealthyIPs, "published", event.Published)
 		}
 
 		// Update the stored previous IPs

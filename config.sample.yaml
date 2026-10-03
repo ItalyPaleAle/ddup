@@ -39,6 +39,29 @@ domains:
         url: "http://192.168.1.201:9000/health"
         ip: "192.168.1.201"
 
+  # Failover tiers: only the healthy endpoints with the lowest "priority" are published (default 0), and ddup falls back to the next
+  # priority when none are healthy. Endpoints with the same priority are all published (round-robin).
+  # "proxied" is supported by the Cloudflare provider only; all endpoints with the same priority must use the same "proxied"
+  - recordName: "failover.example.com"
+    provider: "example-provider-1"
+    ttl: 60
+    healthChecks:
+      timeout: "5s"
+      attempts: 3
+      recoverAfter: 3
+    endpoints:
+      - name: "vps-us"
+        url: "https://vps-us.example.com/health"
+        ip: "192.0.2.10"
+      - name: "vps-eu"
+        url: "https://vps-eu.example.com/health"
+        ip: "192.0.2.20"
+      - name: "proxied-fallback"
+        url: "https://fallback-health.example.com/health"
+        ip: "192.0.2.30"
+        proxied: true
+        priority: 1
+
 # Provider Configuration
 providers:
   example-provider-1:

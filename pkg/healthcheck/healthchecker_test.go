@@ -636,3 +636,126 @@ func TestHealthChecker_NoNotificationWhenDNSAlreadyUpToDate(t *testing.T) {
 	assert.Equal(t, notify.EventDNSUpdated, ev.Type)
 	assert.Equal(t, []string{"9.9.9.9"}, ev.Previous)
 }
+
+func TestHealthChecker_PriorityTiers(t *testing.T) {
+	mockProvider := dns.NewMockProvider(false)
+	us := &config.ConfigEndpoint{Name: "us", IP: "1.1.1.1"}
+	eu := &config.ConfigEndpoint{Name: "eu", IP: "2.2.2.2"}
+	tunnel := &config.ConfigEndpoint{Name: "tunnel", IP: "3.3.3.3", Proxied: true, Priority: 1}
+
+	up := func(ep *config.ConfigEndpoint) checker.Result { return checker.Result{Endpoint: ep, Healthy: true} }
+	down := func(ep *config.ConfigEndpoint) checker.Result {
+		return checker.Result{Endpoint: ep, Healthy: false, Error: errors.New("down")}
+	}
+
+	mockChecker := &checker.MockChecker{Domain: "example.com", MaxAttempts: 1}
+	hc := &HealthChecker{
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {
+				checker:   mockChecker,
+				ttl:       60,
+				failedIPs: make(map[string]int),
+				provider:  mockProvider,
+				endpoints: map[string]*config.ConfigEndpoint{"1.1.1.1": us, "2.2.2.2": eu, "3.3.3.3": tunnel},
+			},
+		},
+	}
+	dc := hc.domainCheckers["example.com"]
+
+	run := func(results ...checker.Result) {
+		t.Helper()
+		mockChecker.Results = results
+		hc.checkAndUpdateDNS(t.Context())
+	}
+	published := func() []string {
+		var v []string
+		for _, tg := range mockProvider.LastTargets {
+			v = append(v, tg.Value)
+		}
+		return v
+	}
+
+	// Everything healthy: only the preferred tier is published, the standby is not
+	run(up(us), up(eu), up(tunnel))
+	assert.ElementsMatch(t, []string{"1.1.1.1", "2.2.2.2"}, published())
+	assert.Equal(t, 1, mockProvider.CallCount)
+	status := hc.GetDomainStatus("example.com")
+	activeByIP := map[string]bool{}
+	for _, e := range status.Endpoints {
+		activeByIP[e.IP] = e.Active
+		if e.IP == "3.3.3.3" {
+			assert.Equal(t, "A", e.Type)
+			assert.Equal(t, 1, e.Priority)
+			assert.True(t, e.Proxied)
+		}
+	}
+	assert.Equal(t, map[string]bool{"1.1.1.1": true, "2.2.2.2": true, "3.3.3.3": false}, activeByIP)
+
+	// The standby going down doesn't change what's published, so DNS isn't touched
+	run(up(us), up(eu), down(tunnel))
+	assert.Equal(t, 1, mockProvider.CallCount)
+	run(up(us), up(eu), up(tunnel))
+	assert.Equal(t, 1, mockProvider.CallCount)
+
+	// One of the preferred endpoints goes down: the other is still published alone
+	run(down(us), up(eu), up(tunnel))
+	assert.Equal(t, []string{"2.2.2.2"}, published())
+	assert.Equal(t, 2, mockProvider.CallCount)
+
+	// Both preferred endpoints are down: fall back to the proxied fallback address
+	run(down(us), down(eu), up(tunnel))
+	require.Len(t, mockProvider.LastTargets, 1)
+	assert.Equal(t, dns.Target{Value: "3.3.3.3", Proxied: true}, mockProvider.LastTargets[0])
+	assert.Equal(t, 3, mockProvider.CallCount)
+
+	// Recovery of a preferred endpoint goes back to it
+	run(up(us), down(eu), up(tunnel))
+	assert.Equal(t, []string{"1.1.1.1"}, published())
+	assert.Equal(t, 4, mockProvider.CallCount)
+
+	// Everything down: DNS is left alone
+	run(down(us), down(eu), down(tunnel))
+	assert.Equal(t, 4, mockProvider.CallCount)
+	assert.Empty(t, dc.healthyIPs)
+}
+
+func TestHealthChecker_TierChangeEvent(t *testing.T) {
+	events := make(chan notify.Event, 10)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var ev notify.Event
+		_ = json.NewDecoder(r.Body).Decode(&ev)
+		events <- ev
+	}))
+	defer srv.Close()
+	n, err := notify.New([]config.ConfigWebhook{{Name: "t", URL: srv.URL, Method: "POST", Attempts: 1, Timeout: time.Second}})
+	require.NoError(t, err)
+
+	us := &config.ConfigEndpoint{Name: "us", IP: "1.1.1.1"}
+	tunnel := &config.ConfigEndpoint{Name: "tunnel", IP: "3.3.3.3", Proxied: true, Priority: 1}
+	mockChecker := &checker.MockChecker{Domain: "example.com", MaxAttempts: 1}
+	hc := &HealthChecker{
+		notifier: n,
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {
+				checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: dns.NewMockProvider(false),
+				endpoints: map[string]*config.ConfigEndpoint{"1.1.1.1": us, "3.3.3.3": tunnel},
+			},
+		},
+	}
+
+	mockChecker.Results = []checker.Result{{Endpoint: us, Healthy: true}, {Endpoint: tunnel, Healthy: true}}
+	hc.checkAndUpdateDNS(t.Context())
+	n.Wait(5 * time.Second)
+	<-events
+
+	mockChecker.Results = []checker.Result{{Endpoint: us, Healthy: false, Error: errors.New("down")}, {Endpoint: tunnel, Healthy: true}}
+	hc.checkAndUpdateDNS(t.Context())
+	n.Wait(5 * time.Second)
+	ev := <-events
+	assert.Equal(t, notify.EventDNSUpdated, ev.Type)
+	assert.Equal(t, []string{"3.3.3.3"}, ev.Published)
+	assert.Equal(t, 1, ev.Tier)
+	assert.Equal(t, 0, ev.PreviousTier)
+	assert.Contains(t, ev.Subject(), "now points to 3.3.3.3")
+	assert.Contains(t, ev.Text(), "Priority: 1 (was 0)")
+}
