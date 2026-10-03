@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -118,7 +119,7 @@ func TestCheckEndpoint_HTTPError(t *testing.T) {
 	// Verify results
 	assert.False(t, result.Healthy, "Endpoint should be unhealthy")
 	require.Error(t, result.Error, "Error should be returned")
-	assert.Contains(t, result.Error.Error(), "HTTP request failed", "Error should mention HTTP request failure")
+	require.ErrorContains(t, result.Error, "HTTP request failed", "Error should mention HTTP request failure")
 	assert.Equal(t, endpoint, result.Endpoint, "Endpoint should match")
 	assert.Greater(t, result.Duration, time.Duration(0), "Duration should be greater than 0")
 }
@@ -159,7 +160,7 @@ func TestCheckEndpoint_BadStatusCode(t *testing.T) {
 	// Verify results
 	assert.False(t, result.Healthy, "Endpoint should be unhealthy")
 	require.Error(t, result.Error, "Error should be returned")
-	assert.Contains(t, result.Error.Error(), "status code 500", "Error should mention status code")
+	require.ErrorContains(t, result.Error, "status code 500", "Error should mention status code")
 	assert.Equal(t, endpoint, result.Endpoint, "Endpoint should match")
 	assert.Greater(t, result.Duration, time.Duration(0), "Duration should be greater than 0")
 }
@@ -200,7 +201,7 @@ func TestCheckEndpoint_RedirectStatusCode(t *testing.T) {
 	// Verify results
 	assert.False(t, result.Healthy, "Endpoint should be unhealthy for redirect")
 	require.Error(t, result.Error, "Error should be returned")
-	assert.Contains(t, result.Error.Error(), "status code 302", "Error should mention status code")
+	require.ErrorContains(t, result.Error, "status code 302", "Error should mention status code")
 	assert.Equal(t, endpoint, result.Endpoint, "Endpoint should match")
 	assert.Greater(t, result.Duration, time.Duration(0), "Duration should be greater than 0")
 }
@@ -226,7 +227,7 @@ func TestCheckEndpoint_InvalidURL(t *testing.T) {
 	// Verify results
 	assert.False(t, result.Healthy, "Endpoint should be unhealthy")
 	require.Error(t, result.Error, "Error should be returned")
-	assert.Contains(t, result.Error.Error(), "creating request", "Error should mention request creation failure")
+	require.ErrorContains(t, result.Error, "creating request", "Error should mention request creation failure")
 	assert.Equal(t, endpoint, result.Endpoint, "Endpoint should match")
 	assert.Greater(t, result.Duration, time.Duration(0), "Duration should be greater than 0")
 }
@@ -314,7 +315,7 @@ func TestCheckEndpoint_ContextTimeout(t *testing.T) {
 	// Verify results
 	assert.False(t, result.Healthy, "Endpoint should be unhealthy due to timeout")
 	require.Error(t, result.Error, "Error should be returned")
-	assert.Contains(t, result.Error.Error(), "HTTP request failed", "Error should mention HTTP request failure")
+	require.ErrorContains(t, result.Error, "HTTP request failed", "Error should mention HTTP request failure")
 	assert.Equal(t, endpoint, result.Endpoint, "Endpoint should match")
 	assert.Greater(t, result.Duration, time.Duration(0), "Duration should be greater than 0")
 }
@@ -375,11 +376,70 @@ func TestCheckEndpoint_SuccessStatusCodes(t *testing.T) {
 			} else {
 				assert.False(t, result.Healthy, "Endpoint should be unhealthy for status %d", tc.statusCode)
 				require.Error(t, result.Error, "Error should be returned for status %d", tc.statusCode)
-				assert.Contains(t, result.Error.Error(), "status code", "Error should mention status code")
+				require.ErrorContains(t, result.Error, "status code", "Error should mention status code")
 			}
 
 			assert.Equal(t, endpoint, result.Endpoint, "Endpoint should match")
 			assert.Greater(t, result.Duration, time.Duration(0), "Duration should be greater than 0")
 		})
 	}
+}
+
+func TestCheckEndpoint_ExpectStatusAndMethod(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.ConfigHealthChecks
+		code    int
+		healthy bool
+		method  string
+	}{
+		{name: "default accepts 200", code: 200, healthy: true, method: http.MethodGet},
+		{name: "default rejects 418", code: 418, healthy: false, method: http.MethodGet},
+		{name: "default rejects redirects", code: 302, healthy: false, method: http.MethodGet},
+		{name: "custom code", cfg: config.ConfigHealthChecks{ExpectStatus: "418"}, code: 418, healthy: true, method: http.MethodGet},
+		{name: "custom code rejects 200", cfg: config.ConfigHealthChecks{ExpectStatus: "418"}, code: 200, healthy: false, method: http.MethodGet},
+		{name: "2xx class", cfg: config.ConfigHealthChecks{ExpectStatus: "2xx"}, code: 204, healthy: true, method: http.MethodGet},
+		{name: "HEAD", cfg: config.ConfigHealthChecks{Method: "HEAD", ExpectStatus: "418"}, code: 418, healthy: true, method: http.MethodHead},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRT := &MockRoundTripper{
+				Response: &http.Response{
+					StatusCode: tc.code,
+					Header:     make(http.Header),
+					Body:       http.NoBody,
+				},
+			}
+			c := New("test.example.com", nil, tc.cfg, nil)
+			c.client.Transport = mockRT
+
+			result := c.checkEndpoint(t.Context(), &config.ConfigEndpoint{URL: "http://example.com/health", IP: "1.1.1.1"})
+			assert.Equal(t, tc.healthy, result.Healthy)
+			assert.Equal(t, tc.method, mockRT.CapturedRequest.Method)
+		})
+	}
+}
+
+func TestClientForHost_ConcurrentAndCached(t *testing.T) {
+	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil)
+
+	var wg sync.WaitGroup
+	clients := make([]*http.Client, 20)
+	for i := range clients {
+		wg.Go(func() {
+			clients[i] = c.clientForHost("app.example.com")
+		})
+	}
+	wg.Wait()
+
+	for _, cl := range clients {
+		assert.Same(t, clients[0], cl, "clients should be cached per host")
+	}
+	assert.Nil(t, c.client.Transport, "base client must not be modified")
+
+	tr, ok := clients[0].Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.Equal(t, "app.example.com", tr.TLSClientConfig.ServerName)
+	assert.NotSame(t, clients[0], c.clientForHost("other.example.com"))
 }

@@ -22,6 +22,7 @@ type Checker interface {
 	CheckAll(ctx context.Context) []Result
 	GetDomain() string
 	GetMaxAttempts() int
+	GetRecoverAfter() int
 }
 
 // Compile time interface check
@@ -34,6 +35,10 @@ type checker struct {
 	cfg       config.ConfigHealthChecks
 	metrics   *appmetrics.AppMetrics
 	client    *http.Client
+
+	// Clients used for endpoints that set a custom host over TLS, keyed by host
+	hostClientsLock sync.RWMutex
+	hostClients     map[string]*http.Client
 }
 
 // Result represents the result of a health check
@@ -100,6 +105,11 @@ func (c *checker) GetMaxAttempts() int {
 	return c.cfg.Attempts
 }
 
+// GetRecoverAfter returns the number of consecutive successful checks required to re-add a removed endpoint
+func (c *checker) GetRecoverAfter() int {
+	return max(c.cfg.RecoverAfter, 1)
+}
+
 // checkEndpoint performs a health check on a single endpoint
 func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndpoint) Result {
 	start := time.Now()
@@ -109,7 +119,11 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 	defer cancel()
 
 	// Create HTTP request
-	req, err := http.NewRequestWithContext(endpointCtx, http.MethodGet, endpoint.URL, nil)
+	method := c.cfg.Method
+	if method == "" {
+		method = http.MethodGet
+	}
+	req, err := http.NewRequestWithContext(endpointCtx, method, endpoint.URL, nil)
 	if err != nil {
 		return Result{
 			Endpoint: endpoint,
@@ -123,34 +137,13 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 	req.Header.Set("User-Agent", "ddup/1.0")
 
 	// If there's a specific host, we need to set it in the request's host
-	// For TLS requests, we set it the TLS client for SNI in the TLS handshake to work too
+	// For TLS requests, we use a client that sets it for SNI in the TLS handshake to work too
 	client := c.client
 	if endpoint.Host != "" {
 		req.Host = endpoint.Host
 
 		if req.URL.Scheme == "https" {
-			var transport *http.Transport
-			if client.Transport != nil {
-				var ok bool
-				transport, ok = client.Transport.(*http.Transport)
-				if !ok || transport.TLSClientConfig == nil {
-					transport.TLSClientConfig = &tls.Config{
-						MinVersion: tls.VersionTLS12,
-					}
-				} else {
-					transport = transport.Clone()
-				}
-
-				transport.TLSClientConfig.ServerName = endpoint.Host
-			} else {
-				transport = &http.Transport{
-					TLSClientConfig: &tls.Config{
-						MinVersion: tls.VersionTLS12,
-						ServerName: endpoint.Host,
-					},
-				}
-			}
-			client.Transport = transport
+			client = c.clientForHost(endpoint.Host)
 		}
 	}
 
@@ -167,7 +160,7 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 	_ = resp.Body.Close() //nolint:errcheck
 
 	// Check if status code indicates health
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if !c.cfg.StatusMatches(resp.StatusCode) {
 		return Result{
 			Endpoint: endpoint,
 			Healthy:  false,
@@ -182,4 +175,49 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 		Error:    nil,
 		Duration: time.Since(start),
 	}
+}
+
+// clientForHost returns an HTTP client that sends the given host as SNI in TLS handshakes
+// Clients are created once per host and shared, and the base client is never modified, so this is safe for concurrent use
+func (c *checker) clientForHost(host string) *http.Client {
+	// Most calls find an existing client, so check with a read lock first
+	c.hostClientsLock.RLock()
+	client := c.hostClients[host]
+	c.hostClientsLock.RUnlock()
+	if client != nil {
+		return client
+	}
+
+	c.hostClientsLock.Lock()
+	defer c.hostClientsLock.Unlock()
+
+	// Check again, as another goroutine may have created the client while we waited for the write lock
+	client = c.hostClients[host]
+	if client != nil {
+		return client
+	}
+
+	var transport *http.Transport
+	base, ok := c.client.Transport.(*http.Transport)
+	if ok {
+		transport = base.Clone()
+	} else {
+		transport = http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert
+	}
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+	}
+	transport.TLSClientConfig.ServerName = host
+
+	client = &http.Client{
+		Transport:     transport,
+		CheckRedirect: c.client.CheckRedirect,
+	}
+	if c.hostClients == nil {
+		c.hostClients = make(map[string]*http.Client)
+	}
+	c.hostClients[host] = client
+	return client
 }

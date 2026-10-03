@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"maps"
 	"sync"
 	"time"
 
@@ -17,6 +18,9 @@ type domainChecker struct {
 	provider    dns.Provider
 	lastUpdated time.Time
 	lastError   string
+
+	// Consecutive successful checks for endpoints that were removed and are recovering
+	recovering map[string]int
 }
 
 func (dc *domainChecker) getState() (healthyIPs []string, failedIPs map[string]int, lastUpdated time.Time, lastError string) {
@@ -42,4 +46,21 @@ func (dc *domainChecker) setError(err string) {
 
 	dc.lastUpdated = time.Now()
 	dc.lastError = err
+}
+
+// getRecovering returns a copy of the recovery counters
+func (dc *domainChecker) getRecovering() map[string]int {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	res := make(map[string]int, len(dc.recovering))
+	maps.Copy(res, dc.recovering)
+	return res
+}
+
+func (dc *domainChecker) setRecovering(r map[string]int) {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	dc.recovering = r
 }
