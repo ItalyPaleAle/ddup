@@ -13,8 +13,13 @@ import {
   Search,
   Play,
   ChevronDown,
+  Sun,
+  Moon,
+  Monitor,
+  type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useTheme, type Theme } from '@/lib/theme'
 
 interface DomainStatusEndpoint {
   healthy: boolean
@@ -34,6 +39,24 @@ type DomainsResponse = Record<string, DomainStatus>
 type Domain = {
   name: string
   status: DomainStatus
+}
+
+const themeOrder: Theme[] = ['system', 'light', 'dark']
+const themeIcons: Record<Theme, LucideIcon> = { system: Monitor, light: Sun, dark: Moon }
+const themeLabels: Record<Theme, string> = { system: 'system', light: 'light', dark: 'dark' }
+
+// Icon button that cycles the theme: follow the system, light, dark
+const ThemeSwitcher = () => {
+  const { theme, setTheme } = useTheme()
+  const next = themeOrder[(themeOrder.indexOf(theme) + 1) % themeOrder.length]
+  const Icon = themeIcons[theme]
+  const label = `Theme: ${themeLabels[theme]} (click for ${themeLabels[next]})`
+
+  return (
+    <Button variant="outline" size="icon" onClick={() => setTheme(next)} title={label} aria-label={label}>
+      <Icon className="h-4 w-4" aria-hidden="true" />
+    </Button>
+  )
 }
 
 const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
@@ -260,6 +283,8 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                 <Play className={cn('h-4 w-4', isChecking && 'animate-pulse')} />
                 {isChecking ? 'Checking…' : 'Check now'}
               </Button>
+
+              <ThemeSwitcher />
             </div>
           </div>
         </div>

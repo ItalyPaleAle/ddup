@@ -3,6 +3,18 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script>
+            // Sets the theme before the page renders, to avoid a flash of the wrong one (see src/lib/theme.ts)
+            ;(function () {
+                try {
+                    var theme = localStorage.getItem('ddup-theme')
+                    var dark =
+                        theme === 'dark' ||
+                        (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+                    document.documentElement.classList.toggle('dark', dark)
+                } catch (e) {}
+            })()
+        </script>
         <title>ddup</title>
     </head>
     <body>
