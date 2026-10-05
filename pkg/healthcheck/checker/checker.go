@@ -51,7 +51,12 @@ type Result struct {
 
 // New creates a new health checker
 func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig config.ConfigHealthChecks, metrics *appmetrics.AppMetrics) *checker {
+	// Every check must open a new connection: with keep-alives, a connection that stays busy (checks run every few seconds) is reused forever, so the check keeps hitting the address it first resolved, even after DNS changes or the endpoint is replaced, and it can't notice problems with connecting or with the TLS handshake
+	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert
+	transport.DisableKeepAlives = true
+
 	client := &http.Client{
+		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
