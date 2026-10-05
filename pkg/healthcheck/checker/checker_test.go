@@ -471,7 +471,10 @@ func TestCheckEndpoint_NewConnectionEveryCheck(t *testing.T) {
 	defer srv.Close()
 
 	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil)
-	endpoint := &config.ConfigEndpoint{URL: srv.URL, IP: "1.1.1.1"}
+	endpoint := &config.ConfigEndpoint{
+		URL: srv.URL,
+		IP: "1.1.1.1",
+	}
 
 	// A reused connection would keep talking to the same address forever, even after DNS changes
 	for range 3 {
