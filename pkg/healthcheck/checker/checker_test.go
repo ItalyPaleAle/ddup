@@ -3,8 +3,11 @@ package checker
 import (
 	"context"
 	"errors"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -423,6 +426,12 @@ func TestCheckEndpoint_ExpectStatusAndMethod(t *testing.T) {
 
 func TestClientForHost_ConcurrentAndCached(t *testing.T) {
 	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil)
+	baseTransport, ok := c.client.Transport.(*http.Transport)
+	require.True(t, ok)
+	baseServerName := ""
+	if baseTransport.TLSClientConfig != nil {
+		baseServerName = baseTransport.TLSClientConfig.ServerName
+	}
 
 	var wg sync.WaitGroup
 	clients := make([]*http.Client, 20)
@@ -436,10 +445,43 @@ func TestClientForHost_ConcurrentAndCached(t *testing.T) {
 	for _, cl := range clients {
 		assert.Same(t, clients[0], cl, "clients should be cached per host")
 	}
-	assert.Nil(t, c.client.Transport, "base client must not be modified")
+	assert.Same(t, baseTransport, c.client.Transport, "base client must not be replaced")
+	if baseTransport.TLSClientConfig != nil {
+		assert.Equal(t, baseServerName, baseTransport.TLSClientConfig.ServerName, "base client must not be modified")
+	}
 
 	tr, ok := clients[0].Transport.(*http.Transport)
 	require.True(t, ok)
+	assert.NotSame(t, baseTransport, tr)
 	assert.Equal(t, "app.example.com", tr.TLSClientConfig.ServerName)
 	assert.NotSame(t, clients[0], c.clientForHost("other.example.com"))
+}
+
+func TestCheckEndpoint_NewConnectionEveryCheck(t *testing.T) {
+	var conns atomic.Int32
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			conns.Add(1)
+		}
+	}
+	srv.Start()
+	defer srv.Close()
+
+	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil)
+	endpoint := &config.ConfigEndpoint{URL: srv.URL, IP: "1.1.1.1"}
+
+	// A reused connection would keep talking to the same address forever, even after DNS changes
+	for range 3 {
+		result := c.checkEndpoint(t.Context(), endpoint)
+		require.True(t, result.Healthy)
+	}
+	assert.Equal(t, int32(3), conns.Load(), "each check opens its own connection")
+
+	// Clients for endpoints with a custom host are built from the same transport
+	transport, ok := c.clientForHost("custom.example.com").Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.True(t, transport.DisableKeepAlives)
 }
