@@ -15,6 +15,7 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { faviconDataUrl, setFavicon, type OverallStatus } from '@/lib/favicon'
 
 interface DomainStatusEndpoint {
   healthy: boolean
@@ -191,6 +192,26 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     const endpointMatches = domain.status.endpoints.some((endpoint) => endpoint.ip.toLowerCase().includes(searchLower))
     return domainMatches || endpointMatches
   })
+
+  // The icon of the tab shows the worst status of all the domains (not only the ones matching the search); the title stays as it is
+  const overallCounts = {
+    warning: domains.filter((d) => getDomainStatus(d) === 'warning').length,
+    unhealthy: domains.filter((d) => getDomainStatus(d) === 'unhealthy').length,
+  }
+  let overallStatus: OverallStatus = 'unknown'
+  if (error || overallCounts.unhealthy > 0) {
+    overallStatus = 'unhealthy'
+  } else if (overallCounts.warning > 0) {
+    overallStatus = 'warning'
+  } else if (domains.length > 0) {
+    overallStatus = 'healthy'
+  }
+  useEffect(() => {
+    const icon = faviconDataUrl(overallStatus)
+    if (icon) {
+      setFavicon(icon)
+    }
+  }, [overallStatus])
 
   const healthyDomains = filteredDomains.filter((d) => getDomainStatus(d) === 'healthy').length
   const warningDomains = filteredDomains.filter((d) => getDomainStatus(d) === 'warning').length
