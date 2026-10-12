@@ -73,13 +73,14 @@ sudo systemctl enable --now ddup
 
 ddup requires a configuration file `config.yaml` in one of the following paths:
 
+- The path defined in the `DDUP_CONFIG` env var
 - `/etc/ddup/config.yaml`
 - `$HOME/.ddup/config.yaml`
 - Or in the same folder where the ddup binary is located
 
-> You can specify a custom configuration file using the `DDUP_CONFIG` environmental variable.
-
 You can find an example of the configuration file, and a description of every option, in the [`config.sample.yaml`](/config.sample.yaml) file.
+
+> A config file can reference other files to load secrets from, using `!file /path/to/file` or `!envfile /path/to/.env VAR_NAME`. See [go-kit's README](https://github.com/ItalyPaleAle/go-kit/blob/main/config/README.md) for more details.
 
 ## Configuration Options
 
