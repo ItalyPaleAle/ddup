@@ -11,8 +11,11 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/italypaleale/ddup/pkg/config"
 )
 
 //nolint:maintidx
@@ -364,6 +367,114 @@ func TestAzureProvider(t *testing.T) {
 				assert.Equal(t, tt.expected, result)
 			})
 		}
+	})
+}
+
+const testTenantID = "00000000-0000-0000-0000-000000000001"
+
+func TestNewAzureProvider(t *testing.T) {
+	valid := func() *config.AzureConfig {
+		return &config.AzureConfig{SubscriptionID: "sub", ResourceGroupName: "rg", ZoneName: "example.com", TenantID: testTenantID}
+	}
+
+	requiredTests := []struct {
+		name      string
+		mutate    func(c *config.AzureConfig)
+		expectErr string
+	}{
+		{name: "missing subscription ID", mutate: func(c *config.AzureConfig) { c.SubscriptionID = "" }, expectErr: "subscription ID is required"},
+		{name: "missing resource group", mutate: func(c *config.AzureConfig) { c.ResourceGroupName = "" }, expectErr: "resource group name is required"},
+		{name: "missing zone name", mutate: func(c *config.AzureConfig) { c.ZoneName = "" }, expectErr: "zone name is required"},
+	}
+
+	for _, tc := range requiredTests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := valid()
+			tc.mutate(cfg)
+			p, err := NewAzureProvider("az", cfg, nil)
+			require.ErrorContains(t, err, tc.expectErr)
+			assert.Nil(t, p)
+		})
+	}
+
+	t.Run("service principal", func(t *testing.T) {
+		cfg := valid()
+		cfg.ClientID = "client"
+		cfg.ClientSecret = "secret"
+		p, err := NewAzureProvider("az", cfg, nil)
+		require.NoError(t, err)
+		assert.IsType(t, &azidentity.ClientSecretCredential{}, p.credential)
+		assert.Equal(t, "sub", p.subscriptionID)
+		assert.Equal(t, "rg", p.resourceGroupName)
+		assert.Equal(t, "example.com", p.zoneName)
+	})
+
+	t.Run("service principal with invalid tenant ID", func(t *testing.T) {
+		cfg := valid()
+		cfg.TenantID = "not a tenant"
+		cfg.ClientID = "client"
+		cfg.ClientSecret = "secret"
+		_, err := NewAzureProvider("az", cfg, nil)
+		require.ErrorContains(t, err, "error creating service principal credential")
+	})
+
+	t.Run("client ID without a secret does not use a service principal", func(t *testing.T) {
+		cfg := valid()
+		cfg.ClientID = "client"
+		p, err := NewAzureProvider("az", cfg, nil)
+		require.NoError(t, err)
+		assert.IsType(t, &azidentity.DefaultAzureCredential{}, p.credential)
+	})
+
+	t.Run("managed identity", func(t *testing.T) {
+		cfg := valid()
+		cfg.ManagedIdentityClientID = "identity"
+		p, err := NewAzureProvider("az", cfg, nil)
+		require.NoError(t, err)
+		assert.IsType(t, &azidentity.ManagedIdentityCredential{}, p.credential)
+	})
+
+	t.Run("default credentials", func(t *testing.T) {
+		p, err := NewAzureProvider("az", valid(), nil)
+		require.NoError(t, err)
+		assert.IsType(t, &azidentity.DefaultAzureCredential{}, p.credential)
+	})
+}
+
+func TestAzureProviderDeleteError(t *testing.T) {
+	setExistingA := func(mockTransport *MockHTTPTransport) {
+		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=www&api-version=2018-05-01", &MockResponse{
+			StatusCode: http.StatusOK,
+			Body:       `{"value":[{"name":"www","properties":{"TTL":300,"ARecords":[{"ipv4Address":"1.2.3.4"}]}}]}`,
+		})
+		setAzureEmptyAAAAResponse(mockTransport, "www")
+	}
+	const deletePath = "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/www?api-version=2018-05-01"
+
+	t.Run("delete fails", func(t *testing.T) {
+		provider, mockTransport := newAzureTestProviderWithMock("example.com")
+		setExistingA(mockTransport)
+		mockTransport.SetResponse(http.MethodDelete, deletePath, &MockResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       `{"error":"boom"}`,
+		})
+
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		require.ErrorContains(t, err, "error deleting A record for domain www.example.com")
+		require.ErrorContains(t, err, "HTTP 500")
+	})
+
+	t.Run("record already deleted", func(t *testing.T) {
+		provider, mockTransport := newAzureTestProviderWithMock("example.com")
+		setExistingA(mockTransport)
+		mockTransport.SetResponse(http.MethodDelete, deletePath, &MockResponse{
+			StatusCode: http.StatusNotFound,
+			Body:       `{}`,
+		})
+
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		require.NoError(t, err)
+		assert.True(t, res.Changed)
 	})
 }
 

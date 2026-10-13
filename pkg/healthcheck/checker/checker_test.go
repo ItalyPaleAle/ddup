@@ -488,3 +488,90 @@ func TestCheckEndpoint_NewConnectionEveryCheck(t *testing.T) {
 	require.True(t, ok)
 	assert.True(t, transport.DisableKeepAlives)
 }
+
+func TestNew(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		c := New("example.com", nil, config.ConfigHealthChecks{}, nil)
+		assert.Equal(t, "example.com", c.GetDomain())
+		assert.Equal(t, DefaultAttempts, c.GetMaxAttempts())
+		assert.Equal(t, DefaultTimeout, c.cfg.Timeout)
+		assert.Equal(t, 1, c.GetRecoverAfter())
+	})
+
+	t.Run("negative values use the defaults", func(t *testing.T) {
+		c := New("example.com", nil, config.ConfigHealthChecks{Timeout: -time.Second, Attempts: -1, RecoverAfter: -1}, nil)
+		assert.Equal(t, DefaultAttempts, c.GetMaxAttempts())
+		assert.Equal(t, DefaultTimeout, c.cfg.Timeout)
+		assert.Equal(t, 1, c.GetRecoverAfter())
+	})
+
+	t.Run("configured values", func(t *testing.T) {
+		c := New("example.com", nil, config.ConfigHealthChecks{Timeout: 5 * time.Second, Attempts: 4, RecoverAfter: 3}, nil)
+		assert.Equal(t, 4, c.GetMaxAttempts())
+		assert.Equal(t, 5*time.Second, c.cfg.Timeout)
+		assert.Equal(t, 3, c.GetRecoverAfter())
+	})
+}
+
+func TestCheckAll(t *testing.T) {
+	t.Run("checks all endpoints concurrently", func(t *testing.T) {
+		const numEndpoints = 3
+		arrived := make(chan struct{}, numEndpoints)
+		release := make(chan struct{})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			arrived <- struct{}{}
+
+			// Hold every request until all of them arrived, which only happens if they are made concurrently
+			select {
+			case <-release:
+			case <-r.Context().Done():
+				return
+			}
+
+			if r.URL.Path == "/fail" {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		ctx := t.Context()
+		go func() {
+			for range numEndpoints {
+				select {
+				case <-arrived:
+				case <-ctx.Done():
+					return
+				}
+			}
+			close(release)
+		}()
+
+		endpoints := []*config.ConfigEndpoint{
+			{Name: "ok1", URL: srv.URL + "/ok", IP: "192.0.2.1"},
+			{Name: "fail", URL: srv.URL + "/fail", IP: "192.0.2.2"},
+			{Name: "ok2", URL: srv.URL + "/ok", IP: "192.0.2.3"},
+		}
+		c := New("example.com", endpoints, config.ConfigHealthChecks{Timeout: 2 * time.Second}, nil)
+
+		results := c.CheckAll(t.Context())
+		require.Len(t, results, numEndpoints)
+
+		// Results are in the same order as the endpoints
+		for i, res := range results {
+			assert.Same(t, endpoints[i], res.Endpoint)
+		}
+		assert.True(t, results[0].Healthy)
+		require.NoError(t, results[0].Error)
+		assert.False(t, results[1].Healthy)
+		require.ErrorContains(t, results[1].Error, "status code 503")
+		assert.True(t, results[2].Healthy)
+		require.NoError(t, results[2].Error)
+	})
+
+	t.Run("no endpoints", func(t *testing.T) {
+		c := New("example.com", nil, config.ConfigHealthChecks{}, nil)
+		assert.Empty(t, c.CheckAll(t.Context()))
+	})
+}

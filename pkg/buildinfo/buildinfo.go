@@ -3,7 +3,7 @@ package buildinfo
 import (
 	"fmt"
 
-	"github.com/italypaleale/ddup/pkg/utils"
+	"github.com/italypaleale/go-kit/utils"
 )
 
 // These variables will be set at build time

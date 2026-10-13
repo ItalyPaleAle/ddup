@@ -21,6 +21,9 @@ type domainChecker struct {
 
 	// Consecutive successful checks for endpoints that were removed and are recovering
 	recovering map[string]int
+
+	// Priority of each endpoint, by IP
+	priorities map[string]int
 }
 
 func (dc *domainChecker) getState() (healthyIPs []string, failedIPs map[string]int, lastUpdated time.Time, lastError string) {

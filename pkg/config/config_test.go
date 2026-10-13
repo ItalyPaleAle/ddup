@@ -2,8 +2,11 @@ package config
 
 import (
 	"log/slog"
+	"net/http"
+	"path/filepath"
 	"testing"
 
+	configkit "github.com/italypaleale/go-kit/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -116,4 +119,199 @@ func TestValidateExpectStatus_InConfig(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "test.example.com")
 	assert.Contains(t, err.Error(), "healthChecks.expectStatus")
+}
+
+func TestValidateEndpointPriority(t *testing.T) {
+	tests := []struct {
+		name      string
+		priority  int
+		expectErr string
+	}{
+		{name: "default", priority: 0},
+		{name: "positive", priority: 1},
+		{name: "large", priority: 1000},
+		{name: "negative", priority: -1, expectErr: "domain test.example.com endpoint 1 is invalid: priority must not be negative"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{
+				Providers: map[string]ConfigProvider{"test": {Cloudflare: &CloudflareConfig{}}},
+				Domains: []ConfigDomain{
+					{
+						RecordName: "test.example.com",
+						Provider:   "test",
+						Endpoints: []*ConfigEndpoint{
+							{
+								URL: "https://a.example.com/health",
+								IP:  "192.0.2.1",
+							},
+							{
+								URL:      "https://b.example.com/health",
+								IP:       "192.0.2.2",
+								Priority: tc.priority,
+							},
+						},
+					},
+				},
+			}
+
+			err := cfg.Validate(slog.Default())
+			if tc.expectErr != "" {
+				require.ErrorContains(t, err, tc.expectErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.priority, cfg.Domains[0].Endpoints[1].Priority)
+		})
+	}
+}
+
+func TestValidate(t *testing.T) {
+	// Returns a valid config, which each test case changes
+	newConfig := func() *Config {
+		return &Config{
+			Providers: map[string]ConfigProvider{"test": {Cloudflare: &CloudflareConfig{}}},
+			Domains: []ConfigDomain{{
+				RecordName: "test.example.com",
+				Provider:   "test",
+				Endpoints:  []*ConfigEndpoint{{URL: "https://test.example.com/health", IP: "192.0.2.1"}},
+			}},
+		}
+	}
+
+	errorTests := []struct {
+		name      string
+		mutate    func(c *Config)
+		expectErr string
+	}{
+		{
+			name:      "no providers",
+			mutate:    func(c *Config) { c.Providers = nil },
+			expectErr: "at least one provider must be configured",
+		},
+		{
+			name:      "provider without a backend",
+			mutate:    func(c *Config) { c.Providers["test"] = ConfigProvider{} },
+			expectErr: "provider 'test' is invalid: exactly one provider must be configured",
+		},
+		{
+			name:      "provider with two backends",
+			mutate:    func(c *Config) { c.Providers["test"] = ConfigProvider{Cloudflare: &CloudflareConfig{}, OVH: &OVHConfig{}} },
+			expectErr: "provider 'test' is invalid: exactly one provider must be configured",
+		},
+		{
+			name:      "no domains",
+			mutate:    func(c *Config) { c.Domains = nil },
+			expectErr: "no domains configured",
+		},
+		{
+			name:      "empty record name",
+			mutate:    func(c *Config) { c.Domains[0].RecordName = "" },
+			expectErr: "domain 0 is invalid: recordName is empty",
+		},
+		{
+			name:      "no endpoints",
+			mutate:    func(c *Config) { c.Domains[0].Endpoints = nil },
+			expectErr: "domain test.example.com is invalid: endpoints list is empty",
+		},
+		{
+			name:      "empty provider",
+			mutate:    func(c *Config) { c.Domains[0].Provider = "" },
+			expectErr: "domain 0 is invalid: provider is empty",
+		},
+		{
+			name:      "unknown provider",
+			mutate:    func(c *Config) { c.Domains[0].Provider = "other" },
+			expectErr: "domain 0 is invalid: provider 'other' does not exist in the provider configuration",
+		},
+		{
+			name:      "unsupported method",
+			mutate:    func(c *Config) { c.Domains[0].HealthChecks.Method = "POST" },
+			expectErr: "domain test.example.com is invalid: healthChecks.method must be GET or HEAD",
+		},
+		{
+			name:      "negative recoverAfter",
+			mutate:    func(c *Config) { c.Domains[0].HealthChecks.RecoverAfter = -1 },
+			expectErr: "domain test.example.com is invalid: healthChecks.recoverAfter must not be negative",
+		},
+		{
+			name:      "empty URL",
+			mutate:    func(c *Config) { c.Domains[0].Endpoints[0].URL = "" },
+			expectErr: "domain test.example.com endpoint 0 is invalid: URL is empty",
+		},
+		{
+			name:      "empty IP",
+			mutate:    func(c *Config) { c.Domains[0].Endpoints[0].IP = "" },
+			expectErr: "domain test.example.com endpoint 0 is invalid: IP is empty",
+		},
+	}
+
+	for _, tc := range errorTests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := newConfig()
+			tc.mutate(cfg)
+			err := cfg.Validate(slog.Default())
+			require.ErrorContains(t, err, tc.expectErr)
+		})
+	}
+
+	t.Run("valid config", func(t *testing.T) {
+		require.NoError(t, newConfig().Validate(slog.Default()))
+	})
+
+	t.Run("defaults and sanitization", func(t *testing.T) {
+		cfg := newConfig()
+		cfg.Domains[0].HealthChecks.Method = "head"
+		cfg.Domains[0].Endpoints = append(cfg.Domains[0].Endpoints, &ConfigEndpoint{Name: "named", URL: "https://b.example.com/health", IP: "192.0.2.2"})
+
+		err := cfg.Validate(slog.Default())
+		require.NoError(t, err)
+
+		d := cfg.Domains[0]
+		assert.Equal(t, 120, d.TTL)
+		assert.Equal(t, http.MethodHead, d.HealthChecks.Method)
+		// Endpoint names default to the URL
+		assert.Equal(t, "https://test.example.com/health", d.Endpoints[0].Name)
+		assert.Equal(t, "named", d.Endpoints[1].Name)
+	})
+
+	t.Run("configured TTL is kept", func(t *testing.T) {
+		cfg := newConfig()
+		cfg.Domains[0].TTL = 300
+
+		err := cfg.Validate(slog.Default())
+		require.NoError(t, err)
+		assert.Equal(t, 300, cfg.Domains[0].TTL)
+	})
+}
+
+func TestCountSetProperties(t *testing.T) {
+	assert.Equal(t, 0, countSetProperties(ConfigProvider{}))
+	assert.Equal(t, 1, countSetProperties(ConfigProvider{Azure: &AzureConfig{}}))
+	assert.Equal(t, 2, countSetProperties(&ConfigProvider{Azure: &AzureConfig{}, OVH: &OVHConfig{}}))
+	assert.Panics(t, func() {
+		countSetProperties("not a struct")
+	})
+}
+
+// The sample config documents the options, so it must load and pass validation
+func TestSampleConfig(t *testing.T) {
+	samplePath := filepath.Join("..", "..", "config.sample.yaml")
+	t.Setenv("DDUP_CONFIG", samplePath)
+
+	// Load it the same way as the app, which rejects unknown keys
+	cfg := GetDefaultConfig()
+	err := configkit.LoadConfig(cfg, configkit.LoadConfigOpts{
+		EnvVar:  "DDUP_CONFIG",
+		DirName: "ddup",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, samplePath, cfg.GetLoadedConfigPath())
+
+	err = cfg.Validate(slog.Default())
+	require.NoError(t, err)
+	assert.NotEmpty(t, cfg.Domains)
+	assert.NotEmpty(t, cfg.Providers)
 }

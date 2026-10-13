@@ -17,6 +17,9 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { apiFetch, pageBuildInfo, type BuildInfo } from '@/lib/build'
+import { setFavicon } from '@/lib/favicon'
+import type { OverallStatus } from '@/lib/favicon-shapes'
+import { StatusIcon } from '@/components/StatusIcon'
 
 interface DomainStatusEndpoint {
   healthy: boolean
@@ -235,6 +238,23 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     return domainMatches || endpointMatches
   })
 
+  // The icon of the tab shows the worst status of all the domains (not only the ones matching the search)
+  const overallCounts = {
+    warning: domains.filter((d) => getDomainStatus(d) === 'warning').length,
+    unhealthy: domains.filter((d) => getDomainStatus(d) === 'unhealthy').length,
+  }
+  let overallStatus: OverallStatus = 'unknown'
+  if (error || overallCounts.unhealthy > 0) {
+    overallStatus = 'unhealthy'
+  } else if (overallCounts.warning > 0) {
+    overallStatus = 'warning'
+  } else if (domains.length > 0) {
+    overallStatus = 'healthy'
+  }
+  useEffect(() => {
+    setFavicon(overallStatus)
+  }, [overallStatus])
+
   const healthyDomains = filteredDomains.filter((d) => getDomainStatus(d) === 'healthy').length
   const warningDomains = filteredDomains.filter((d) => getDomainStatus(d) === 'warning').length
   const unhealthyDomains = filteredDomains.filter((d) => getDomainStatus(d) === 'unhealthy').length
@@ -244,7 +264,8 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
+          <div className="flex items-center gap-3">
+            <StatusIcon status={overallStatus} className="h-8 w-8 shrink-0" />
             <h1 className="text-3xl font-bold tracking-tight">ddup</h1>
           </div>
 

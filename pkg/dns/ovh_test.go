@@ -399,6 +399,62 @@ func TestOVHEndpoints(t *testing.T) {
 	}
 }
 
+func TestNewOVHProvider(t *testing.T) {
+	valid := func() *config.OVHConfig {
+		return &config.OVHConfig{APIKey: "key", APISecret: "secret", ConsumerKey: "consumer", ZoneName: "example.com"}
+	}
+
+	tests := []struct {
+		name      string
+		mutate    func(c *config.OVHConfig)
+		expectErr string
+	}{
+		{name: "missing API key", mutate: func(c *config.OVHConfig) { c.APIKey = "" }, expectErr: "API key is required"},
+		{name: "missing API secret", mutate: func(c *config.OVHConfig) { c.APISecret = "" }, expectErr: "API secret is required"},
+		{name: "missing consumer key", mutate: func(c *config.OVHConfig) { c.ConsumerKey = "" }, expectErr: "consumer key is required"},
+		{name: "missing zone name", mutate: func(c *config.OVHConfig) { c.ZoneName = "" }, expectErr: "zone name is required"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := valid()
+			tc.mutate(cfg)
+			p, err := NewOVHProvider("ovh", cfg, nil)
+			require.ErrorContains(t, err, tc.expectErr)
+			assert.Nil(t, p)
+		})
+	}
+
+	t.Run("defaults to the EU endpoint", func(t *testing.T) {
+		p, err := NewOVHProvider("ovh", valid(), nil)
+		require.NoError(t, err)
+		assert.Equal(t, getOVHEndpoint("eu"), p.endpoint)
+	})
+}
+
+func TestOVHProviderDeleteError(t *testing.T) {
+	provider, mockTransport := newOVHTestProviderWithMock()
+	mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record?fieldType=A&subDomain=www", &MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       `[12345]`,
+		Headers:    map[string]string{"Content-Type": "application/json"},
+	})
+	setOVHEmptyAAAAResponse(mockTransport, "www")
+	mockTransport.SetResponse(http.MethodGet, "/1.0/domain/zone/example.com/record/12345", &MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       `{"id":12345,"fieldType":"A","subDomain":"www","target":"1.2.3.4","ttl":300,"zone":"example.com"}`,
+		Headers:    map[string]string{"Content-Type": "application/json"},
+	})
+	mockTransport.SetResponse(http.MethodDelete, "/1.0/domain/zone/example.com/record/12345", &MockResponse{
+		StatusCode: http.StatusInternalServerError,
+		Body:       `{"message":"boom"}`,
+		Headers:    map[string]string{"Content-Type": "application/json"},
+	})
+
+	_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+	require.ErrorContains(t, err, "error deleting record 12345 for IP 1.2.3.4")
+}
+
 // newOVHTestProviderWithMock creates a test OVH provider with a mock HTTP client
 func newOVHTestProviderWithMock() (*OVHProvider, *MockHTTPTransport) {
 	mockClient, mockTransport := NewMockHTTPClient()
