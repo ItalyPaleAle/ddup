@@ -70,14 +70,9 @@ const SummarySegment = ({
 )
 
 // The build that served the page, at the bottom of the page
-// The build date and commit are left out when the build doesn't set them (a development build)
+// The commit is left out when the build doesn't set it (a development build)
 const Footer = ({ info }: { info: BuildInfo }) => {
-  const built = info.buildDate ? new Date(info.buildDate) : null
-  const parts = [
-    `ddup ${info.version}`,
-    built && !Number.isNaN(built.getTime()) ? `built ${built.toLocaleString()}` : null,
-    info.commit ? info.commit.slice(0, 7) : null,
-  ].filter(Boolean)
+  const parts = [`ddup ${info.version}`, info.commit ? info.commit.slice(0, 7) : null].filter(Boolean)
 
   return <footer className="pt-2 text-center text-xs break-words text-muted-foreground">{parts.join(' · ')}</footer>
 }
