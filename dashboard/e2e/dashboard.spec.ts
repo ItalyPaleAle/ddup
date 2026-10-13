@@ -5,6 +5,9 @@ interface DomainStatusEndpoint {
     healthy: boolean
     ip: string
     failureCount?: number
+    since?: string
+    sinceStart?: boolean
+    lastFailure?: string
 }
 
 interface DomainStatus {
@@ -73,6 +76,35 @@ const recoveredDomains: DomainsResponse = {
     },
 }
 
+// Domains for the endpoint history, with an endpoint in each situation
+const historyDomains: DomainsResponse = {
+    'history.example': {
+        lastUpdated: '2026-10-13T09:30:00Z',
+        provider: 'cloudflare',
+        endpoints: [
+            // Recovered: it failed before, and the last failure is kept
+            { healthy: true, ip: '192.0.2.10', since: '2026-10-09T08:15:00Z', lastFailure: '2026-10-09T08:10:00Z' },
+            // Failing
+            {
+                healthy: false,
+                ip: '192.0.2.11',
+                failureCount: 3,
+                since: '2026-10-13T09:00:00Z',
+                lastFailure: '2026-10-13T09:29:00Z',
+            },
+            // Healthy since the first check after ddup started
+            { healthy: true, ip: '192.0.2.12', since: '2026-10-13T07:45:00Z', sinceStart: true },
+            // From a server that does not report the times
+            { healthy: true, ip: '192.0.2.13' },
+        ],
+    },
+    'other.example': {
+        lastUpdated: '2026-10-13T09:31:00Z',
+        provider: 'ovh',
+        endpoints: [{ healthy: true, ip: '198.51.100.7', since: '2026-10-12T22:00:00Z' }],
+    },
+}
+
 // Returns a response with only some of the domains
 const pickDomains = (from: DomainsResponse, ...names: string[]): DomainsResponse =>
     Object.fromEntries(names.map((name) => [name, from[name]]))
@@ -123,6 +155,11 @@ const expectSummary = async (page: Page, healthy: number, warning: number, unhea
     await expect(summaryCount(page, 'Domains with some unhealthy endpoints')).toHaveText(String(warning))
     await expect(summaryCount(page, 'Unhealthy domains')).toHaveText(String(unhealthy))
 }
+
+const historyButton = (page: Page, domain: string) => page.getByRole('button', { name: `History of ${domain}` })
+
+const historyDialog = (page: Page, domain: string) =>
+    page.getByRole('dialog', { name: `Endpoint history of ${domain}` })
 
 const tabIcon = (page: Page) => page.locator('head link[rel~="icon"]')
 
@@ -455,6 +492,318 @@ test.describe('status icon', () => {
             expect(response.ok()).toBe(true)
             expect(response.headers()['content-type']).toBe('image/svg+xml')
         })
+    })
+})
+
+test.describe('endpoint history', () => {
+    // Fix the language, the time zone and the current date, so the times are formatted the same everywhere
+    test.use({ locale: 'en-US', timezoneId: 'UTC' })
+
+    test.beforeEach(async ({ page }) => {
+        await page.clock.setFixedTime(new Date('2026-10-13T10:00:00Z'))
+        await mockStatus(page, historyDomains)
+        await page.goto('/')
+        await expect(cardTitles(page)).toHaveText(['history.example', 'other.example'])
+    })
+
+    test('opens with a click and closes with the same button', async ({ page }) => {
+        const button = historyButton(page, 'history.example')
+        await expect(button).toHaveAttribute('type', 'button')
+        await expect(button).toHaveAttribute('aria-haspopup', 'dialog')
+        await expect(button).toHaveAttribute('aria-expanded', 'false')
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+
+        await button.click()
+        const dialog = historyDialog(page, 'history.example')
+        await expect(dialog).toBeVisible()
+        await expect(button).toHaveAttribute('aria-expanded', 'true')
+        await expect(button).toHaveAttribute('aria-controls', (await dialog.getAttribute('id')) ?? '')
+        // Focus moves into the dialog
+        await expect(dialog).toBeFocused()
+
+        await button.click()
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(button).toHaveAttribute('aria-expanded', 'false')
+        await expect(button).not.toHaveAttribute('aria-controls')
+        await expect(button).toBeFocused()
+    })
+
+    for (const key of ['Enter', 'Space']) {
+        test(`opens with the keyboard (${key})`, async ({ page }) => {
+            const button = historyButton(page, 'history.example')
+            await button.focus()
+            await page.keyboard.press(key)
+
+            const dialog = historyDialog(page, 'history.example')
+            await expect(dialog).toBeVisible()
+            await expect(dialog).toBeFocused()
+            await expect(button).toHaveAttribute('aria-expanded', 'true')
+        })
+    }
+
+    test('Escape closes it and focus returns to the button', async ({ page }) => {
+        const button = historyButton(page, 'history.example')
+        await button.click()
+        await expect(historyDialog(page, 'history.example')).toBeFocused()
+
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(button).toBeFocused()
+        await expect(button).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    test('the close button closes it and focus returns to the button', async ({ page }) => {
+        const button = historyButton(page, 'history.example')
+        await button.click()
+        await historyDialog(page, 'history.example').getByRole('button', { name: 'Close' }).click()
+
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(button).toBeFocused()
+    })
+
+    test('a click outside closes it', async ({ page }) => {
+        const button = historyButton(page, 'history.example')
+        await button.click()
+        await expect(historyDialog(page, 'history.example')).toBeVisible()
+
+        // Clicking inside the dialog does not close it
+        await historyDialog(page, 'history.example').getByText('Last updated:').click()
+        await expect(historyDialog(page, 'history.example')).toBeVisible()
+
+        await page.getByRole('heading', { name: 'ddup' }).click()
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(button).toHaveAttribute('aria-expanded', 'false')
+        // Focus doesn't stay on the body
+        await expect(button).toBeFocused()
+    })
+
+    test('a click on another control closes it and that control gets focus', async ({ page }) => {
+        await historyButton(page, 'history.example').click()
+        await expect(historyDialog(page, 'history.example')).toBeVisible()
+
+        const search = page.getByPlaceholder('Search domains or IP addresses...')
+        await search.click()
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(search).toBeFocused()
+    })
+
+    test('a tap outside closes it', async ({ browser }) => {
+        const context = await browser.newContext({
+            hasTouch: true,
+            isMobile: true,
+            locale: 'en-US',
+            timezoneId: 'UTC',
+            viewport: { width: 390, height: 844 },
+        })
+        const page = await context.newPage()
+        await mockStatus(page, historyDomains)
+        await page.goto('/')
+        await expect(cardTitles(page)).toHaveText(['history.example', 'other.example'])
+
+        await historyButton(page, 'history.example').tap()
+        await expect(historyDialog(page, 'history.example')).toBeVisible()
+
+        await page.getByRole('heading', { name: 'ddup' }).tap()
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await context.close()
+    })
+
+    test('moving focus out of it with Tab closes it, without a keyboard trap', async ({ page }) => {
+        await historyButton(page, 'history.example').click()
+        const dialog = historyDialog(page, 'history.example')
+        await expect(dialog).toBeFocused()
+
+        // The next stop is the close button, which is inside the dialog
+        await page.keyboard.press('Tab')
+        await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused()
+        await expect(dialog).toBeVisible()
+
+        // The next one is outside
+        await page.keyboard.press('Tab')
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(historyButton(page, 'history.example')).toHaveAttribute('aria-expanded', 'false')
+    })
+
+    test('moving focus out of it with Shift+Tab closes it', async ({ page }) => {
+        const button = historyButton(page, 'history.example')
+        await button.click()
+        await expect(historyDialog(page, 'history.example')).toBeFocused()
+
+        // The button is right before the dialog
+        await page.keyboard.press('Shift+Tab')
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+        await expect(button).toBeFocused()
+    })
+
+    test('only one is open at a time', async ({ page }) => {
+        await historyButton(page, 'history.example').click()
+        await expect(historyDialog(page, 'history.example')).toBeVisible()
+
+        await historyButton(page, 'other.example').click()
+        await expect(page.getByRole('dialog')).toHaveCount(1)
+        await expect(historyDialog(page, 'other.example')).toBeVisible()
+        await expect(historyButton(page, 'history.example')).toHaveAttribute('aria-expanded', 'false')
+        await expect(historyButton(page, 'other.example')).toHaveAttribute('aria-expanded', 'true')
+    })
+
+    test('lists the endpoints with how long they have been healthy or failing', async ({ page }) => {
+        await historyButton(page, 'history.example').click()
+        const items = historyDialog(page, 'history.example').getByRole('listitem')
+        await expect(items).toHaveCount(4)
+
+        // Recovered, with the last failure
+        await expect(items.nth(0)).toContainText('192.0.2.10')
+        await expect(items.nth(0)).toContainText('Healthy since Oct 9, 8:15 AM')
+        await expect(items.nth(0)).toContainText('Last failure: Oct 9, 8:10 AM')
+
+        // Failing
+        await expect(items.nth(1)).toContainText('192.0.2.11')
+        await expect(items.nth(1)).toContainText('Unhealthy since Oct 13, 9:00 AM')
+
+        // The start is not known
+        await expect(items.nth(2)).toContainText('192.0.2.12')
+        await expect(items.nth(2)).toContainText('Healthy since ddup started (Oct 13, 7:45 AM)')
+        await expect(items.nth(2)).not.toContainText('Last failure')
+
+        // No times from the server: only the state
+        await expect(items.nth(3)).toContainText('192.0.2.13')
+        await expect(items.nth(3)).toContainText('Healthy')
+        await expect(items.nth(3)).not.toContainText('since')
+        await expect(items.nth(3)).not.toContainText('Last failure')
+
+        // The times are real time elements
+        const first = items.nth(0).locator('time')
+        await expect(first).toHaveCount(2)
+        await expect(first.nth(0)).toHaveAttribute('datetime', '2026-10-09T08:15:00Z')
+        await expect(first.nth(1)).toHaveAttribute('datetime', '2026-10-09T08:10:00Z')
+    })
+
+    test('includes the year for times before this year', async ({ page }) => {
+        await page.unroute('**/api/status')
+        await mockStatus(page, {
+            'old.example': {
+                lastUpdated: '2026-10-13T09:30:00Z',
+                provider: 'ovh',
+                endpoints: [{ healthy: true, ip: '198.51.100.8', since: '2025-12-31T23:30:00Z' }],
+            },
+        })
+        await page.getByRole('button', { name: 'More refresh options' }).click()
+        await page.getByRole('menuitem', { name: 'Refresh now' }).click()
+        await expect(cardTitles(page)).toHaveText(['old.example'])
+
+        await historyButton(page, 'old.example').click()
+        await expect(historyDialog(page, 'old.example')).toContainText('Healthy since Dec 31, 2025, 11:30 PM')
+    })
+
+    test('the time of the last update is the first line of the dialog, not on the card', async ({ page }) => {
+        const card = domainCard(page, 'history.example')
+        await expect(card).not.toContainText('Last updated')
+        await expect(card.locator('time')).toHaveCount(0)
+
+        await historyButton(page, 'history.example').click()
+        const dialog = historyDialog(page, 'history.example')
+        await expect(dialog).toContainText('Last updated: Oct 13, 9:30 AM')
+        await expect(dialog.locator('time[datetime="2026-10-13T09:30:00Z"]')).toHaveCount(1)
+
+        // The heading comes first, then the time
+        const lines = await dialog.locator('h2, p').allInnerTexts()
+        expect(lines[0]).toBe('Endpoint history of history.example')
+        expect(lines[1]).toBe('Last updated: Oct 13, 9:30 AM')
+    })
+
+    test('the endpoint rows stay the same', async ({ page }) => {
+        const card = domainCard(page, 'history.example')
+        await expect(endpointRow(card, '192.0.2.11')).toContainText('Failures: 3')
+        await expect(endpointRow(card, '192.0.2.10')).toContainText('Failures: 0')
+        await expect(card).not.toContainText('since')
+    })
+
+    test('stays inside a narrow screen', async ({ page }) => {
+        await page.setViewportSize({ width: 320, height: 640 })
+        const pageWidth = await page.evaluate(() => document.documentElement.scrollWidth)
+        for (const domain of ['history.example', 'other.example']) {
+            await historyButton(page, domain).click()
+            const dialog = historyDialog(page, domain)
+            await expect(dialog).toBeVisible()
+
+            const box = await dialog.boundingBox()
+            expect(box).not.toBeNull()
+            expect(box!.x).toBeGreaterThanOrEqual(0)
+            expect(box!.y).toBeGreaterThanOrEqual(0)
+            expect(box!.x + box!.width).toBeLessThanOrEqual(320)
+            expect(box!.y + box!.height).toBeLessThanOrEqual(640)
+            // The dialog doesn't make the page wider
+            expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(pageWidth)
+
+            await page.keyboard.press('Escape')
+        }
+    })
+
+    test('stays next to its button when the page is scrolled or resized', async ({ page }) => {
+        await page.setViewportSize({ width: 800, height: 400 })
+        const button = historyButton(page, 'history.example')
+        await button.click()
+        const dialog = historyDialog(page, 'history.example')
+        await expect(dialog).toBeVisible()
+
+        // The dialog is right below the button, or right above it if there is more room there
+        const gap = async () => {
+            const b = (await button.boundingBox())!
+            const d = (await dialog.boundingBox())!
+            return Math.min(Math.abs(d.y - (b.y + b.height)), Math.abs(b.y - (d.y + d.height)))
+        }
+        await expect.poll(gap).toBeLessThan(10)
+
+        const scrollBefore = await page.evaluate(() => window.scrollY)
+        await page.evaluate(() => window.scrollBy(0, 60))
+        expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBefore)
+        await expect.poll(gap).toBeLessThan(10)
+
+        await page.setViewportSize({ width: 360, height: 400 })
+        await expect.poll(gap).toBeLessThan(10)
+        await expect
+            .poll(async () => {
+                const box = (await dialog.boundingBox())!
+                return box.x + box.width
+            })
+            .toBeLessThanOrEqual(360)
+    })
+
+    test('the button and the close button are at least 24 by 24 pixels', async ({ page }) => {
+        await historyButton(page, 'history.example').click()
+        for (const button of [
+            historyButton(page, 'history.example'),
+            historyDialog(page, 'history.example').getByRole('button', { name: 'Close' }),
+        ]) {
+            const box = await button.boundingBox()
+            expect(box!.width).toBeGreaterThanOrEqual(24)
+            expect(box!.height).toBeGreaterThanOrEqual(24)
+        }
+    })
+
+    test('the buttons show a pointer cursor', async ({ page }) => {
+        await historyButton(page, 'history.example').click()
+        for (const button of [
+            historyButton(page, 'history.example'),
+            historyDialog(page, 'history.example').getByRole('button', { name: 'Close' }),
+        ]) {
+            await expect(button).toHaveCSS('cursor', 'pointer')
+        }
+    })
+
+    test('shows the dialog in front of the next cards', async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 800 })
+        await historyButton(page, 'history.example').click()
+        const dialog = historyDialog(page, 'history.example')
+        await expect(dialog).toBeVisible()
+
+        // The element at the center of the dialog is the dialog (or something in it), not a card behind it
+        const inFront = await dialog.evaluate((el) => {
+            const rect = el.getBoundingClientRect()
+            const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+            return top !== null && el.contains(top)
+        })
+        expect(inFront).toBe(true)
     })
 })
 
