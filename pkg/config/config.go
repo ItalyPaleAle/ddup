@@ -119,9 +119,10 @@ type ConfigEndpoint struct {
 	// +required
 	IP string `yaml:"ip"`
 
-	// Priority of the endpoint; lower values are preferred, and it must not be negative
-	// Only the healthy endpoints with the lowest priority value are published; if none of them are healthy, ddup falls back to the next priority
+	// Optional priority of the endpoint
+	// Only the healthy endpoints with the lowest priority value are published: if none of them are healthy, ddup falls back to the next priority
 	// Endpoints with the same priority are all published together
+	// Must be a non-negative integer
 	// +default 0
 	Priority int `yaml:"priority"`
 
