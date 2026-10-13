@@ -35,7 +35,7 @@ lint-dashboard:
 test-e2e:
 	cd dashboard && pnpm install --frozen-lockfile && pnpm test:e2e $(E2E_ARGS)
 
-# Runs the checks in the same order as CI, followed by the dashboard checks that CI doesn't run
+# Runs the checks in the same order as CI, followed by the dashboard checks that CI doesn't run (lint, format and the type check of the scripts)
 .PHONY: check
 check:
 	go tool gomod-age

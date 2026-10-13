@@ -156,7 +156,8 @@ make lint-dashboard # Type check, ESLint and Prettier on the dashboard
 6. `make test-e2e`: the Playwright tests
 
 CI runs steps 1 to 4 in one job and step 6 in another.
-It doesn't run step 5 today, but please do, as it keeps the dashboard code consistent.
+The dashboard build in step 2 runs `tsc`, so CI type-checks the app, but it doesn't run `pnpm lint`, `pnpm format:check` or the extra `tsc -p scripts` of `pnpm type-check`.
+Step 5 runs them, so please do too: it keeps the dashboard code consistent.
 See [`.github/workflows/ci.yaml`](./.github/workflows/ci.yaml).
 
 ## Opening a pull request
