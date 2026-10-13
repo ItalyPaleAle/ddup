@@ -414,6 +414,8 @@ func TestBuildInfoInPage(t *testing.T) {
 		script := extractBuildScript(t, body)
 		assert.NotContains(t, script, "<")
 		assert.NotContains(t, script, ">")
+		assert.NotContains(t, script, "&")
+		assert.NotContains(t, script, "\u2028")
 		// The page has the build info element and its own script, and nothing else
 		assert.Equal(t, 2, strings.Count(body, "</script>"))
 
@@ -505,4 +507,11 @@ func TestBuildIdentifier(t *testing.T) {
 	assert.Equal(t, "1.2.3|build-42|abc", buildIdentifier("1.2.3", "build-42", "abc"))
 	assert.Equal(t, "canary||", buildIdentifier("canary", "", ""))
 	assert.Equal(t, "a_b_c|_|", buildIdentifier("a\nb\u00e9c", "\x7f", ""))
+}
+
+func TestAppendHTMLSafeJSON(t *testing.T) {
+	// The input is what an encoder that doesn't escape for HTML would produce
+	got := appendHTMLSafeJSON([]byte("x"), []byte("{\"a\":\"</script> & <b>\u2028\u2029\"}"))
+	assert.Equal(t, `x{"a":"\u003c/script\u003e \u0026 \u003cb\u003e\u2028\u2029"}`, string(got))
+	assert.JSONEq(t, "{\"a\":\"</script> & <b>\u2028\u2029\"}", string(got[1:]))
 }
