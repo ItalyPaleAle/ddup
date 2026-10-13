@@ -75,13 +75,14 @@ sudo systemctl enable --now ddup
 
 ddup requires a configuration file `config.yaml` in one of the following paths:
 
+- The path defined in the `DDUP_CONFIG` env var
 - `/etc/ddup/config.yaml`
 - `$HOME/.ddup/config.yaml`
 - Or in the same folder where the ddup binary is located
 
-> You can specify a custom configuration file using the `DDUP_CONFIG` environmental variable.
-
 You can find an example of the configuration file, and a description of every option, in the [`config.sample.yaml`](/config.sample.yaml) file.
+
+> A config file can reference other files to load secrets from, using `!file /path/to/file` or `!envfile /path/to/.env VAR_NAME`. See [go-kit's README](https://github.com/ItalyPaleAle/go-kit/blob/main/config/README.md) for more details.
 
 ## Configuration Options
 
@@ -105,6 +106,7 @@ You can find an example of the configuration file, and a description of every op
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status
     - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records
+    - `priority`: Optional non-negative integer for priority (default: 0). Only the healthy endpoints with the lowest priority value are published, and if none of them are healthy ddup falls back to the next value. When the preferred endpoints are healthy again (after `recoverAfter`, if set), ddup goes back to them. Endpoints with the same priority are all published together. If no endpoint is healthy, DNS is left unchanged
     - `host`: Optional hostname to include in the requests, when the request is made to an IP address or to a hostname different from the desired one
 
 ### Providers Configuration

@@ -117,3 +117,50 @@ func TestValidateExpectStatus_InConfig(t *testing.T) {
 	assert.Contains(t, err.Error(), "test.example.com")
 	assert.Contains(t, err.Error(), "healthChecks.expectStatus")
 }
+
+func TestValidateEndpointPriority(t *testing.T) {
+	tests := []struct {
+		name      string
+		priority  int
+		expectErr string
+	}{
+		{name: "default", priority: 0},
+		{name: "positive", priority: 1},
+		{name: "large", priority: 1000},
+		{name: "negative", priority: -1, expectErr: "domain test.example.com endpoint 1 is invalid: priority must not be negative"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := &Config{
+				Providers: map[string]ConfigProvider{"test": {Cloudflare: &CloudflareConfig{}}},
+				Domains: []ConfigDomain{
+					{
+						RecordName: "test.example.com",
+						Provider:   "test",
+						Endpoints: []*ConfigEndpoint{
+							{
+								URL: "https://a.example.com/health",
+								IP:  "192.0.2.1",
+							},
+							{
+								URL:      "https://b.example.com/health",
+								IP:       "192.0.2.2",
+								Priority: tc.priority,
+							},
+						},
+					},
+				},
+			}
+
+			err := cfg.Validate(slog.Default())
+			if tc.expectErr != "" {
+				require.ErrorContains(t, err, tc.expectErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.priority, cfg.Domains[0].Endpoints[1].Priority)
+		})
+	}
+}

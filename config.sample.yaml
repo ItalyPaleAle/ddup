@@ -38,6 +38,20 @@ domains:
       - name: "foo2"
         url: "http://192.168.1.201:9000/health"
         ip: "192.168.1.201"
+  - recordName: "app.example.com"
+    provider: "example-provider-1"
+    ttl: 120
+    endpoints:
+      # Endpoints have priority 0 by default, and lower values are preferred
+      # DNS only contains the healthy endpoints with the lowest priority value
+      - name: "primary"
+        url: "http://192.168.1.50:8080/health"
+        ip: "192.168.1.50"
+      # Backup, published only while "primary" is unhealthy
+      - name: "backup"
+        url: "http://203.0.113.10:8080/health"
+        ip: "203.0.113.10"
+        priority: 1
 
 # Provider Configuration
 providers:
