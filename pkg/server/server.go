@@ -16,6 +16,7 @@ import (
 	"github.com/rs/cors"
 	sloghttp "github.com/samber/slog-http"
 
+	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 )
@@ -106,6 +107,16 @@ func (s *Server) initAppServer() (err error) {
 
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
 		respondWithJSON(r.Context(), w, s.hc.GetAllDomainsStatus())
+	})
+
+	// Version of the running build, shown in the footer of the dashboard
+	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
+		respondWithJSON(r.Context(), w, buildInfoResponse{
+			Version:   buildinfo.AppVersion,
+			BuildID:   buildinfo.BuildId,
+			Commit:    buildinfo.CommitHash,
+			BuildDate: buildinfo.BuildDate,
+		})
 	})
 
 	mux.HandleFunc("POST /api/check", func(w http.ResponseWriter, r *http.Request) {
@@ -244,6 +255,15 @@ func (s *Server) startAppServer(ctx context.Context, appSrvErrCh chan<- error) e
 	}()
 
 	return nil
+}
+
+// buildInfoResponse describes the build of the running app
+// The values other than the version are empty for a build that doesn't set them (a development build)
+type buildInfoResponse struct {
+	Version   string `json:"version"`
+	BuildID   string `json:"buildId,omitempty"`
+	Commit    string `json:"commit,omitempty"`
+	BuildDate string `json:"buildDate,omitempty"`
 }
 
 func respondWithJSON(ctx context.Context, w http.ResponseWriter, data any) {

@@ -32,6 +32,13 @@ interface DomainStatus {
 
 type DomainsResponse = Record<string, DomainStatus>
 
+interface BuildInfo {
+  version: string
+  buildId?: string
+  commit?: string
+  buildDate?: string
+}
+
 type Domain = {
   name: string
   status: DomainStatus
@@ -65,6 +72,19 @@ const SummarySegment = ({
   </div>
 )
 
+// The version of the running build, at the bottom of the page
+// The build date and commit are left out when the build doesn't set them (a development build)
+const Footer = ({ info }: { info: BuildInfo }) => {
+  const built = info.buildDate ? new Date(info.buildDate) : null
+  const parts = [
+    `ddup ${info.version}`,
+    built && !Number.isNaN(built.getTime()) ? `built ${built.toLocaleString()}` : null,
+    info.commit ? info.commit.slice(0, 7) : null,
+  ].filter(Boolean)
+
+  return <footer className="pt-2 text-center text-xs break-words text-muted-foreground">{parts.join(' · ')}</footer>
+}
+
 const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const [domains, setDomains] = useState<Domain[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -73,6 +93,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [isChecking, setIsChecking] = useState(false)
+  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
 
   const fetchDomains = useCallback(async (): Promise<void> => {
     setIsLoading(true)
@@ -102,6 +123,17 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     } finally {
       setIsLoading(false)
     }
+  }, [endpoint])
+
+  // The version doesn't change while the page is open, so it's loaded once
+  // The footer is left out if the request fails
+  useEffect(() => {
+    const controller = new AbortController()
+    fetch(endpoint + '/api/info', { signal: controller.signal })
+      .then((response) => (response.ok ? (response.json() as Promise<BuildInfo>) : null))
+      .then((info) => setBuildInfo(info))
+      .catch(() => undefined)
+    return () => controller.abort()
   }, [endpoint])
 
   useEffect(() => {
@@ -457,6 +489,8 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
             <span className="ml-2">Loading domain data...</span>
           </div>
         )}
+
+        {buildInfo && <Footer info={buildInfo} />}
       </div>
     </div>
   )

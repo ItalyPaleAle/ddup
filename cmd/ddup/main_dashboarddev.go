@@ -6,12 +6,19 @@ import (
 	"context"
 	"time"
 
+	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 )
 
 func init() {
 	// Mock the status provider so it returns static data
 	statusProvider = &mockStatusProvider{}
+
+	// Sample build info, shown in the footer of the dashboard
+	buildinfo.AppVersion = "1.2.3"
+	buildinfo.BuildId = "sample"
+	buildinfo.CommitHash = "0123456789abcdef0123456789abcdef01234567"
+	buildinfo.BuildDate = "2026-01-02T03:04:05Z"
 }
 
 type mockStatusProvider struct {

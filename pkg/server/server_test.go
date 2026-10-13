@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 )
 
@@ -107,4 +109,45 @@ func TestStaticCacheControl(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Cache-Control"), "immutable")
 	assert.Contains(t, rec.Header().Get("Cache-Control"), "max-age=31536000")
+}
+
+func TestInfoEndpoint(t *testing.T) {
+	// Sets the build info for the duration of the test
+	setBuildInfo := func(t *testing.T, version, id, commit, date string) {
+		t.Helper()
+		oldVersion, oldID, oldCommit, oldDate := buildinfo.AppVersion, buildinfo.BuildId, buildinfo.CommitHash, buildinfo.BuildDate
+		t.Cleanup(func() {
+			buildinfo.AppVersion, buildinfo.BuildId, buildinfo.CommitHash, buildinfo.BuildDate = oldVersion, oldID, oldCommit, oldDate
+		})
+		buildinfo.AppVersion, buildinfo.BuildId, buildinfo.CommitHash, buildinfo.BuildDate = version, id, commit, date
+	}
+
+	get := func(t *testing.T) (res buildInfoResponse) {
+		t.Helper()
+		s, err := NewServer(NewServerOpts{HealthChecker: &fakeProvider{}})
+		require.NoError(t, err)
+		rec := httptest.NewRecorder()
+		s.handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/info", nil))
+		require.Equal(t, http.StatusOK, rec.Code)
+
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &res))
+		return res
+	}
+
+	t.Run("returns the build", func(t *testing.T) {
+		setBuildInfo(t, "1.2.3", "build-42", "0123456789abcdef", "2026-01-02T03:04:05Z")
+
+		assert.Equal(t, buildInfoResponse{
+			Version:   "1.2.3",
+			BuildID:   "build-42",
+			Commit:    "0123456789abcdef",
+			BuildDate: "2026-01-02T03:04:05Z",
+		}, get(t))
+	})
+
+	t.Run("a development build has only the default version", func(t *testing.T) {
+		setBuildInfo(t, "canary", "", "", "")
+
+		assert.Equal(t, buildInfoResponse{Version: "canary"}, get(t))
+	})
 }
