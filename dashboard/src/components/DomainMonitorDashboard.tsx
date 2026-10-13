@@ -417,6 +417,17 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>Provider: {domain.status.provider}</span>
+                      <span>
+                        <Clock className="inline h-3 w-3 mr-1" />
+                        {new Date(domain.status.lastUpdated).toLocaleString()}
+                      </span>
+                    </div>
+                    {/* The history is about the endpoints, so its button is on the line that counts them */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 text-sm text-muted-foreground">
+                      <span>
+                        {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
+                        endpoints healthy
+                      </span>
                       <EndpointHistory
                         domain={domain.name}
                         lastUpdated={domain.status.lastUpdated}
@@ -424,10 +435,6 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                         open={historyDomain === domain.name}
                         onOpenChange={(open) => setHistoryDomain(open ? domain.name : null)}
                       />
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
-                      endpoints healthy
                     </div>
                   </CardHeader>
 

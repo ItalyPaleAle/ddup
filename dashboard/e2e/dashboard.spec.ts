@@ -695,11 +695,16 @@ test.describe('endpoint history', () => {
         await expect(historyDialog(page, 'old.example')).toContainText('Healthy since Dec 31, 2025, 11:30 PM')
     })
 
-    test('the time of the last update is the first line of the dialog, not on the card', async ({ page }) => {
+    test('the button is on the line that counts the healthy endpoints', async ({ page }) => {
         const card = domainCard(page, 'history.example')
-        await expect(card).not.toContainText('Last updated')
-        await expect(card.locator('time')).toHaveCount(0)
+        const line = card.getByText('3/4 endpoints healthy').locator('xpath=..')
+        await expect(line.getByRole('button', { name: 'History of history.example' })).toBeVisible()
 
+        // The time of the last update stays in the second row of the card
+        await expect(card.getByText('Provider: cloudflare').locator('xpath=..')).toContainText('2026')
+    })
+
+    test('repeats the time of the last update as the first line of the dialog', async ({ page }) => {
         await historyButton(page, 'history.example').click()
         const dialog = historyDialog(page, 'history.example')
         await expect(dialog).toContainText('Last updated: Oct 13, 9:30 AM')
