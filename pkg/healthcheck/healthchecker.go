@@ -10,11 +10,12 @@ import (
 	"slices"
 	"time"
 
+	"github.com/italypaleale/go-kit/utils"
+
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
-	"github.com/italypaleale/ddup/pkg/utils"
 )
 
 // HealthChecker manages health checking and DNS updates
@@ -185,7 +186,7 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		previousPublishIPs := selectLowestPriority(dc.priorities, currentHealthyIPs)
 
 		// Check if the published IPs have changed
-		if !utils.ElementsMatch(previousPublishIPs, publishIPs) {
+		if !utils.StringSlicesMatch(previousPublishIPs, publishIPs) {
 			// Update DNS records
 			if len(publishIPs) > 0 {
 				var res dns.UpdateResult

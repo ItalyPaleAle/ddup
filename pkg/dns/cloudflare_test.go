@@ -407,6 +407,23 @@ func TestCloudflareProvider(t *testing.T) {
 	})
 }
 
+func TestCloudflareProviderDeleteError(t *testing.T) {
+	provider, mockTransport := newCloudflareTestProviderWithMock()
+	mockTransport.SetResponse(http.MethodGet, "/client/v4/zones/test-zone-id/dns_records?name=www.example.com&type=A", &MockResponse{
+		StatusCode: http.StatusOK,
+		Body:       `{"success":true,"errors":[],"result":[{"id":"record-456","type":"A","name":"www.example.com","content":"1.2.3.4","ttl":300}]}`,
+	})
+	setCloudflareEmptyAAAAResponse(mockTransport, "www.example.com")
+	mockTransport.SetResponse(http.MethodDelete, "/client/v4/zones/test-zone-id/dns_records/record-456", &MockResponse{
+		StatusCode: http.StatusInternalServerError,
+		Body:       `{"success":false}`,
+	})
+
+	_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+	require.ErrorContains(t, err, "error deleting record record-456 for IP 1.2.3.4")
+	require.ErrorContains(t, err, "HTTP 500")
+}
+
 // newCloudflareTestProviderWithMock creates a test Cloudflare provider with a mock HTTP client
 func newCloudflareTestProviderWithMock() (*CloudflareProvider, *MockHTTPTransport) {
 	mockClient, mockTransport := NewMockHTTPClient()

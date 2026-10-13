@@ -7,7 +7,7 @@ tool github.com/fchimpan/gomod-age
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.23.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.14.1
-	github.com/italypaleale/go-kit v1.4.0
+	github.com/italypaleale/go-kit v1.4.1
 	github.com/rs/cors v1.11.1
 	github.com/samber/slog-http v1.12.1
 	github.com/stretchr/testify v1.12.1
