@@ -17,8 +17,9 @@ const BUILD_HEADER = 'X-Ddup-Build'
 const GUARD_KEY = 'ddup-reloaded-for-build'
 const GUARD_NAME_PREFIX = 'ddup-reloaded:'
 
-// Without session storage, a reload is allowed at most once in this time
-const FALLBACK_MIN_INTERVAL_MS = 30_000
+// Reloads for the same server build: at most this many, at least this far apart
+const MAX_ATTEMPTS = 3
+const MIN_INTERVAL_MS = 30_000
 
 // The build info in the page, or null if there is none (for example with the Vite dev server) or it's invalid
 function readBuildInfo(): BuildInfo | null {
@@ -43,8 +44,10 @@ export const pageBuildInfo = readBuildInfo()
 interface ReloadRecord {
     // The build of the server that the page was last reloaded for
     build: string
-    // When, in milliseconds since the epoch
+    // When the last reload for that build was done, in milliseconds since the epoch
     at: number
+    // How many reloads were done for that build
+    attempts: number
 }
 
 interface ReloadDecisionInput {
@@ -52,26 +55,22 @@ interface ReloadDecisionInput {
     pageBuild: string | null
     // The build in the header of the response, or null if there is none
     serverBuild: string | null
-    // The last reload done for a server build, if known
+    // The last reload done, if known
     last: ReloadRecord | null
     now: number
-    // False if the record cannot be kept across reloads in the session storage
-    persistent: boolean
 }
 
 // Decides if the page must reload because the server has a different build
-// A reload is done at most once for each server build, which stops loops (for example while two versions answer in turn during an upgrade, or when a proxy caches the page)
-export function shouldReload({ pageBuild, serverBuild, last, now, persistent }: ReloadDecisionInput): boolean {
+// The reload can be answered by an old instance during a rolling update, so it's tried again for the same server build, but at most MAX_ATTEMPTS times and MIN_INTERVAL_MS apart
+// This stops loops (for example when two versions answer in turn, or when a proxy caches the page)
+export function shouldReload({ pageBuild, serverBuild, last, now }: ReloadDecisionInput): boolean {
     if (!pageBuild || !serverBuild || pageBuild === serverBuild) {
         return false
     }
-    if (last && last.build === serverBuild) {
-        return false
+    if (!last || last.build !== serverBuild) {
+        return true
     }
-    if (!persistent && last && now - last.at < FALLBACK_MIN_INTERVAL_MS) {
-        return false
-    }
-    return true
+    return last.attempts < MAX_ATTEMPTS && now - last.at >= MIN_INTERVAL_MS
 }
 
 function parseRecord(text: string | null): ReloadRecord | null {
@@ -80,8 +79,8 @@ function parseRecord(text: string | null): ReloadRecord | null {
     }
     try {
         const rec = JSON.parse(text) as Partial<ReloadRecord> | null
-        if (rec && typeof rec.build === 'string' && typeof rec.at === 'number') {
-            return { build: rec.build, at: rec.at }
+        if (rec && typeof rec.build === 'string' && typeof rec.at === 'number' && typeof rec.attempts === 'number') {
+            return { build: rec.build, at: rec.at, attempts: rec.attempts }
         }
     } catch {
         // Ignore invalid records
@@ -91,20 +90,18 @@ function parseRecord(text: string | null): ReloadRecord | null {
 
 // Reads the last reload from the session storage
 // If it's not available, window.name is used: unlike a variable it survives a reload of the page
-function readRecord(): { last: ReloadRecord | null; persistent: boolean } {
-    let persistent = true
+function readRecord(): ReloadRecord | null {
     let stored: ReloadRecord | null = null
     try {
         stored = parseRecord(sessionStorage.getItem(GUARD_KEY))
     } catch {
-        persistent = false
+        // Use window.name only
     }
 
     const named = window.name.startsWith(GUARD_NAME_PREFIX)
         ? parseRecord(window.name.slice(GUARD_NAME_PREFIX.length))
         : null
-    const last = stored && named ? (stored.at >= named.at ? stored : named) : (stored ?? named)
-    return { last, persistent }
+    return stored && named ? (stored.at >= named.at ? stored : named) : (stored ?? named)
 }
 
 function writeRecord(record: ReloadRecord): void {
@@ -121,13 +118,14 @@ function writeRecord(record: ReloadRecord): void {
 // Reloads the page if the response is from a server with a different build
 export function checkServerBuild(response: Response): void {
     const serverBuild = response.headers.get(BUILD_HEADER)
-    const { last, persistent } = readRecord()
+    const last = readRecord()
     const now = Date.now()
-    if (!shouldReload({ pageBuild: pageBuildInfo?.build ?? null, serverBuild, last, now, persistent })) {
+    if (!shouldReload({ pageBuild: pageBuildInfo?.build ?? null, serverBuild, last, now })) {
         return
     }
 
-    writeRecord({ build: serverBuild as string, at: now })
+    const attempts = last && last.build === serverBuild ? last.attempts + 1 : 1
+    writeRecord({ build: serverBuild as string, at: now, attempts })
     window.location.reload()
 }
 
