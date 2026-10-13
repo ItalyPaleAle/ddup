@@ -524,3 +524,128 @@ func TestHealthChecker_ForceCheck(t *testing.T) {
 	err = hc.ForceCheck(canceled)
 	require.Error(t, err)
 }
+
+func TestNewHealthChecker(t *testing.T) {
+	cfg := config.Get()
+	prevDomains := cfg.Domains
+	t.Cleanup(func() {
+		cfg.Domains = prevDomains
+	})
+
+	cfg.Domains = []config.ConfigDomain{
+		{
+			RecordName:   "a.example.com",
+			Provider:     "p1",
+			TTL:          60,
+			HealthChecks: config.ConfigHealthChecks{Attempts: 3, RecoverAfter: 2},
+			Endpoints: []*config.ConfigEndpoint{
+				{Name: "primary", URL: "http://192.0.2.1/health", IP: "192.0.2.1"},
+				{Name: "backup", URL: "http://192.0.2.2/health", IP: "192.0.2.2", Priority: 1},
+			},
+		},
+		{
+			RecordName: "b.example.com",
+			Provider:   "p2",
+			TTL:        120,
+			Endpoints: []*config.ConfigEndpoint{
+				{Name: "only", URL: "http://192.0.2.3/health", IP: "192.0.2.3"},
+			},
+		},
+	}
+
+	t.Run("creates a checker for each domain", func(t *testing.T) {
+		p1 := dns.NewMockProvider(false)
+		p2 := dns.NewMockProvider(false)
+		hc, err := NewHealthChecker(map[string]dns.Provider{"p1": p1, "p2": p2}, nil)
+		require.NoError(t, err)
+		require.Len(t, hc.domainCheckers, 2)
+		assert.NotNil(t, hc.forceCh)
+
+		a := hc.domainCheckers["a.example.com"]
+		require.NotNil(t, a)
+		assert.Same(t, p1, a.provider)
+		assert.Equal(t, 60, a.ttl)
+		assert.Equal(t, map[string]int{"192.0.2.1": 0, "192.0.2.2": 1}, a.priorities)
+		assert.Equal(t, "a.example.com", a.checker.GetDomain())
+		assert.Equal(t, 3, a.checker.GetMaxAttempts())
+		assert.Equal(t, 2, a.checker.GetRecoverAfter())
+
+		b := hc.domainCheckers["b.example.com"]
+		require.NotNil(t, b)
+		assert.Same(t, p2, b.provider)
+		assert.Equal(t, 120, b.ttl)
+		assert.Equal(t, checker.DefaultAttempts, b.checker.GetMaxAttempts())
+		assert.Equal(t, 1, b.checker.GetRecoverAfter())
+
+		// Nothing is reported before the first check
+		assert.Empty(t, hc.GetDomainStatus("a.example.com").Endpoints)
+	})
+
+	t.Run("forced check before Run times out", func(t *testing.T) {
+		hc, err := NewHealthChecker(map[string]dns.Provider{"p1": dns.NewMockProvider(false), "p2": dns.NewMockProvider(false)}, nil)
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+		err = hc.ForceCheck(ctx)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+	})
+
+	t.Run("provider not configured", func(t *testing.T) {
+		_, err := NewHealthChecker(map[string]dns.Provider{"p1": dns.NewMockProvider(false)}, nil)
+		require.ErrorContains(t, err, "domain 'b.example.com' references DNS provider 'p2' that is not configured")
+	})
+
+	t.Run("nil provider", func(t *testing.T) {
+		_, err := NewHealthChecker(map[string]dns.Provider{"p1": dns.NewMockProvider(false), "p2": nil}, nil)
+		require.ErrorContains(t, err, "DNS provider 'p2' that is not configured")
+	})
+}
+
+func TestHealthChecker_RunOnInterval(t *testing.T) {
+	ep1 := &config.ConfigEndpoint{Name: "endpoint1", IP: "1.1.1.1"}
+	mockChecker := &checker.MockChecker{
+		Domain:      "example.com",
+		MaxAttempts: 1,
+		Results:     []checker.Result{{Endpoint: ep1, Healthy: false, Error: errors.New("down")}},
+	}
+	hc := &HealthChecker{
+		forceCh: make(chan forceRequest, 1),
+		domainCheckers: map[string]*domainChecker{
+			"example.com": {checker: mockChecker, ttl: 60, failedIPs: make(map[string]int), provider: dns.NewMockProvider(false)},
+		},
+	}
+
+	cfg := config.Get()
+	prev := cfg.Interval
+	cfg.Interval = 20 * time.Millisecond
+
+	ctx, cancel := context.WithCancel(t.Context())
+	runDone := make(chan error, 1)
+	go func() {
+		runDone <- hc.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		// Stop Run before restoring the shared config
+		cancel()
+		<-runDone
+		cfg.Interval = prev
+	})
+
+	// The endpoint fails every check, so its failure count is the number of checks that ran
+	require.Eventually(t, func() bool {
+		st := hc.GetDomainStatus("example.com")
+		return len(st.Endpoints) == 1 && st.Endpoints[0].FailureCount >= 3
+	}, 5*time.Second, 5*time.Millisecond)
+
+	// Run returns without error once the context is canceled
+	cancel()
+	select {
+	case err := <-runDone:
+		require.NoError(t, err)
+		// Put the result back for the cleanup function
+		runDone <- nil
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after the context was canceled")
+	}
+}

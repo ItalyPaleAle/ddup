@@ -1,6 +1,7 @@
 package healthcheck
 
 import (
+	"slices"
 	"time"
 )
 
@@ -49,14 +50,17 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 		})
 	}
 	for ip, attempts := range unhealthy {
-		// If the number of attempts is less than the max, the endpoint was in the healthy list too
-		if attempts >= dc.checker.GetMaxAttempts() {
-			endpoints = append(endpoints, DomainStatusEndpoint{
-				Healthy:      false,
-				IP:           ip,
-				FailureCount: attempts,
-			})
+		// Endpoints that are still in the healthy list were added above
+		// All others are not in DNS, including those that failed fewer than the max attempts but were never healthy, such as at startup
+		if slices.Contains(healthy, ip) {
+			continue
 		}
+
+		endpoints = append(endpoints, DomainStatusEndpoint{
+			Healthy:      false,
+			IP:           ip,
+			FailureCount: attempts,
+		})
 	}
 
 	return DomainStatus{
