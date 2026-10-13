@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "type-check": "tsc --noEmit",
-    "build:favicons": "node scripts/build-favicons.mjs",
+    "type-check": "tsc --noEmit && tsc -p scripts",
+    "build:favicons": "node --experimental-strip-types scripts/build-favicons.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier -w .",

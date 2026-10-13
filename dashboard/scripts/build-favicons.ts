@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --experimental-strip-types
 // Pre-renders the icons from the geometry in src/lib/favicon-shapes.ts
 //
 // - src/assets/favicons/{healthy,warning,unhealthy,unknown}.png: the tab icons, one for each status, 64x64 (the browser scales a single size to what it needs)
@@ -7,7 +7,6 @@
 //
 // The PNGs are committed, so the normal build doesn't need this: run it with "pnpm run build:favicons" only after changing the shapes
 // It needs Chrome or Chromium: set CHROME_BIN, or have google-chrome, chromium or chromium-browser in the PATH
-// Node.js 24 is needed to import the TypeScript file without a flag
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,9 +16,9 @@ import { overallStatuses, svgMarkup } from '../src/lib/favicon-shapes.ts'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-const findChrome = () => {
+const findChrome = (): string => {
     const candidates = [process.env.CHROME_BIN, 'google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser']
-    for (const candidate of candidates.filter(Boolean)) {
+    for (const candidate of candidates.filter((c): c is string => !!c)) {
         try {
             execFileSync(candidate, ['--version'], { stdio: 'ignore' })
             return candidate
@@ -35,7 +34,7 @@ const chrome = findChrome()
 const tmp = mkdtempSync(path.join(tmpdir(), 'ddup-favicons-'))
 
 // Renders the SVG markup to a PNG of size x size pixels, with a transparent background
-const render = (svg, size, outFile) => {
+const render = (svg: string, size: number, outFile: string): void => {
     const page = path.join(tmp, 'page.html')
     writeFileSync(
         page,

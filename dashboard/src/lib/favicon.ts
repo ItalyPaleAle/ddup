@@ -4,7 +4,7 @@ import unhealthy from '@/assets/favicons/unhealthy.png?no-inline'
 import unknown from '@/assets/favicons/unknown.png?no-inline'
 import type { OverallStatus } from '@/lib/favicon-shapes'
 
-// The icons are pre-rendered by scripts/build-favicons.mjs and bundled as separate cacheable files (not inlined), so nothing is drawn at runtime
+// The icons are pre-rendered by scripts/build-favicons.ts and bundled as separate cacheable files (not inlined), so nothing is drawn at runtime
 const faviconUrls: Record<OverallStatus, string> = { healthy, warning, unhealthy, unknown }
 
 // Updates the icon of the tab
