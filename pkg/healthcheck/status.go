@@ -16,6 +16,12 @@ type DomainStatusEndpoint struct {
 	Healthy      bool   `json:"healthy"`
 	IP           string `json:"ip"`
 	FailureCount int    `json:"failureCount,omitempty"`
+	// When the endpoint last changed state, from healthy to failing or the other way around
+	Since *time.Time `json:"since,omitempty"`
+	// True if `since` is when ddup first checked the endpoint, not a state change, so the real start is unknown
+	SinceStart bool `json:"sinceStart,omitempty"`
+	// Last time a check of the endpoint failed
+	LastFailure *time.Time `json:"lastFailure,omitempty"`
 }
 
 func (hc *HealthChecker) GetAllDomainsStatus() map[string]DomainStatus {
@@ -41,13 +47,26 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 
 	// Endpoints in the unhealthy list could also be in the healthy one,
 	// if they failed a recent health check but still less than the max attempts
+	newEndpoint := func(ip string, isHealthy bool, failureCount int) DomainStatusEndpoint {
+		e := DomainStatusEndpoint{
+			Healthy:      isHealthy,
+			IP:           ip,
+			FailureCount: failureCount,
+		}
+		times := dc.getTimes(ip)
+		if times != nil {
+			e.Since = &times.since
+			e.SinceStart = times.sinceStart
+			if !times.lastFailure.IsZero() {
+				e.LastFailure = &times.lastFailure
+			}
+		}
+		return e
+	}
+
 	endpoints := make([]DomainStatusEndpoint, 0, len(healthy)+len(unhealthy))
 	for _, ip := range healthy {
-		endpoints = append(endpoints, DomainStatusEndpoint{
-			Healthy:      true,
-			IP:           ip,
-			FailureCount: unhealthy[ip],
-		})
+		endpoints = append(endpoints, newEndpoint(ip, true, unhealthy[ip]))
 	}
 	for ip, attempts := range unhealthy {
 		// Endpoints that are still in the healthy list were added above
@@ -56,11 +75,7 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 			continue
 		}
 
-		endpoints = append(endpoints, DomainStatusEndpoint{
-			Healthy:      false,
-			IP:           ip,
-			FailureCount: attempts,
-		})
+		endpoints = append(endpoints, newEndpoint(ip, false, attempts))
 	}
 
 	return DomainStatus{

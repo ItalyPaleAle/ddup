@@ -140,13 +140,13 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 2},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 	})
 
 	t.Run("recovering endpoint stays unhealthy until it is added back", func(t *testing.T) {
@@ -160,7 +160,7 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 
 		// First successful check: still recovering
 		mc.Results = []checker.Result{healthy(ep1), healthy(ep2)}
@@ -168,14 +168,14 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 
 		// Second successful check: added back
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: true, IP: "2.2.2.2"},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 	})
 
 	t.Run("standby endpoint is healthy even if not published", func(t *testing.T) {
@@ -189,7 +189,7 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: true, IP: "2.2.2.2"},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 	})
 
 	t.Run("DNS error is reported", func(t *testing.T) {
@@ -203,6 +203,18 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.Contains(t, status.Error, "mock error")
 		assert.False(t, status.LastUpdated.Before(before))
 	})
+}
+
+// withoutTimes clears the fields about state changes, which since_test.go covers
+func withoutTimes(endpoints []DomainStatusEndpoint) []DomainStatusEndpoint {
+	res := make([]DomainStatusEndpoint, len(endpoints))
+	for i, e := range endpoints {
+		e.Since = nil
+		e.SinceStart = false
+		e.LastFailure = nil
+		res[i] = e
+	}
+	return res
 }
 
 func TestGetAllDomainsStatus(t *testing.T) {
