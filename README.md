@@ -1,4 +1,6 @@
-<img src="icon.png" alt="ddup icon" width="96" align="right" />
+<div align="center">
+  <img src="icon.png" alt="ddup icon" width="96" />
+</div>
 
 # ddup - Dynamic DNS Health Checker
 
