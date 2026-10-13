@@ -16,7 +16,6 @@ import (
 	"github.com/rs/cors"
 	sloghttp "github.com/samber/slog-http"
 
-	"github.com/italypaleale/ddup/pkg/buildinfo"
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 )
@@ -80,6 +79,7 @@ func (s *Server) init() error {
 
 func (s *Server) initAppServer() (err error) {
 	cfg := config.Get()
+	info := newBuildInfo()
 
 	// Create the mux
 	mux := http.NewServeMux()
@@ -109,16 +109,6 @@ func (s *Server) initAppServer() (err error) {
 		respondWithJSON(r.Context(), w, s.hc.GetAllDomainsStatus())
 	})
 
-	// Version of the running build, shown in the footer of the dashboard
-	mux.HandleFunc("GET /api/info", func(w http.ResponseWriter, r *http.Request) {
-		respondWithJSON(r.Context(), w, buildInfoResponse{
-			Version:   buildinfo.AppVersion,
-			BuildID:   buildinfo.BuildId,
-			Commit:    buildinfo.CommitHash,
-			BuildDate: buildinfo.BuildDate,
-		})
-	})
-
 	mux.HandleFunc("POST /api/check", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(headerRequestedBy) != requestedByValue {
 			errCheckForbidden.WriteResponse(r.Context(), w)
@@ -143,17 +133,19 @@ func (s *Server) initAppServer() (err error) {
 	})
 
 	// Add static files (includes dashboard)
-	err = registerStatic(mux)
+	err = registerStatic(mux, info)
 	if err != nil {
 		return fmt.Errorf("failed to register static server: %w", err)
 	}
 
-	middlewares := make([]Middleware, 0, 4)
+	middlewares := make([]Middleware, 0, 5)
 	middlewares = append(middlewares,
 		// Recover from panics
 		sloghttp.Recovery,
 		// Limit request body to 1KB
 		MiddlewareMaxBodySize(1<<10),
+		// Tell clients which build answers the API requests
+		MiddlewareBuildHeader(info.Build),
 	)
 
 	if cfg.Dev.EnableCORS {
@@ -255,15 +247,6 @@ func (s *Server) startAppServer(ctx context.Context, appSrvErrCh chan<- error) e
 	}()
 
 	return nil
-}
-
-// buildInfoResponse describes the build of the running app
-// The values other than the version are empty for a build that doesn't set them (a development build)
-type buildInfoResponse struct {
-	Version   string `json:"version"`
-	BuildID   string `json:"buildId,omitempty"`
-	Commit    string `json:"commit,omitempty"`
-	BuildDate string `json:"buildDate,omitempty"`
 }
 
 func respondWithJSON(ctx context.Context, w http.ResponseWriter, data any) {

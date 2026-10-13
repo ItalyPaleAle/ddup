@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { apiFetch, pageBuildInfo, type BuildInfo } from '@/lib/build'
 
 interface DomainStatusEndpoint {
   healthy: boolean
@@ -31,13 +32,6 @@ interface DomainStatus {
 }
 
 type DomainsResponse = Record<string, DomainStatus>
-
-interface BuildInfo {
-  version: string
-  buildId?: string
-  commit?: string
-  buildDate?: string
-}
 
 type Domain = {
   name: string
@@ -72,7 +66,7 @@ const SummarySegment = ({
   </div>
 )
 
-// The version of the running build, at the bottom of the page
+// The build that served the page, at the bottom of the page
 // The build date and commit are left out when the build doesn't set them (a development build)
 const Footer = ({ info }: { info: BuildInfo }) => {
   const built = info.buildDate ? new Date(info.buildDate) : null
@@ -93,13 +87,12 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [isChecking, setIsChecking] = useState(false)
-  const [buildInfo, setBuildInfo] = useState<BuildInfo | null>(null)
 
   const fetchDomains = useCallback(async (): Promise<void> => {
     setIsLoading(true)
     setError(null) // Clear previous errors
     try {
-      const response = await fetch(endpoint + '/api/status')
+      const response = await apiFetch(endpoint + '/api/status')
       if (!response.ok) {
         throw new Error(`HTTP error: ${response.status} ${response.statusText}`)
       }
@@ -125,17 +118,6 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     }
   }, [endpoint])
 
-  // The version doesn't change while the page is open, so it's loaded once
-  // The footer is left out if the request fails
-  useEffect(() => {
-    const controller = new AbortController()
-    fetch(endpoint + '/api/info', { signal: controller.signal })
-      .then((response) => (response.ok ? (response.json() as Promise<BuildInfo>) : null))
-      .then((info) => setBuildInfo(info))
-      .catch(() => undefined)
-    return () => controller.abort()
-  }, [endpoint])
-
   useEffect(() => {
     if (!autoRefresh) {
       return
@@ -148,7 +130,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
         setIsLoading(true)
         setError(null)
 
-        const response = await fetch(endpoint + '/api/status', { signal: controller.signal })
+        const response = await apiFetch(endpoint + '/api/status', { signal: controller.signal })
         if (!response.ok) {
           throw new Error(`HTTP error: ${response.status} ${response.statusText}`)
         }
@@ -204,7 +186,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     setIsChecking(true)
     setError(null)
     try {
-      const response = await fetch(endpoint + '/api/check', {
+      const response = await apiFetch(endpoint + '/api/check', {
         method: 'POST',
         // The server requires this header, which blocks cross-site requests
         headers: { 'X-Requested-By': 'ddup-dashboard' },
@@ -490,7 +472,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
           </div>
         )}
 
-        {buildInfo && <Footer info={buildInfo} />}
+        {pageBuildInfo && <Footer info={pageBuildInfo} />}
       </div>
     </div>
   )
