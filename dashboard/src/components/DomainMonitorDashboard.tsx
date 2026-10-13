@@ -37,8 +37,9 @@ type Domain = {
   status: DomainStatus
 }
 
-// Compact count of the domains with a health status, shown next to the search bar
-const SummaryPill = ({
+// One segment of the summary bar: the count of domains with a health status
+// The label is only shown from the sm breakpoint up, and stays available to screen readers
+const SummarySegment = ({
   icon: Icon,
   label,
   title,
@@ -54,13 +55,13 @@ const SummaryPill = ({
   <div
     title={title}
     className={cn(
-      'flex items-center justify-center gap-1.5 rounded-md border bg-card px-3 py-2 text-sm font-medium',
+      'flex items-center justify-center gap-1.5 px-1 py-1.5 sm:gap-2.5 sm:p-2.5 lg:gap-3 lg:p-3.5',
       className
     )}
   >
-    <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-    <span className="text-base leading-none font-bold">{count}</span>
-    <span className="text-xs font-medium">{label}</span>
+    <Icon className="h-4 w-4 shrink-0 sm:h-5 sm:w-5 lg:h-6 lg:w-6" aria-hidden="true" />
+    <span className="text-base leading-none font-bold sm:text-2xl lg:text-3xl">{count}</span>
+    <span className="sr-only text-[13px] font-medium text-muted-foreground sm:not-sr-only lg:text-sm">{label}</span>
   </div>
 )
 
@@ -292,45 +293,44 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
           </div>
         </div>
 
-        {/* Search bar and summary of the domains, on one row */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full max-w-md">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search domains or IP addresses..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        {/* Search bar */}
+        <div className="relative w-full max-w-md">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search domains or IP addresses..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          />
+        </div>
+
+        {/* Summary of the domains: three equal segments in one bar */}
+        {!error && domains.length > 0 && (
+          <div className="grid grid-cols-3 divide-x overflow-hidden rounded-md border bg-card">
+            <SummarySegment
+              icon={CheckCircle}
+              label="Healthy"
+              title="Healthy domains"
+              count={healthyDomains}
+              className="text-green-600 dark:text-green-400"
+            />
+            <SummarySegment
+              icon={AlertTriangle}
+              label="Warning"
+              title="Domains with some unhealthy endpoints"
+              count={warningDomains}
+              className="text-yellow-600 dark:text-yellow-400"
+            />
+            <SummarySegment
+              icon={XCircle}
+              label="Unhealthy"
+              title="Unhealthy domains"
+              count={unhealthyDomains}
+              className="text-red-600 dark:text-red-400"
             />
           </div>
-
-          {!error && domains.length > 0 && (
-            <div className="grid grid-cols-3 gap-2 sm:flex">
-              <SummaryPill
-                icon={CheckCircle}
-                label="Healthy"
-                title="Healthy domains"
-                count={healthyDomains}
-                className="text-green-600 dark:text-green-400"
-              />
-              <SummaryPill
-                icon={AlertTriangle}
-                label="Warning"
-                title="Domains with some unhealthy endpoints"
-                count={warningDomains}
-                className="text-yellow-600 dark:text-yellow-400"
-              />
-              <SummaryPill
-                icon={XCircle}
-                label="Unhealthy"
-                title="Unhealthy domains"
-                count={unhealthyDomains}
-                className="text-red-600 dark:text-red-400"
-              />
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Error Message */}
         {error && (
