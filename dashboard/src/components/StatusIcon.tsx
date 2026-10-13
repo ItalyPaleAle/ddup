@@ -1,6 +1,6 @@
-import { badgeLayers, iconLayers, type IconLayer, type OverallStatus } from '@/lib/favicon'
+import { layersFor, type IconLayer, type OverallStatus } from '@/lib/favicon-shapes'
 
-// The icon of the tab as an inline SVG, drawn from the same shapes
+// The icon of the tab as an inline SVG, drawn from the same shapes as the pre-rendered PNGs
 export const StatusIcon = ({ status, className }: { status: OverallStatus; className?: string }) => (
   <svg
     viewBox="0 0 64 64"
@@ -10,7 +10,7 @@ export const StatusIcon = ({ status, className }: { status: OverallStatus; class
     strokeLinecap="round"
     strokeLinejoin="round"
   >
-    {[...iconLayers, ...badgeLayers(status)].map((layer: IconLayer, i) => (
+    {layersFor(status).map((layer: IconLayer, i) => (
       <path key={i} d={layer.d} fill={layer.fill ?? 'none'} stroke={layer.stroke} strokeWidth={layer.strokeWidth} />
     ))}
   </svg>

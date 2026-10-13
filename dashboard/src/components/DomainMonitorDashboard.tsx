@@ -15,7 +15,8 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { faviconDataUrl, setFavicon, type OverallStatus } from '@/lib/favicon'
+import { setFavicon } from '@/lib/favicon'
+import type { OverallStatus } from '@/lib/favicon-shapes'
 import { StatusIcon } from '@/components/StatusIcon'
 
 interface DomainStatusEndpoint {
@@ -208,10 +209,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     overallStatus = 'healthy'
   }
   useEffect(() => {
-    const icon = faviconDataUrl(overallStatus)
-    if (icon) {
-      setFavicon(icon)
-    }
+    setFavicon(overallStatus)
   }, [overallStatus])
 
   const healthyDomains = filteredDomains.filter((d) => getDomainStatus(d) === 'healthy').length

@@ -1,3 +1,5 @@
+<img src="icon.png" alt="ddup icon" width="96" align="right">
+
 # ddup - Dynamic DNS Health Checker
 
 ddup periodically checks the health of your services and updates the DNS records pointing to healthy deployments.
