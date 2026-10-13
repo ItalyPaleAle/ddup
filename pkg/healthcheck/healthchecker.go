@@ -49,6 +49,7 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 		dcs[d.RecordName] = &domainChecker{
 			checker:    checker.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics),
 			ttl:        d.TTL,
+			priorities: endpointPriorities(d.Endpoints),
 			failedIPs:  make(map[string]int, 0),
 			recovering: make(map[string]int, 0),
 			provider:   provider,
@@ -178,12 +179,17 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		}
 		dc.setRecovering(recovering)
 
-		// Check if healthy IPs have changed
-		if !utils.ElementsMatch(currentHealthyIPs, newHealthyIPs) {
+		// Only the healthy endpoints with the lowest priority value are published
+		// The previous selection is derived from the previous healthy endpoints in the same way, so we only touch DNS when what's published changes
+		publishIPs := selectLowestPriority(dc.priorities, newHealthyIPs)
+		previousPublishIPs := selectLowestPriority(dc.priorities, currentHealthyIPs)
+
+		// Check if the published IPs have changed
+		if !utils.ElementsMatch(previousPublishIPs, publishIPs) {
 			// Update DNS records
-			if len(newHealthyIPs) > 0 {
+			if len(publishIPs) > 0 {
 				var res dns.UpdateResult
-				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, newHealthyIPs)
+				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, publishIPs)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					dc.setError("Error updating DNS records: " + err.Error())
@@ -193,15 +199,15 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 				}
 
 				if res.Changed {
-					domainLog.InfoContext(ctx, "Updated DNS records", "ips", newHealthyIPs, "previous", res.Previous)
+					domainLog.InfoContext(ctx, "Updated DNS records", "ips", publishIPs, "previous", res.Previous)
 				} else {
-					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", newHealthyIPs)
+					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", publishIPs)
 				}
 			} else {
 				domainLog.WarnContext(ctx, "No healthy endpoints found, not updating DNS")
 			}
 		} else {
-			domainLog.DebugContext(ctx, "Healthy IPs unchanged, skipping DNS update", "healthy", newHealthyIPs)
+			domainLog.DebugContext(ctx, "Published IPs unchanged, skipping DNS update", "healthy", newHealthyIPs, "published", publishIPs)
 		}
 
 		// Update the stored previous IPs
