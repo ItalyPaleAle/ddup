@@ -15,7 +15,6 @@ export interface BuildInfo {
 const BUILD_ELEMENT_ID = 'ddup-build'
 const BUILD_HEADER = 'X-Ddup-Build'
 const GUARD_KEY = 'ddup-reloaded-for-build'
-const GUARD_NAME_PREFIX = 'ddup-reloaded:'
 
 // Reloads for the same server build: at most this many, at least this far apart
 const MAX_ATTEMPTS = 3
@@ -55,14 +54,15 @@ interface ReloadDecisionInput {
     pageBuild: string | null
     // The build in the header of the response, or null if there is none
     serverBuild: string | null
-    // The last reload done, if known
+    // The last reload done, from the session storage
     last: ReloadRecord | null
     now: number
 }
 
 // Decides if the page must reload because the server has a different build
-// The reload can be answered by an old instance during a rolling update, so it's tried again for the same server build, but at most MAX_ATTEMPTS times and MIN_INTERVAL_MS apart
-// This stops loops (for example when two versions answer in turn, or when a proxy caches the page)
+// The page knows its own build, but not how many times it has reloaded: that comes from "last", which is kept across reloads
+// A reload can be answered by an old instance during a rolling update, so it's tried again for the same server build, but at most MAX_ATTEMPTS times and MIN_INTERVAL_MS apart
+// Without this limit, a server that keeps answering with a different build (for example a proxy, or two versions answering in turn) would make the page reload forever
 export function shouldReload({ pageBuild, serverBuild, last, now }: ReloadDecisionInput): boolean {
     if (!pageBuild || !serverBuild || pageBuild === serverBuild) {
         return false
@@ -88,44 +88,29 @@ function parseRecord(text: string | null): ReloadRecord | null {
     return null
 }
 
-// Reads the last reload from the session storage
-// If it's not available, window.name is used: unlike a variable it survives a reload of the page
-function readRecord(): ReloadRecord | null {
-    let stored: ReloadRecord | null = null
-    try {
-        stored = parseRecord(sessionStorage.getItem(GUARD_KEY))
-    } catch {
-        // Use window.name only
-    }
-
-    const named = window.name.startsWith(GUARD_NAME_PREFIX)
-        ? parseRecord(window.name.slice(GUARD_NAME_PREFIX.length))
-        : null
-    return stored && named ? (stored.at >= named.at ? stored : named) : (stored ?? named)
-}
-
-function writeRecord(record: ReloadRecord): void {
-    const text = JSON.stringify(record)
-    try {
-        sessionStorage.setItem(GUARD_KEY, text)
-        return
-    } catch {
-        // Use window.name instead
-    }
-    window.name = GUARD_NAME_PREFIX + text
-}
-
 // Reloads the page if the response is from a server with a different build
+// The attempts are kept in the session storage because a reload forgets everything else
+// Without it the page never reloads on its own, so a failure of the storage can't cause a loop
 export function checkServerBuild(response: Response): void {
     const serverBuild = response.headers.get(BUILD_HEADER)
-    const last = readRecord()
+    let last: ReloadRecord | null
+    try {
+        last = parseRecord(sessionStorage.getItem(GUARD_KEY))
+    } catch {
+        return
+    }
+
     const now = Date.now()
     if (!shouldReload({ pageBuild: pageBuildInfo?.build ?? null, serverBuild, last, now })) {
         return
     }
 
     const attempts = last && last.build === serverBuild ? last.attempts + 1 : 1
-    writeRecord({ build: serverBuild as string, at: now, attempts })
+    try {
+        sessionStorage.setItem(GUARD_KEY, JSON.stringify({ build: serverBuild, at: now, attempts }))
+    } catch {
+        return
+    }
     window.location.reload()
 }
 
