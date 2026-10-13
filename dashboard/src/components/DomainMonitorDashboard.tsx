@@ -224,7 +224,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     return domainMatches || endpointMatches
   })
 
-  // The icon of the tab shows the worst status of all the domains (not only the ones matching the search); the title stays as it is
+  // The icon of the tab shows the worst status of all the domains (not only the ones matching the search)
   const overallCounts = {
     warning: domains.filter((d) => getDomainStatus(d) === 'warning').length,
     unhealthy: domains.filter((d) => getDomainStatus(d) === 'unhealthy').length,

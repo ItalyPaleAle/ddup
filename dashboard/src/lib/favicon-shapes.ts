@@ -87,5 +87,6 @@ export const svgMarkup = (status?: OverallStatus): string => {
         }
         return `<path ${attrs.join(' ')}/>`
     })
+
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" stroke-linecap="round" stroke-linejoin="round">${paths.join('')}</svg>\n`
 }
