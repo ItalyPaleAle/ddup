@@ -119,6 +119,13 @@ type ConfigEndpoint struct {
 	// +required
 	IP string `yaml:"ip"`
 
+	// Optional priority of the endpoint
+	// Only the healthy endpoints with the lowest priority value are published: if none of them are healthy, ddup falls back to the next priority
+	// Endpoints with the same priority are all published together
+	// Must be a non-negative integer
+	// +default 0
+	Priority int `yaml:"priority"`
+
 	// Hostname to include in the requests
 	// This can be used when the request is made to an IP address or to a hostname different from the desired one
 	Host string `yaml:"host"`
@@ -293,6 +300,9 @@ func (c *Config) Validate(logger *slog.Logger) error {
 			}
 			if v.IP == "" {
 				return fmt.Errorf("domain %s endpoint %d is invalid: IP is empty", d.RecordName, ei)
+			}
+			if v.Priority < 0 {
+				return fmt.Errorf("domain %s endpoint %d is invalid: priority must not be negative", d.RecordName, ei)
 			}
 			ip, err := netip.ParseAddr(v.IP)
 			if err != nil {
