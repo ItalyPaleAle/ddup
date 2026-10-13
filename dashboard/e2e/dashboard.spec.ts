@@ -73,6 +73,13 @@ const recoveredDomains: DomainsResponse = {
     },
 }
 
+// Returns a response with only some of the domains
+const pickDomains = (from: DomainsResponse, ...names: string[]): DomainsResponse =>
+    Object.fromEntries(names.map((name) => [name, from[name]]))
+
+// The status shown by the icon in the browser tab and in the header
+type OverallStatus = 'healthy' | 'warning' | 'unhealthy' | 'unknown'
+
 // Mocks the /api/status endpoint
 // Change body to change the next responses
 const mockStatus = async (page: Page, body: DomainsResponse) => {
@@ -115,6 +122,23 @@ const expectSummary = async (page: Page, healthy: number, warning: number, unhea
     await expect(summaryCount(page, 'Healthy domains')).toHaveText(String(healthy))
     await expect(summaryCount(page, 'Domains with some unhealthy endpoints')).toHaveText(String(warning))
     await expect(summaryCount(page, 'Unhealthy domains')).toHaveText(String(unhealthy))
+}
+
+const tabIcon = (page: Page) => page.locator('head link[rel~="icon"]')
+
+const expectStatusIcon = async (page: Page, status: OverallStatus) => {
+    await expect(page.getByRole('img', { name: `Overall status: ${status}`, exact: true })).toBeVisible()
+
+    // The static icon from index.html is replaced, so the browser can't keep using it
+    // The new one is the pre-rendered PNG of the status, bundled as a separate file instead of a data URL
+    await expect(tabIcon(page)).toHaveCount(1)
+    await expect(tabIcon(page)).toHaveAttribute('type', 'image/png')
+    await expect(tabIcon(page)).toHaveAttribute('href', new RegExp(`^/assets/${status}-[\\w-]+\\.png$`))
+
+    const href = await tabIcon(page).evaluate((link: HTMLLinkElement) => link.href)
+    const response = await page.request.get(href)
+    expect(response.ok()).toBe(true)
+    expect(response.headers()['content-type']).toBe('image/png')
 }
 
 test.describe('domain list', () => {
@@ -318,6 +342,119 @@ test.describe('Check now', () => {
 
         await expect(page.getByText(/^Failed to run check: HTTP error: 504/)).toBeVisible()
         await expect(checkNow).toBeEnabled()
+    })
+})
+
+test.describe('status icon', () => {
+    // The icon shows the worst status of all the domains
+    const cases: { when: string; body: DomainsResponse; status: OverallStatus }[] = [
+        {
+            when: 'all the domains are healthy',
+            body: pickDomains(domains, 'healthy.example', 'ipv6.example'),
+            status: 'healthy',
+        },
+        {
+            when: 'a domain has some unhealthy endpoints',
+            body: pickDomains(domains, 'healthy.example', 'partial.example'),
+            status: 'warning',
+        },
+        // This includes a domain with a warning too
+        { when: 'a domain is unhealthy', body: domains, status: 'unhealthy' },
+        { when: 'no domains are configured', body: {}, status: 'unknown' },
+    ]
+    for (const { when, body, status } of cases) {
+        test(`is ${status} when ${when}`, async ({ page }) => {
+            await mockStatus(page, body)
+            await page.goto('/')
+            await expect(page.getByText('Last updated:')).toBeVisible()
+
+            await expectStatusIcon(page, status)
+        })
+    }
+
+    test('is unknown until the status arrives', async ({ page }) => {
+        const response = deferred()
+        await page.route('**/api/status', async (route) => {
+            await response.promise
+            await route.fulfill({ json: domains })
+        })
+        await page.goto('/')
+        await expect(page.getByText('Loading domain data...')).toBeVisible()
+
+        await expectStatusIcon(page, 'unknown')
+
+        response.release()
+        await expect(cardTitles(page)).toHaveText(domainNames)
+        await expectStatusIcon(page, 'unhealthy')
+    })
+
+    test('is unhealthy when the status cannot be loaded', async ({ page }) => {
+        await page.route('**/api/status', (route) => route.fulfill({ status: 500, body: 'boom' }))
+        await page.goto('/')
+        await expect(page.getByText(/^Failed to fetch domain data/)).toBeVisible()
+
+        await expectStatusIcon(page, 'unhealthy')
+    })
+
+    test('is unhealthy when Check now fails, until the status is loaded again', async ({ page }) => {
+        await mockStatus(page, pickDomains(domains, 'healthy.example', 'ipv6.example'))
+        await page.route('**/api/check', (route) =>
+            route.fulfill({
+                status: 504,
+                json: { code: 'api_check_timeout', message: 'The check did not complete in time' },
+            })
+        )
+        await page.goto('/')
+        await expectStatusIcon(page, 'healthy')
+
+        // The domains were healthy when they were last loaded, but the icon shows that something is wrong
+        await page.getByRole('button', { name: 'Check now' }).click()
+        await expect(page.getByText(/^Failed to run check/)).toBeVisible()
+        await expectStatusIcon(page, 'unhealthy')
+
+        await page.getByRole('button', { name: 'More refresh options' }).click()
+        await page.getByRole('menuitem', { name: 'Refresh now' }).click()
+        await expect(cardTitles(page)).toHaveText(['healthy.example', 'ipv6.example'])
+        await expectStatusIcon(page, 'healthy')
+    })
+
+    test('changes when the status changes', async ({ page }) => {
+        const status = await mockStatus(page, pickDomains(domains, 'healthy.example', 'down.example'))
+        await page.goto('/')
+        await expect(domainBadge(page, 'down.example')).toHaveText('Unhealthy')
+        await expectStatusIcon(page, 'unhealthy')
+
+        status.body = pickDomains(recoveredDomains, 'healthy.example', 'down.example')
+        await page.getByRole('button', { name: 'More refresh options' }).click()
+        await page.getByRole('menuitem', { name: 'Refresh now' }).click()
+
+        await expect(domainBadge(page, 'down.example')).toHaveText('Healthy')
+        await expectStatusIcon(page, 'healthy')
+    })
+
+    test('ignores the search', async ({ page }) => {
+        await mockStatus(page, domains)
+        await page.goto('/')
+        await expect(cardTitles(page)).toHaveText(domainNames)
+
+        await page.getByPlaceholder('Search domains or IP addresses...').fill('healthy.example')
+        await expect(cardTitles(page)).toHaveText(['healthy.example'])
+        await expectSummary(page, 1, 0, 0)
+
+        await expectStatusIcon(page, 'unhealthy')
+    })
+
+    test.describe('without JavaScript', () => {
+        test.use({ javaScriptEnabled: false })
+
+        test('index.html has a static icon', async ({ page }) => {
+            await page.goto('/')
+
+            await expect(tabIcon(page)).toHaveAttribute('href', '/favicon.svg')
+            const response = await page.request.get('/favicon.svg')
+            expect(response.ok()).toBe(true)
+            expect(response.headers()['content-type']).toBe('image/svg+xml')
+        })
     })
 })
 
