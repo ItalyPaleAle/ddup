@@ -245,6 +245,7 @@ providers:
 The server has no authentication, so keep it on a trusted network. It exposes:
 
 - `GET /api/status` and `GET /api/status/{recordname}`: current status of the domains
+- Every response of the `/api/` endpoints has an `X-Ddup-Build` header with an identifier of the build: its version, build ID and commit. The server also writes the build information into the page (`index.html`), and the dashboard shows it in its footer. When the header of a response is different from the build the page was loaded with, for example after an upgrade of ddup, the dashboard reloads itself to get the new page (at most 3 times for the same server build, at least 30 seconds apart)
 - `POST /api/check`: runs health checks for all domains right away (the dashboard's "Check now" button), and returns the updated status. The request must include the header `X-Requested-By: ddup-dashboard`, which keeps other websites from triggering it through a visitor's browser. If a check finished less than 5 seconds ago, no new one is run. A forced check counts towards `attempts` and `recoverAfter` like a scheduled one, and the next scheduled check is then a full `interval` later
 - `GET /healthz`: returns 204 when the server is up
 
