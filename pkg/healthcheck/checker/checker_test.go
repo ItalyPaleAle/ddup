@@ -414,7 +414,7 @@ func TestCheckEndpoint_ExpectStatusAndMethod(t *testing.T) {
 					Body:       http.NoBody,
 				},
 			}
-			c := New("test.example.com", nil, tc.cfg, nil)
+			c := New("test.example.com", nil, tc.cfg, nil, nil)
 			c.client.Transport = mockRT
 
 			result := c.checkEndpoint(t.Context(), &config.ConfigEndpoint{URL: "http://example.com/health", IP: "1.1.1.1"})
@@ -425,7 +425,7 @@ func TestCheckEndpoint_ExpectStatusAndMethod(t *testing.T) {
 }
 
 func TestClientForHost_ConcurrentAndCached(t *testing.T) {
-	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil)
+	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil, nil)
 	baseTransport, ok := c.client.Transport.(*http.Transport)
 	require.True(t, ok)
 	baseServerName := ""
@@ -470,7 +470,7 @@ func TestCheckEndpoint_NewConnectionEveryCheck(t *testing.T) {
 	srv.Start()
 	defer srv.Close()
 
-	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil)
+	c := New("test.example.com", nil, config.ConfigHealthChecks{}, nil, nil)
 	endpoint := &config.ConfigEndpoint{
 		URL: srv.URL,
 		IP: "1.1.1.1",
@@ -491,7 +491,7 @@ func TestCheckEndpoint_NewConnectionEveryCheck(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
-		c := New("example.com", nil, config.ConfigHealthChecks{}, nil)
+		c := New("example.com", nil, config.ConfigHealthChecks{}, nil, nil)
 		assert.Equal(t, "example.com", c.GetDomain())
 		assert.Equal(t, DefaultAttempts, c.GetMaxAttempts())
 		assert.Equal(t, DefaultTimeout, c.cfg.Timeout)
@@ -499,14 +499,14 @@ func TestNew(t *testing.T) {
 	})
 
 	t.Run("negative values use the defaults", func(t *testing.T) {
-		c := New("example.com", nil, config.ConfigHealthChecks{Timeout: -time.Second, Attempts: -1, RecoverAfter: -1}, nil)
+		c := New("example.com", nil, config.ConfigHealthChecks{Timeout: -time.Second, Attempts: -1, RecoverAfter: -1}, nil, nil)
 		assert.Equal(t, DefaultAttempts, c.GetMaxAttempts())
 		assert.Equal(t, DefaultTimeout, c.cfg.Timeout)
 		assert.Equal(t, 1, c.GetRecoverAfter())
 	})
 
 	t.Run("configured values", func(t *testing.T) {
-		c := New("example.com", nil, config.ConfigHealthChecks{Timeout: 5 * time.Second, Attempts: 4, RecoverAfter: 3}, nil)
+		c := New("example.com", nil, config.ConfigHealthChecks{Timeout: 5 * time.Second, Attempts: 4, RecoverAfter: 3}, nil, nil)
 		assert.Equal(t, 4, c.GetMaxAttempts())
 		assert.Equal(t, 5*time.Second, c.cfg.Timeout)
 		assert.Equal(t, 3, c.GetRecoverAfter())
@@ -553,7 +553,7 @@ func TestCheckAll(t *testing.T) {
 			{Name: "fail", URL: srv.URL + "/fail", IP: "192.0.2.2"},
 			{Name: "ok2", URL: srv.URL + "/ok", IP: "192.0.2.3"},
 		}
-		c := New("example.com", endpoints, config.ConfigHealthChecks{Timeout: 2 * time.Second}, nil)
+		c := New("example.com", endpoints, config.ConfigHealthChecks{Timeout: 2 * time.Second}, nil, nil)
 
 		results := c.CheckAll(t.Context())
 		require.Len(t, results, numEndpoints)
@@ -571,7 +571,7 @@ func TestCheckAll(t *testing.T) {
 	})
 
 	t.Run("no endpoints", func(t *testing.T) {
-		c := New("example.com", nil, config.ConfigHealthChecks{}, nil)
+		c := New("example.com", nil, config.ConfigHealthChecks{}, nil, nil)
 		assert.Empty(t, c.CheckAll(t.Context()))
 	})
 }
