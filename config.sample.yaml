@@ -92,7 +92,6 @@ ipLookupURLs:
     family: 4
   - url: "https://api.ipify.org"
     family: 4
-  # Verified only over IPv4 networks, see the README
   - url: "https://api6.ipify.org"
     family: 6
 

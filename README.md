@@ -150,8 +150,6 @@ domains:
         ipLookupFamily: 6
 ```
 
-About these services: Akamai and `api.ipify.org` were checked from an IPv4-only network, where they answered with a bare address and agreed with each other. `api6.ipify.org` is IPv6-only and should answer with a bare IPv6 address, but **I could not test it** (no IPv6 route here). I found no documentation of an Akamai host that answers for IPv6 only, so the example has one service for IPv6. If you need a second IPv6 service, add it.
-
 #### Services for one endpoint
 
 An endpoint with `ipLookupFamily` can have its own `ipLookupURLs`, with one or more entries. This is how you give one record several lookup URLs:
