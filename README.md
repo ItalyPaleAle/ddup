@@ -93,6 +93,7 @@ You can find an example of the configuration file, and a description of every op
 ### Global Settings
 
 - `interval`: How often to perform health checks (e.g., "30s", "1m", "5m")
+- `ipLookupURLs`: Optional list of services used to look up the public IP address of endpoints that use `ipLookupFamily`. It replaces the built-in list. See [Dynamic DNS](#dynamic-dns)
 
 ### Domains and Endpoints
 
@@ -108,10 +109,57 @@ You can find an example of the configuration file, and a description of every op
     - `expectStatus`: Status code that means healthy: an exact code (like `204`) or `2xx` for any 2xx code. Default: `2xx`. Redirects are not followed
   - `endpoints`: Array of endpoints for this domain
     - `name`: Friendly name for the endpoint, used for logging (optional)
-    - `url`: HTTP URL to check for health status
-    - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records
+    - `url`: HTTP URL to check for health status. Optional for endpoints that use `ipLookupFamily`, which are then not health-checked
+    - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records. Exactly one of `ip` and `ipLookupFamily` is required
+    - `ipLookupFamily`: `4` or `6`. Instead of a fixed `ip`, ddup looks up the public IP address of the network it runs in and publishes it: `4` creates an A record and `6` an AAAA record. See [Dynamic DNS](#dynamic-dns). Exactly one of `ip` and `ipLookupFamily` is required
     - `priority`: Optional non-negative integer for priority (default: 0). Only the healthy endpoints with the lowest priority value are published, and if none of them are healthy ddup falls back to the next value. When the preferred endpoints are healthy again (after `recoverAfter`, if set), ddup goes back to them. Endpoints with the same priority are all published together. If no endpoint is healthy, DNS is left unchanged
     - `host`: Optional hostname to include in the requests, when the request is made to an IP address or to a hostname different from the desired one
+
+### Dynamic DNS
+
+An endpoint can follow the public IP address of the network ddup runs in (dynamic DNS), instead of having a fixed `ip`. Set `ipLookupFamily` to `4` or `6`:
+
+```yaml
+domains:
+  - recordName: "home.example.com"
+    provider: "example-provider-1"
+    ttl: 300
+    endpoints:
+      - name: "home"
+        ipLookupFamily: 4
+```
+
+On every check, ddup looks up the current public address and publishes it, and updates the record when it changes.
+
+- With no `url` the endpoint isn't health-checked: it's healthy as long as the lookup works. With a `url`, the endpoint is also health-checked as usual, and the address that was looked up is the one published.
+- ddup asks well-known services over HTTPS: `https://whatismyip.akamai.com` and `https://api.ipify.org` for IPv4, and `https://api6.ipify.org` for IPv6. Requests are made over the requested IP version only, so a service sees (and returns) an address of that family. These services see the public address of your network, which is what they are for, plus the fact that a ddup client is asking.
+- The services for the same family are asked at the same time, and the first valid answer is used. The others finish in the background, and ddup logs a warning if they return a different address. A service that fails or returns something that is not valid is skipped; if all of them fail, the lookup fails, the endpoint is unhealthy, and DNS is left as it is until an address is found (like any other unhealthy endpoint).
+- An answer is rejected unless it is just an IP address of the right family: an IPv4 address for `ipLookupFamily: 4` and an IPv6 address for `6`. Loopback, private, link-local, multicast and unspecified addresses are rejected too. Responses are limited to 4 KB, redirects are not followed, and each service has the health check `timeout` to answer.
+- Every lookup opens a new connection, so the answer always reflects the current network path.
+- If two endpoints end up with the same address, it is published once.
+- ddup replaces every `A`/`AAAA` record at the name that isn't the looked-up address, so don't point it at a name that has other records.
+
+To use other services, or one you host yourself, set `ipLookupURLs` at the top level of the configuration. The list **replaces** the built-in one, and it needs at least one service for each family used by an endpoint:
+
+```yaml
+ipLookupURLs:
+  # The service must use https
+  - url: "https://ip.example.com/v4"
+    family: 4
+  # Optional: for services that don't return just the address.
+  # A regular expression with exactly one capture group, which is the address
+  - url: "https://ip.example.com/v6?token=abc"
+    family: 6
+    pattern: '"ip":\s*"([^"]+)"'
+```
+
+Each entry has these keys:
+
+- `url`: URL of the service. Only `https` is accepted, because an answer that can't be authenticated could be spoofed, and ddup would publish it. The URL can contain a token: ddup leaves the query string and credentials out of logs, errors and names.
+- `family`: `4` or `6`, the IP version the service answers for. ddup connects to it only over that version.
+- `pattern`: Optional. By default the response body must contain only the address, as plain text.
+
+Any service that answers with the caller's address works, including a few lines on a VPS you own that echo the client address.
 
 ### Providers Configuration
 

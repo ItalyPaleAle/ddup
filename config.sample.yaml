@@ -53,6 +53,27 @@ domains:
         ip: "203.0.113.10"
         priority: 1
 
+  # Dynamic DNS: the record follows the public IP address of the network ddup runs in
+  # With no "url" the endpoint isn't health-checked; it's healthy while the lookup works
+  - recordName: "home.example.com"
+    provider: "example-provider-1"
+    ttl: 300
+    endpoints:
+      - name: "home"
+        # 4 creates an A record, 6 an AAAA record. Use this instead of "ip"
+        ipLookupFamily: 4
+
+# Optional: the services used to look up the public IP address, replacing the built-in list
+# By default ddup asks Akamai and ipify over HTTPS, at the same time, and uses the first valid answer
+# Each family used by an endpoint needs at least one service. URLs must use https
+# ipLookupURLs:
+#   - url: "https://ip.example.com/v4"
+#     family: 4
+#   # "pattern" is for services that don't return just the address: a regular expression with one capture group
+#   - url: "https://ip.example.com/v6"
+#     family: 6
+#     pattern: '"ip":\s*"([^"]+)"'
+
 # Provider Configuration
 providers:
   example-provider-1:
