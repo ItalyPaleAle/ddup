@@ -54,10 +54,10 @@ func TestPlainIPsFromTargets(t *testing.T) {
 }
 
 func TestCapabilitiesFor(t *testing.T) {
-	assert.Equal(t, Capabilities{}, CapabilitiesFor(&config.ConfigProvider{OVH: &config.OVHConfig{}}))
-	assert.Equal(t, Capabilities{}, CapabilitiesFor(&config.ConfigProvider{Azure: &config.AzureConfig{}}))
-	assert.Equal(t, Capabilities{}, CapabilitiesFor(&config.ConfigProvider{AWSRoute53: &config.AWSRoute53Config{}}))
-	assert.Equal(t, Capabilities{}, CapabilitiesFor(&config.ConfigProvider{GoogleCloudDNS: &config.GoogleCloudDNSConfig{}}))
+	assert.Equal(t, Capabilities{Type: "ovh"}, CapabilitiesFor(&config.ConfigProvider{OVH: &config.OVHConfig{}}))
+	assert.Equal(t, Capabilities{Type: "azure"}, CapabilitiesFor(&config.ConfigProvider{Azure: &config.AzureConfig{}}))
+	assert.Equal(t, Capabilities{Type: "awsRoute53"}, CapabilitiesFor(&config.ConfigProvider{AWSRoute53: &config.AWSRoute53Config{}}))
+	assert.Equal(t, Capabilities{Type: "googleCloudDns"}, CapabilitiesFor(&config.ConfigProvider{GoogleCloudDNS: &config.GoogleCloudDNSConfig{}}))
 
 	assert.Panics(t, func() {
 		CapabilitiesFor(&config.ConfigProvider{})

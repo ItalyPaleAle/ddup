@@ -527,4 +527,6 @@ func (a *AzureProvider) deleteRecord(ctx context.Context, recordName string, rec
 }
 
 // azureCapabilities declares that the provider only publishes A and AAAA records that are not proxied
-var azureCapabilities = Capabilities{}
+var azureCapabilities = Capabilities{
+	Type: "azure",
+}

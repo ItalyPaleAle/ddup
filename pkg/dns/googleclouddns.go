@@ -306,4 +306,6 @@ func (g *GoogleCloudDNSProvider) performRequest(ctx context.Context, method stri
 }
 
 // googleCloudDNSCapabilities declares that the provider only publishes A and AAAA records that are not proxied
-var googleCloudDNSCapabilities = Capabilities{}
+var googleCloudDNSCapabilities = Capabilities{
+	Type: "googleCloudDns",
+}

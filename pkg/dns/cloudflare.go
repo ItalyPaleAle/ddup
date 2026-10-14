@@ -55,6 +55,7 @@ func (c *CloudflareProvider) Capabilities() Capabilities {
 
 // cloudflareCapabilities declares that Cloudflare publishes CNAME records, and that the proxied flag is set with the "cloudflare" provider options
 var cloudflareCapabilities = Capabilities{
+	Type:            "cloudflare",
 	CNAME:           true,
 	ProviderOptions: []string{"cloudflare"},
 }

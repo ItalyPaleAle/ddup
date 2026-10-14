@@ -359,4 +359,6 @@ func awsRoute53UnescapeName(name string) string {
 }
 
 // awsRoute53Capabilities declares that the provider only publishes A and AAAA records that are not proxied
-var awsRoute53Capabilities = Capabilities{}
+var awsRoute53Capabilities = Capabilities{
+	Type: "awsRoute53",
+}

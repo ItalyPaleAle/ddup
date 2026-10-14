@@ -151,7 +151,7 @@ func tunnelTarget(proxied bool) Target {
 
 func TestCloudflareProviderCapabilities(t *testing.T) {
 	provider, _ := newCloudflareTestProviderWithMock()
-	assert.Equal(t, Capabilities{CNAME: true, ProviderOptions: []string{"cloudflare"}}, provider.Capabilities())
+	assert.Equal(t, Capabilities{Type: "cloudflare", CNAME: true, ProviderOptions: []string{"cloudflare"}}, provider.Capabilities())
 }
 
 func TestCloudflareProviderTargets(t *testing.T) {

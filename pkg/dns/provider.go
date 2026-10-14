@@ -47,6 +47,8 @@ func (t Target) String() string {
 
 // Capabilities describes what a DNS provider can publish, beyond plain A and AAAA records
 type Capabilities struct {
+	// Key of the provider in the configuration, such as "cloudflare"
+	Type string
 	// If true, the provider can publish CNAME records
 	CNAME bool
 	// Keys of the endpoint's `providerOptions` that the provider accepts, such as "cloudflare"

@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/netip"
 	"reflect"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -116,8 +119,15 @@ type ConfigEndpoint struct {
 	URL string `yaml:"url"`
 
 	// IP address to include in DNS records when healthy
-	// +required
+	// IPv4 addresses are published as A records and IPv6 addresses as AAAA records
+	// Exactly one of `ip` and `cname` is required
 	IP string `yaml:"ip"`
+
+	// Hostname to publish in a CNAME record when healthy
+	// A CNAME record can't coexist with other records, so an endpoint with `cname` must be the only one with its priority
+	// Only supported by some DNS providers
+	// Exactly one of `ip` and `cname` is required
+	CNAME string `yaml:"cname"`
 
 	// Optional priority of the endpoint
 	// Only the healthy endpoints with the lowest priority value are published: if none of them are healthy, ddup falls back to the next priority
@@ -129,6 +139,48 @@ type ConfigEndpoint struct {
 	// Hostname to include in the requests
 	// This can be used when the request is made to an IP address or to a hostname different from the desired one
 	Host string `yaml:"host"`
+
+	// Options that apply only when the domain uses a specific DNS provider
+	ProviderOptions ConfigEndpointProviderOptions `yaml:"providerOptions"`
+}
+
+// ConfigEndpointProviderOptions contains the options for an endpoint that are specific to a DNS provider
+// Each key can be used only when the domain's provider is the one it is named after
+type ConfigEndpointProviderOptions struct {
+	// Options for the Cloudflare provider
+	Cloudflare *ConfigEndpointCloudflareOptions `yaml:"cloudflare"`
+}
+
+// ConfigEndpointCloudflareOptions contains the options for an endpoint that apply to the Cloudflare provider
+type ConfigEndpointCloudflareOptions struct {
+	// If true, the record is proxied by Cloudflare
+	// Works with both `ip` and `cname`
+	// All endpoints with the same priority must use the same value, because the records published together are either all proxied or all DNS-only
+	// +default false
+	Proxied bool `yaml:"proxied"`
+}
+
+// Keys returns the keys of the options that are set, which are named after the DNS providers they are for
+func (o ConfigEndpointProviderOptions) Keys() []string {
+	var keys []string
+	if o.Cloudflare != nil {
+		keys = append(keys, "cloudflare")
+	}
+	return keys
+}
+
+// Proxied returns true if the records for this endpoint should be proxied by the DNS provider
+func (e *ConfigEndpoint) Proxied() bool {
+	return e.ProviderOptions.Cloudflare != nil && e.ProviderOptions.Cloudflare.Proxied
+}
+
+// Target returns what the endpoint publishes in DNS, which is its IP address or its CNAME hostname
+// It is unique among the endpoints of a domain
+func (e *ConfigEndpoint) Target() string {
+	if e.CNAME != "" {
+		return e.CNAME
+	}
+	return e.IP
 }
 
 type ConfigProvider struct {
@@ -324,24 +376,128 @@ func (c *Config) Validate(logger *slog.Logger) error {
 			if v.URL == "" {
 				return fmt.Errorf("domain %s endpoint %d is invalid: URL is empty", d.RecordName, ei)
 			}
-			if v.IP == "" {
-				return fmt.Errorf("domain %s endpoint %d is invalid: IP is empty", d.RecordName, ei)
-			}
 			if v.Priority < 0 {
 				return fmt.Errorf("domain %s endpoint %d is invalid: priority must not be negative", d.RecordName, ei)
 			}
-			ip, err := netip.ParseAddr(v.IP)
+			err = v.validateTarget(d.RecordName)
 			if err != nil {
-				return fmt.Errorf("domain %s endpoint %d is invalid: IP %q is not a valid IPv4 or IPv6 address", d.RecordName, ei, v.IP)
+				return fmt.Errorf("domain %s endpoint %d is invalid: %w", d.RecordName, ei, err)
 			}
-			v.IP = ip.String()
 			if v.Name == "" {
 				v.Name = v.URL
 			}
 		}
+
+		err = validateDomainEndpoints(d)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
+}
+
+// Options that set what an endpoint publishes, of which exactly one is required
+var endpointTargetOptions = []string{"ip", "cname"}
+
+// validateTarget checks what the endpoint publishes, and sanitizes it
+func (e *ConfigEndpoint) validateTarget(recordName string) error {
+	var count int
+	for _, set := range []bool{e.IP != "", e.CNAME != ""} {
+		if set {
+			count++
+		}
+	}
+	if count != 1 {
+		return fmt.Errorf("exactly one of %s must be set", strings.Join(endpointTargetOptions, " or "))
+	}
+
+	switch {
+	case e.IP != "":
+		ip, err := netip.ParseAddr(e.IP)
+		if err != nil {
+			return fmt.Errorf("IP %q is not a valid IPv4 or IPv6 address", e.IP)
+		}
+		e.IP = ip.String()
+	case e.CNAME != "":
+		cname, err := normalizeHostname(e.CNAME)
+		if err != nil {
+			return fmt.Errorf("cname %w", err)
+		}
+		if cname == normalizeRecordName(recordName) {
+			return fmt.Errorf("cname %q is the domain's own record name", cname)
+		}
+		e.CNAME = cname
+	}
+
+	return nil
+}
+
+// validateDomainEndpoints checks the rules that involve all the endpoints of a domain
+// It must be called after each endpoint has been validated
+func validateDomainEndpoints(d *ConfigDomain) error {
+	type priorityGroup struct {
+		count   int
+		cname   bool
+		proxied bool
+	}
+	groups := make(map[int]*priorityGroup, len(d.Endpoints))
+	targets := make(map[string]int, len(d.Endpoints))
+
+	for ei, e := range d.Endpoints {
+		prev, dup := targets[e.Target()]
+		if dup {
+			return fmt.Errorf("domain %s endpoint %d is invalid: %s is already used by endpoint %d", d.RecordName, ei, e.Target(), prev)
+		}
+		targets[e.Target()] = ei
+
+		g := groups[e.Priority]
+		if g == nil {
+			g = &priorityGroup{proxied: e.Proxied()}
+			groups[e.Priority] = g
+		}
+		g.count++
+		g.cname = g.cname || e.CNAME != ""
+
+		// A set of records is either all proxied or all DNS-only
+		if g.proxied != e.Proxied() {
+			return fmt.Errorf("domain %s endpoint %d is invalid: endpoints with priority %d must all use the same value for providerOptions.cloudflare.proxied", d.RecordName, ei, e.Priority)
+		}
+	}
+
+	for _, priority := range slices.Sorted(maps.Keys(groups)) {
+		g := groups[priority]
+		if g.cname && g.count > 1 {
+			return fmt.Errorf("domain %s is invalid: priority %d has an endpoint with cname and other endpoints, but a CNAME record can't coexist with other records; give the endpoint with cname its own priority", d.RecordName, priority)
+		}
+	}
+
+	return nil
+}
+
+var hostnameLabelRegexp = regexp.MustCompile(`^[a-z0-9]([a-z0-9_-]{0,61}[a-z0-9])?$`)
+
+// normalizeRecordName lowercases a record name and removes the trailing dot
+func normalizeRecordName(name string) string {
+	return strings.TrimSuffix(strings.ToLower(strings.TrimSpace(name)), ".")
+}
+
+// normalizeHostname lowercases a hostname, removes the trailing dot, and checks that it's valid and isn't an IP address
+func normalizeHostname(name string) (string, error) {
+	name = normalizeRecordName(name)
+	if name == "" || len(name) > 253 {
+		return "", fmt.Errorf("%q is not a valid hostname", name)
+	}
+	_, err := netip.ParseAddr(name)
+	if err == nil {
+		return "", fmt.Errorf("%q is an IP address; use ip instead", name)
+	}
+	for label := range strings.SplitSeq(name, ".") {
+		if !hostnameLabelRegexp.MatchString(label) {
+			return "", fmt.Errorf("%q is not a valid hostname", name)
+		}
+	}
+	return name, nil
 }
 
 func countSetProperties(s any) int {

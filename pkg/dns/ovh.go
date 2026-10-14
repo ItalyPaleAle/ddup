@@ -406,4 +406,6 @@ func (o *OVHProvider) calculateSignature(method, url, body, timestamp string) st
 }
 
 // ovhCapabilities declares that the provider only publishes A and AAAA records that are not proxied
-var ovhCapabilities = Capabilities{}
+var ovhCapabilities = Capabilities{
+	Type: "ovh",
+}
