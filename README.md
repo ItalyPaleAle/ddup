@@ -10,8 +10,10 @@ You can use ddup to configure [round-robin DNS](https://en.wikipedia.org/wiki/Ro
 
 ddup is **not** a DNS server, instead it works with "dynamic" DNS servers. Currently, it supports these DNS providers:
 
+- AWS Route53
 - Azure DNS
 - Cloudflare DNS
+- Google Cloud DNS
 - OVH
 
 ![Screenshot of the ddup dashboard, showing the status of domains and their health](screenshot.webp)
@@ -116,9 +118,53 @@ You can find an example of the configuration file, and a description of every op
 - `providers`: Map of providers.
   - Key: provider name (e.g. `my-provider-1`)
   - Value: an object containing a provider configuration, which is one (and only one) of:
+    - [`awsRoute53`](#aws-route53-provider-settings)
     - [`azure`](#azure-provider-settings)
     - [`cloudflare`](#cloudflare-provider-settings)
+    - [`googleCloudDns`](#google-cloud-dns-provider-settings)
     - [`ovh`](#ovh-provider-settings)
+
+#### AWS Route53 Provider Settings
+
+Required settings:
+
+- `hostedZoneId`: ID of the hosted zone (e.g. `Z0123456789ABCDEFGHIJ`)
+
+Optional settings, to authenticate with an IAM user's access key:
+
+- `accessKeyId`: Access key ID
+- `secretAccessKey`: Secret access key
+
+If these are not set, ddup uses the [default AWS credential chain](https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html), which includes environmental variables such as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, shared config and credentials files (selected with `AWS_PROFILE`), IAM Roles for Service Accounts on EKS, ECS task roles, and EC2 instance profiles.
+
+The principal needs an IAM policy that allows listing and changing record sets in the hosted zone:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "route53:ListResourceRecordSets",
+        "route53:ChangeResourceRecordSets"
+      ],
+      "Resource": "arn:aws:route53:::hostedzone/<hosted-zone-id>"
+    }
+  ]
+}
+```
+
+To restrict the record names ddup can change, add a condition on the `route53:ChangeResourceRecordSetsNormalizedRecordNames` key.
+
+Example:
+
+```yaml
+providers:
+  example-provider-1:
+    awsRoute53:
+      hostedZoneId: "Z0123456789ABCDEFGHIJ"
+```
 
 #### Azure Provider Settings
 
@@ -198,6 +244,39 @@ providers:
     cloudflare:
       apiToken: "your-cloudflare-api-token"
       zoneId: "your-zone-id"
+```
+
+#### Google Cloud DNS Provider Settings
+
+Required settings:
+
+- `projectId`: ID of the Google Cloud project containing the managed zone
+- `managedZone`: Name of the managed zone resource (e.g. `my-zone`), which is not the same as its DNS name
+
+Optional settings:
+
+- `credentialsFile`: Path to a service account key file (JSON)
+
+If `credentialsFile` is not set, ddup uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials), which include the `GOOGLE_APPLICATION_CREDENTIALS` environment variable, the attached service account when running on Google Cloud (including GKE Workload Identity), Workload Identity Federation, and credentials from `gcloud auth application-default login` (in development).
+
+The principal needs the **DNS Administrator** role (`roles/dns.admin`), which can be granted on the managed zone alone. If using a custom role instead, it needs these permissions:
+
+```text
+dns.changes.create
+dns.resourceRecordSets.list
+dns.resourceRecordSets.create
+dns.resourceRecordSets.update
+dns.resourceRecordSets.delete
+```
+
+Example:
+
+```yaml
+providers:
+  example-provider-1:
+    googleCloudDns:
+      projectId: "my-project"
+      managedZone: "my-zone"
 ```
 
 #### OVH Provider Settings
