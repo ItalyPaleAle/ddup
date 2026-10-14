@@ -1,8 +1,11 @@
 package dns
 
 import (
+	"log/slog"
+	"path/filepath"
 	"testing"
 
+	configkit "github.com/italypaleale/go-kit/config"
 	"github.com/stretchr/testify/require"
 
 	"github.com/italypaleale/ddup/pkg/config"
@@ -121,4 +124,20 @@ func TestValidateConfig(t *testing.T) {
 		}
 		require.ErrorContains(t, ValidateConfig(cfg), "domain app.example.com references provider 'missing' that does not exist")
 	})
+}
+
+// The sample config documents the options, so the providers must be able to publish what it asks for
+func TestValidateConfig_SampleConfig(t *testing.T) {
+	samplePath := filepath.Join("..", "..", "config.sample.yaml")
+	t.Setenv("DDUP_CONFIG", samplePath)
+
+	cfg := config.GetDefaultConfig()
+	err := configkit.LoadConfig(cfg, configkit.LoadConfigOpts{
+		EnvVar:  "DDUP_CONFIG",
+		DirName: "ddup",
+	})
+	require.NoError(t, err)
+	require.NoError(t, cfg.Validate(slog.Default()))
+
+	require.NoError(t, ValidateConfig(cfg))
 }
