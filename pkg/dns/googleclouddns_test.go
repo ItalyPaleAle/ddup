@@ -29,7 +29,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 		setGoogleCloudDNSListResponse(mockTransport, "www.example.com.", `{"rrsets":[]}`)
 		setGoogleCloudDNSChangeResponse(mockTransport, http.StatusOK)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"2.2.2.2", "1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("2.2.2.2", "1.1.1.1"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 		assert.Empty(t, res.Previous)
@@ -66,7 +66,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 		]}`)
 		setGoogleCloudDNSChangeResponse(mockTransport, http.StatusOK)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4", "9.8.7.6"}, res.Previous)
@@ -90,7 +90,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 		provider, mockTransport := newGoogleCloudDNSTestProviderWithMock()
 		setGoogleCloudDNSListResponse(mockTransport, "www.example.com.", `{"rrsets":[]}`)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 		assert.Len(t, mockTransport.GetRequests(), 1)
@@ -103,7 +103,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 		]}`)
 
 		// The order is reversed from the current state, and there's a duplicate
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4", "9.8.7.6", "1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, testTargets("1.2.3.4", "9.8.7.6", "1.2.3.4"))
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4", "9.8.7.6"}, res.Previous)
@@ -119,7 +119,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 		]}`)
 		setGoogleCloudDNSChangeResponse(mockTransport, http.StatusOK)
 
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 60, []string{"5.6.7.8", "1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 60, testTargets("5.6.7.8", "1.2.3.4"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4", "2001:db8::1"}, res.Previous)
@@ -148,7 +148,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
 
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, testTargets("1.2.3.4"))
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4"}, res.Previous)
@@ -161,7 +161,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 			{"name":"www.example.com.","type":"A","ttl":300,"routingPolicy":{"wrr":{"items":[{"weight":1,"rrdatas":["1.2.3.4"]}]}}}
 		]}`)
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.2.3.4"})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.2.3.4"))
 		require.ErrorContains(t, err, "A record set www.example.com. uses a routing policy, which is not supported")
 		assert.Len(t, mockTransport.GetRequests(), 1)
 	})
@@ -171,7 +171,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 		setGoogleCloudDNSListResponse(mockTransport, "www.example.com.", `{"rrsets":[]}`)
 		setGoogleCloudDNSChangeResponse(mockTransport, http.StatusConflict)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "error updating records for domain www.example.com")
 		require.ErrorContains(t, err, "HTTP 409")
 		assert.False(t, res.Changed)
@@ -180,7 +180,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 	t.Run("List fails", func(t *testing.T) {
 		provider, mockTransport := newGoogleCloudDNSTestProviderWithMock()
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "error getting existing records")
 		require.ErrorContains(t, err, "HTTP 404")
 		assert.Len(t, mockTransport.GetRequests(), 1)
@@ -192,7 +192,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 			{"name":"www.example.com.","type":"AAAA","ttl":300,"rrdatas":["not-an-ip"]}
 		]}`)
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "invalid IP address in existing AAAA record")
 	})
 
@@ -200,7 +200,7 @@ func TestGoogleCloudDNSProvider(t *testing.T) {
 		provider, mockTransport := newGoogleCloudDNSTestProviderWithMock()
 		provider.tokenSource = errTokenSource{err: errors.New("no token")}
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "error getting access token: no token")
 		assert.Empty(t, mockTransport.GetRequests())
 	})

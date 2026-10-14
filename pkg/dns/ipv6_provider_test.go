@@ -40,7 +40,7 @@ func TestCloudflareProviderIPv6(t *testing.T) {
 		},
 	)
 
-	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, []string{"2001:db8::10"})
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::10"))
 	require.NoError(t, err)
 
 	requests := mockTransport.GetRequests()
@@ -96,7 +96,7 @@ func TestOVHProviderIPv6(t *testing.T) {
 		},
 	)
 
-	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, []string{"2001:db8::20"})
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::20"))
 	require.NoError(t, err)
 
 	requests := mockTransport.GetRequests()
@@ -134,7 +134,7 @@ func TestAzureProviderIPv6(t *testing.T) {
 		&MockResponse{StatusCode: 200, Body: `{}`},
 	)
 
-	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, []string{"2001:db8::30"})
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::30"))
 	require.NoError(t, err)
 
 	requests := mockTransport.GetRequests()
@@ -158,7 +158,7 @@ func TestAWSRoute53ProviderIPv6(t *testing.T) {
 	setAWSRoute53ListResponse(mockTransport, "ipv6.example.com.", recordTypeAAAA, awsRoute53ListBody())
 	setAWSRoute53ChangeResponse(mockTransport, http.StatusOK)
 
-	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, []string{"2001:db8::40"})
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::40"))
 	require.NoError(t, err)
 
 	requests := mockTransport.GetRequests()
@@ -178,7 +178,7 @@ func TestGoogleCloudDNSProviderIPv6(t *testing.T) {
 	setGoogleCloudDNSListResponse(mockTransport, "ipv6.example.com.", `{"rrsets":[]}`)
 	setGoogleCloudDNSChangeResponse(mockTransport, http.StatusOK)
 
-	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, []string{"2001:db8::50"})
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::50"))
 	require.NoError(t, err)
 
 	requests := mockTransport.GetRequests()
@@ -216,7 +216,7 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 			},
 		)
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
 		assert.Len(t, mockTransport.GetRequests(), 2)
 	})
@@ -244,7 +244,7 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 			},
 		)
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
 		assert.Len(t, mockTransport.GetRequests(), 3)
 	})
@@ -266,7 +266,7 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 			},
 		)
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
 		assert.Len(t, mockTransport.GetRequests(), 2)
 	})
@@ -278,7 +278,7 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 			awsRoute53RecordSetXML(domain+".", recordTypeAAAA, 60, canonicalIP),
 		))
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
 		assert.Len(t, mockTransport.GetRequests(), 2)
 	})
@@ -288,7 +288,7 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 		setGoogleCloudDNSListResponse(mockTransport, domain+".", `{"rrsets":[`+
 			`{"name":"`+domain+`.","type":"AAAA","ttl":60,"rrdatas":["`+canonicalIP+`"]}]}`)
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
 		assert.Len(t, mockTransport.GetRequests(), 1)
 	})
@@ -316,7 +316,7 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 			&MockResponse{StatusCode: http.StatusInternalServerError, Body: `{}`},
 		)
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{"2001:db8::1"})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets("2001:db8::1"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "error creating record")
 
@@ -348,7 +348,7 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 			&MockResponse{StatusCode: http.StatusInternalServerError, Body: `{}`},
 		)
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{"2001:db8::1"})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets("2001:db8::1"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "error creating record")
 
@@ -380,7 +380,7 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 			&MockResponse{StatusCode: http.StatusInternalServerError, Body: `{}`},
 		)
 
-		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{"2001:db8::1"})
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets("2001:db8::1"))
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "creating/updating AAAA record")
 

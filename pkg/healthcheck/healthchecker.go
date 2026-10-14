@@ -190,7 +190,15 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 			// Update DNS records
 			if len(publishIPs) > 0 {
 				var res dns.UpdateResult
-				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, publishIPs)
+				var targets []dns.Target
+				targets, err = ipTargets(publishIPs)
+				if err != nil {
+					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
+					dc.setError("Error updating DNS records: " + err.Error())
+					continue
+				}
+
+				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, targets)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					dc.setError("Error updating DNS records: " + err.Error())
@@ -214,4 +222,17 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		// Update the stored previous IPs
 		dc.setState(newHealthyIPs, failedIPs)
 	}
+}
+
+// ipTargets returns the targets for a list of IP addresses
+func ipTargets(ips []string) ([]dns.Target, error) {
+	targets := make([]dns.Target, len(ips))
+	for i, ip := range ips {
+		var err error
+		targets[i], err = dns.IPTarget(ip, false)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return targets, nil
 }

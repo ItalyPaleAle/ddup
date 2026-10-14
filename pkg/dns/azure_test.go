@@ -60,7 +60,7 @@ func TestAzureProvider(t *testing.T) {
 		})
 
 		// Test updating records
-		res, err := provider.UpdateRecords(t.Context(), "example.com", 300, []string{"1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "example.com", 300, testTargets("1.1.1.1"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 
@@ -124,7 +124,7 @@ func TestAzureProvider(t *testing.T) {
 		})
 
 		// Test deleting records (passing empty IPs array)
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 
@@ -160,7 +160,7 @@ func TestAzureProvider(t *testing.T) {
 		setAzureEmptyAAAAResponse(mockTransport, "www")
 
 		// Test deleting records (passing empty IPs array)
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 
 		// Verify the requests were made
@@ -212,7 +212,7 @@ func TestAzureProvider(t *testing.T) {
 		})
 
 		// Test updating records with new IPs
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"5.6.7.8", "9.10.11.12"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, testTargets("5.6.7.8", "9.10.11.12"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 
@@ -277,7 +277,7 @@ func TestAzureProvider(t *testing.T) {
 
 		// Test updating records with new IPs
 		// Note the order is reversed from the current state
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4", "9.8.7.6"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, testTargets("1.2.3.4", "9.8.7.6"))
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 
@@ -459,7 +459,7 @@ func TestAzureProviderDeleteError(t *testing.T) {
 			Body:       `{"error":"boom"}`,
 		})
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.ErrorContains(t, err, "error deleting A record for domain www.example.com")
 		require.ErrorContains(t, err, "HTTP 500")
 	})
@@ -472,7 +472,7 @@ func TestAzureProviderDeleteError(t *testing.T) {
 			Body:       `{}`,
 		})
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 	})

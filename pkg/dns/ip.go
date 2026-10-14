@@ -4,12 +4,19 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 )
 
 const (
-	recordTypeA    = "A"
-	recordTypeAAAA = "AAAA"
+	recordTypeA     = "A"
+	recordTypeAAAA  = "AAAA"
+	recordTypeCNAME = "CNAME"
 )
+
+// canonicalizeHostname returns the hostname in lowercase and without the trailing dot, so hostnames can be compared
+func canonicalizeHostname(hostname string) string {
+	return strings.TrimSuffix(strings.ToLower(hostname), ".")
+}
 
 // recordTypeForIP returns the DNS record type appropriate for an IP address.
 func recordTypeForIP(ip string) (string, error) {
