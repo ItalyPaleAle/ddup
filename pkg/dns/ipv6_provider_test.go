@@ -32,6 +32,15 @@ func TestCloudflareProviderIPv6(t *testing.T) {
 	)
 
 	mockTransport.SetResponse(
+		http.MethodGet,
+		"/client/v4/zones/test-zone-id/dns_records?name=ipv6.example.com&type=CNAME",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `{"success":true,"errors":[],"result":[]}`,
+		},
+	)
+
+	mockTransport.SetResponse(
 		http.MethodPost,
 		"/client/v4/zones/test-zone-id/dns_records",
 		&MockResponse{
@@ -44,9 +53,9 @@ func TestCloudflareProviderIPv6(t *testing.T) {
 	require.NoError(t, err)
 
 	requests := mockTransport.GetRequests()
-	require.Len(t, requests, 3)
+	require.Len(t, requests, 4)
 
-	body, err := io.ReadAll(requests[2].Body)
+	body, err := io.ReadAll(requests[3].Body)
 	require.NoError(t, err)
 
 	var req map[string]any
@@ -215,10 +224,15 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 					`"content":"2001:db8::1","ttl":60}]}`,
 			},
 		)
+		mockTransport.SetResponse(
+			http.MethodGet,
+			"/client/v4/zones/test-zone-id/dns_records?name="+domain+"&type=CNAME",
+			&MockResponse{StatusCode: http.StatusOK, Body: `{"success":true,"errors":[],"result":[]}`},
+		)
 
 		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
-		assert.Len(t, mockTransport.GetRequests(), 2)
+		assert.Len(t, mockTransport.GetRequests(), 3)
 	})
 
 	t.Run("OVH", func(t *testing.T) {
@@ -309,7 +323,7 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 					`"content":"192.0.2.1","ttl":60}]}`,
 			},
 		)
-		setCloudflareEmptyAAAAResponse(mockTransport, domain)
+		setCloudflareEmptyAAAAAndCNAMEResponses(mockTransport, domain)
 		mockTransport.SetResponse(
 			http.MethodPost,
 			"/client/v4/zones/test-zone-id/dns_records",
@@ -321,8 +335,8 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 		assert.Contains(t, err.Error(), "error creating record")
 
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3)
-		assert.Equal(t, http.MethodPost, requests[2].Method)
+		require.Len(t, requests, 4)
+		assert.Equal(t, http.MethodPost, requests[3].Method)
 	})
 
 	t.Run("OVH", func(t *testing.T) {
