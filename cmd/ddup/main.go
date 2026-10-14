@@ -17,6 +17,7 @@ import (
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
+	"github.com/italypaleale/ddup/pkg/notify"
 	"github.com/italypaleale/ddup/pkg/server"
 )
 
@@ -110,6 +111,19 @@ func main() {
 			shutdowns.Run(log)
 			slogkit.FatalError(log, "Failed to init health checker", err)
 			return
+		}
+
+		// Init the notifier, which is nil if no notification is configured
+		// On shutdown, it delivers the notifications still in the queue
+		notifier, err := notify.New(ctx, cfg)
+		if err != nil {
+			shutdowns.Run(log)
+			slogkit.FatalError(log, "Failed to init notifications", err)
+			return
+		}
+		if notifier != nil {
+			hc.SetNotifier(notifier)
+			shutdowns.Add(notifier.Shutdown)
 		}
 		services = append(services, hc.Run)
 
