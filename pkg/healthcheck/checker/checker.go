@@ -42,8 +42,9 @@ type checker struct {
 	hostClientsLock sync.RWMutex
 	hostClients     map[string]*http.Client
 
-	// Looks up the IP address of endpoints that set `ipLookupFamily`
-	lookuper *iplookup.Lookuper
+	// Looks up the IP address of each endpoint that sets `ipLookupFamily`
+	// Endpoints with the same list of services share a lookuper
+	lookupers map[*config.ConfigEndpoint]*iplookup.Lookuper
 
 	// Last IP address found for each endpoint that looks it up
 	lastIPsLock sync.Mutex
@@ -62,8 +63,8 @@ type Result struct {
 }
 
 // New creates a new health checker
-// The lookuper finds the IP address of the endpoints that set `ipLookupFamily`, and can be nil if there are none
-func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig config.ConfigHealthChecks, metrics *appmetrics.AppMetrics, lookuper *iplookup.Lookuper) *checker {
+// The lookupers find the IP address of the endpoints that set `ipLookupFamily`, and can be nil if there are none
+func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig config.ConfigHealthChecks, metrics *appmetrics.AppMetrics, lookupers map[*config.ConfigEndpoint]*iplookup.Lookuper) *checker {
 	// Every check must open a new connection: with keep-alives, a connection that stays busy (checks run every few seconds) is reused forever, so the check keeps hitting the address it first resolved, even after DNS changes or the endpoint is replaced, and it can't notice problems with connecting or with the TLS handshake
 	transport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert
 	transport.DisableKeepAlives = true
@@ -89,7 +90,7 @@ func New(domain string, endpoints []*config.ConfigEndpoint, healthCheckConfig co
 		cfg:       healthCheckConfig,
 		metrics:   metrics,
 		client:    client,
-		lookuper:  lookuper,
+		lookupers: lookupers,
 	}
 }
 
@@ -163,11 +164,12 @@ func (c *checker) checkEndpoint(ctx context.Context, endpoint *config.ConfigEndp
 }
 
 func (c *checker) lookupIP(ctx context.Context, endpoint *config.ConfigEndpoint) (string, error) {
-	if c.lookuper == nil {
+	lookuper := c.lookupers[endpoint]
+	if lookuper == nil {
 		return "", errors.New("IP lookup is not configured")
 	}
 
-	addr, err := c.lookuper.Lookup(ctx, endpoint.IPLookupFamily)
+	addr, err := lookuper.Lookup(ctx, endpoint.IPLookupFamily)
 	if err != nil {
 		return "", fmt.Errorf("looking up the IP address: %w", err)
 	}

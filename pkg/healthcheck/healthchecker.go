@@ -15,7 +15,6 @@ import (
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
-	"github.com/italypaleale/ddup/pkg/iplookup"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
@@ -48,16 +47,12 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 		if !ok || provider == nil {
 			return nil, fmt.Errorf("domain '%s' references DNS provider '%s' that is not configured", d.RecordName, d.Provider)
 		}
-		var lookuper *iplookup.Lookuper
-		if hasDynamicEndpoint(d.Endpoints) {
-			sources, err := cfg.IPLookupSources()
-			if err != nil {
-				return nil, fmt.Errorf("domain '%s': %w", d.RecordName, err)
-			}
-			lookuper = iplookup.New(sources, iplookup.WithTimeout(d.HealthChecks.Timeout))
+		lookupers, err := buildLookupers(cfg, d)
+		if err != nil {
+			return nil, fmt.Errorf("domain '%s': %w", d.RecordName, err)
 		}
 		dcs[d.RecordName] = &domainChecker{
-			checker:    checker.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics, lookuper),
+			checker:    checker.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics, lookupers),
 			ttl:        d.TTL,
 			priorities: endpointPriorities(d.Endpoints),
 			failedIPs:  make(map[string]int, 0),
@@ -234,11 +229,4 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		// Update the stored previous IPs
 		dc.setState(newHealthyIPs, failedIPs)
 	}
-}
-
-// hasDynamicEndpoint returns true if any of the endpoints looks up its IP address
-func hasDynamicEndpoint(endpoints []*config.ConfigEndpoint) bool {
-	return slices.ContainsFunc(endpoints, func(ep *config.ConfigEndpoint) bool {
-		return ep.Dynamic()
-	})
 }

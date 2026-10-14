@@ -200,7 +200,7 @@ func TestHealthChecker_DynamicIP_EndToEnd(t *testing.T) {
 	hc := &HealthChecker{
 		domainCheckers: map[string]*domainChecker{
 			"home.example.com": {
-				checker:    checker.New("home.example.com", []*config.ConfigEndpoint{home}, config.ConfigHealthChecks{Attempts: 2}, nil, lookuper),
+				checker:    checker.New("home.example.com", []*config.ConfigEndpoint{home}, config.ConfigHealthChecks{Attempts: 2}, nil, map[*config.ConfigEndpoint]*iplookup.Lookuper{home: lookuper}),
 				ttl:        60,
 				failedIPs:  make(map[string]int),
 				priorities: endpointPriorities([]*config.ConfigEndpoint{home}),
@@ -244,6 +244,7 @@ func TestNewHealthChecker_IPLookup(t *testing.T) {
 	providers := map[string]dns.Provider{"p1": dns.NewMockProvider(false)}
 
 	t.Run("dynamic endpoints are not in the static priorities", func(t *testing.T) {
+		cfg.IPLookupURLs = []config.ConfigIPLookupURL{{URL: "https://ip.example.com", Family: 4}}
 		hc, err := NewHealthChecker(providers, nil)
 		require.NoError(t, err)
 		assert.Equal(t, map[string]int{"192.0.2.2": 1}, hc.domainCheckers["home.example.com"].priorities)
@@ -252,6 +253,6 @@ func TestNewHealthChecker_IPLookup(t *testing.T) {
 	t.Run("invalid pattern", func(t *testing.T) {
 		cfg.IPLookupURLs = []config.ConfigIPLookupURL{{URL: "https://ip.example.com", Family: 4, Pattern: "("}}
 		_, err := NewHealthChecker(providers, nil)
-		require.ErrorContains(t, err, "domain 'home.example.com': ipLookupURLs[0] has an invalid pattern")
+		require.ErrorContains(t, err, "domain 'home.example.com': endpoint 'home': entry 0 in ipLookupURLs has an invalid pattern")
 	})
 }

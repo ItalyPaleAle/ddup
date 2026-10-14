@@ -34,6 +34,15 @@ func newLookupServer(t *testing.T, ip *atomic.Pointer[string], fail *atomic.Bool
 	return srv, &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
 }
 
+// lookupersFor returns the lookupers map that gives the same lookuper to all the endpoints
+func lookupersFor(l *iplookup.Lookuper, eps ...*config.ConfigEndpoint) map[*config.ConfigEndpoint]*iplookup.Lookuper {
+	res := make(map[*config.ConfigEndpoint]*iplookup.Lookuper, len(eps))
+	for _, ep := range eps {
+		res[ep] = l
+	}
+	return res
+}
+
 func TestCheckEndpoint_Dynamic(t *testing.T) {
 	var ip atomic.Pointer[string]
 	setIP := func(v string) { ip.Store(&v) }
@@ -43,8 +52,8 @@ func TestCheckEndpoint_Dynamic(t *testing.T) {
 	lookuper := iplookup.New([]iplookup.Source{{URL: srv.URL, Family: 4}}, iplookup.WithTLSConfig(tlsConfig))
 
 	t.Run("without a URL the endpoint is healthy when the lookup works", func(t *testing.T) {
-		c := New("home.example.com", nil, config.ConfigHealthChecks{}, nil, lookuper)
 		ep := &config.ConfigEndpoint{Name: "home", IPLookupFamily: 4}
+		c := New("home.example.com", nil, config.ConfigHealthChecks{}, nil, lookupersFor(lookuper, ep))
 
 		res := c.checkEndpoint(t.Context(), ep)
 		assert.True(t, res.Healthy)
@@ -70,8 +79,9 @@ func TestCheckEndpoint_Dynamic(t *testing.T) {
 		fail.Store(true)
 		defer fail.Store(false)
 
-		c := New("home.example.com", nil, config.ConfigHealthChecks{}, nil, lookuper)
-		res := c.checkEndpoint(t.Context(), &config.ConfigEndpoint{Name: "new", IPLookupFamily: 4})
+		ep := &config.ConfigEndpoint{Name: "new", IPLookupFamily: 4}
+		c := New("home.example.com", nil, config.ConfigHealthChecks{}, nil, lookupersFor(lookuper, ep))
+		res := c.checkEndpoint(t.Context(), ep)
 		assert.False(t, res.Healthy)
 		assert.Empty(t, res.Target)
 	})
@@ -85,11 +95,11 @@ func TestCheckEndpoint_Dynamic(t *testing.T) {
 
 	t.Run("with a URL the endpoint is also health-checked", func(t *testing.T) {
 		setIP("203.0.113.2")
-		c := New("home.example.com", nil, config.ConfigHealthChecks{}, nil, lookuper)
+		ep := &config.ConfigEndpoint{Name: "home", URL: "http://example.com/health", IPLookupFamily: 4}
+		c := New("home.example.com", nil, config.ConfigHealthChecks{}, nil, lookupersFor(lookuper, ep))
 		mockRT := &MockRoundTripper{Response: &http.Response{StatusCode: http.StatusBadGateway, Header: make(http.Header), Body: http.NoBody}}
 		c.client.Transport = mockRT
 
-		ep := &config.ConfigEndpoint{Name: "home", URL: "http://example.com/health", IPLookupFamily: 4}
 		res := c.checkEndpoint(t.Context(), ep)
 		assert.False(t, res.Healthy, "the health check failed")
 		assert.Equal(t, "203.0.113.2", res.Target, "the target is still the looked-up address")
@@ -101,7 +111,7 @@ func TestCheckEndpoint_Dynamic(t *testing.T) {
 	})
 
 	t.Run("static endpoints have no target", func(t *testing.T) {
-		c := New("app.example.com", nil, config.ConfigHealthChecks{}, nil, lookuper)
+		c := New("app.example.com", nil, config.ConfigHealthChecks{}, nil, nil)
 		mockRT := &MockRoundTripper{Response: &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: http.NoBody}}
 		c.client.Transport = mockRT
 
@@ -116,7 +126,7 @@ func TestCheckEndpoint_Dynamic(t *testing.T) {
 			{Name: "a", IPLookupFamily: 4},
 			{Name: "b", IPLookupFamily: 4},
 		}
-		c := New("home.example.com", eps, config.ConfigHealthChecks{Timeout: time.Second}, nil, lookuper)
+		c := New("home.example.com", eps, config.ConfigHealthChecks{Timeout: time.Second}, nil, lookupersFor(lookuper, eps...))
 
 		results := c.CheckAll(t.Context())
 		require.Len(t, results, 2)

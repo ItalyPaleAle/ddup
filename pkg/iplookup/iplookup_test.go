@@ -464,9 +464,9 @@ func TestParseResponse(t *testing.T) {
 }
 
 func TestValidateURL(t *testing.T) {
-	require.NoError(t, ValidateURL("https://api.ipify.org"))
+	require.NoError(t, ValidateURL("https://ip.example.com"))
 	require.NoError(t, ValidateURL("https://ip.example.com:8443/ip?token=x"))
-	require.ErrorContains(t, ValidateURL("http://api.ipify.org"), "must be an absolute https URL")
+	require.ErrorContains(t, ValidateURL("http://ip.example.com"), "must be an absolute https URL")
 	require.ErrorContains(t, ValidateURL("/ip"), "must be an absolute https URL")
 	require.ErrorContains(t, ValidateURL("ftp://example.com"), "must be an absolute https URL")
 	require.ErrorContains(t, ValidateURL("https://"), "must be an absolute https URL")
@@ -474,28 +474,7 @@ func TestValidateURL(t *testing.T) {
 
 func TestRedactURL(t *testing.T) {
 	assert.Equal(t, "https://ip.example.com/path", RedactURL("https://user:pass@ip.example.com/path?token=abc#frag"))
-	assert.Equal(t, "https://api.ipify.org", RedactURL("https://api.ipify.org"))
+	assert.Equal(t, "https://ip.example.com", RedactURL("https://ip.example.com"))
 	assert.Equal(t, "(invalid URL)", RedactURL("::not a url"))
 	assert.Equal(t, "(invalid URL)", RedactURL("no-host"))
-}
-
-func TestDefaultSources(t *testing.T) {
-	sources := DefaultSources()
-	families := map[int]int{}
-	for _, s := range sources {
-		require.NoError(t, ValidateURL(s.URL), s.URL)
-		families[s.Family]++
-	}
-	assert.NotZero(t, families[4])
-	assert.NotZero(t, families[6])
-
-	// The list is a copy
-	sources[0].URL = "https://changed.example.com"
-	assert.NotEqual(t, "https://changed.example.com", DefaultSources()[0].URL)
-
-	t.Run("can be replaced in tests", func(t *testing.T) {
-		SetDefaultSources(t, []Source{{URL: "https://test.example.com", Family: 4}})
-		assert.Equal(t, []Source{{URL: "https://test.example.com", Family: 4}}, DefaultSources())
-	})
-	assert.Len(t, DefaultSources(), len(sources), "restored after the test")
 }

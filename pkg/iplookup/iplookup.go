@@ -43,21 +43,6 @@ type Source struct {
 	Pattern *regexp.Regexp
 }
 
-// defaultSources are the services used when the configuration doesn't set any
-// Akamai documents no host that answers for IPv6 only, and this is not confirmed for IPv6, so only ipify is used for that family
-var defaultSources = []Source{
-	{URL: "https://whatismyip.akamai.com", Family: 4},
-	{URL: "https://api.ipify.org", Family: 4},
-	{URL: "https://api6.ipify.org", Family: 6},
-}
-
-// DefaultSources returns the built-in list of services
-func DefaultSources() []Source {
-	res := make([]Source, len(defaultSources))
-	copy(res, defaultSources)
-	return res
-}
-
 // Lookuper looks up the public IP address by racing the services in a list of sources
 type Lookuper struct {
 	sources []Source
@@ -100,6 +85,7 @@ func WithTLSConfig(cfg *tls.Config) Option {
 }
 
 // New returns a Lookuper that uses the given services
+// There are no built-in services: the caller decides which ones are contacted
 func New(sources []Source, opts ...Option) *Lookuper {
 	l := &Lookuper{
 		sources: sources,
