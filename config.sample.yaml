@@ -55,24 +55,46 @@ domains:
 
   # Dynamic DNS: the record follows the public IP address of the network ddup runs in
   # With no "url" the endpoint isn't health-checked; it's healthy while the lookup works
+  # ddup has no built-in lookup service: the services are set in "ipLookupURLs", either at the top level (below) or on the endpoint
   - recordName: "home.example.com"
     provider: "example-provider-1"
     ttl: 300
     endpoints:
       - name: "home"
         # 4 creates an A record, 6 an AAAA record. Use this instead of "ip"
+        # This endpoint has no "ipLookupURLs" of its own, so it uses the entries with family 4 in the top-level list
         ipLookupFamily: 4
 
-# Optional: the services used to look up the public IP address, replacing the built-in list
-# By default ddup asks Akamai and ipify over HTTPS, at the same time, and uses the first valid answer
-# Each family used by an endpoint needs at least one service. URLs must use https
-# ipLookupURLs:
-#   - url: "https://ip.example.com/v4"
-#     family: 4
-#   # "pattern" is for services that don't return just the address: a regular expression with one capture group
-#   - url: "https://ip.example.com/v6"
-#     family: 6
-#     pattern: '"ip":\s*"([^"]+)"'
+  # An endpoint can have its own list of services, with one or more entries
+  # The list replaces the top-level one for this endpoint (the two are not merged)
+  - recordName: "office.example.com"
+    provider: "example-provider-1"
+    ttl: 300
+    endpoints:
+      - name: "office"
+        ipLookupFamily: 4
+        # All the services in the list are asked at the same time and the first valid answer is used
+        # A warning is logged if the others return a different address
+        # With one entry, only that service is asked
+        ipLookupURLs:
+          # "family" is optional here; if set, it must be equal to ipLookupFamily
+          - url: "https://ip.example.com/v4"
+          # "pattern" is for services that don't return just the address: a regular expression with one capture group
+          - url: "https://ip2.example.com/json"
+            pattern: '"ip":\s*"([^"]+)"'
+
+# Services used to look up the public IP address of the endpoints that have "ipLookupFamily" and no "ipLookupURLs" of their own
+# ddup has no built-in services and contacts none that is not configured; the services see the public address of your network
+# Each family used by an endpoint needs at least one entry. "family" (4 or 6) is required here, and URLs must use https
+# The entries for the same family are asked at the same time and the first valid answer is used
+ipLookupURLs:
+  - url: "https://whatismyip.akamai.com"
+    family: 4
+  - url: "https://api.ipify.org"
+    family: 4
+  # Verified only over IPv4 networks, see the README
+  - url: "https://api6.ipify.org"
+    family: 6
 
 # Provider Configuration
 providers:
