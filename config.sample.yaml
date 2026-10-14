@@ -60,6 +60,39 @@ providers:
       apiToken: "your-cloudflare-api-token"
       zoneId: "your-zone-id"
 
+# Notifications (optional)
+# URLs, tokens and connection strings are secrets: instead of writing them here, read them from files, as in `token: !file /run/secrets/ntfy-token`
+# Every notification has an optional "events" list, with any of: dns_updated, dns_update_failed, all_unhealthy (default: all of them)
+notifications:
+  # ntfy topics
+  ntfy:
+    - name: "alerts"
+      # URL of the topic, including the topic name
+      url: "https://ntfy.example.com/ddup"
+      # Optional access token
+      token: "your-ntfy-token"
+      events: ["dns_updated", "dns_update_failed", "all_unhealthy"]
+      # Allow sending to private addresses, such as a ntfy server in your LAN or cluster (default: false)
+      allowPrivateDestinations: true
+      # Optional delivery settings. Defaults: timeout 20s, maxAttempts 3 (including the first), retryInterval 20s
+      timeout: "10s"
+      maxAttempts: 3
+      retryInterval: "20s"
+  # Webhooks, with the format "plain" (default), "slack", or "discord"
+  webhooks:
+    - name: "chat"
+      format: "slack"
+      url: "https://hooks.slack.com/services/your-webhook-path"
+      events: ["dns_update_failed", "all_unhealthy"]
+  # Email
+  email:
+    - name: "ops"
+      # Connection string for Resend, SMTP (smtp://user:password@host:587?fromAddress=...&tls=starttls), AWS SES, SendGrid, or console://
+      connectionString: "resend://your-resend-api-key?fromAddress=ddup@example.com&fromName=ddup"
+      # One email is sent to each recipient
+      to: ["postmaster@example.com"]
+      events: ["dns_update_failed", "all_unhealthy"]
+
 # Enable the web server
 server:
   enabled: true

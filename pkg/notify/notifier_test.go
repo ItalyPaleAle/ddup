@@ -9,12 +9,14 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	configkit "github.com/italypaleale/go-kit/config"
 	"github.com/italypaleale/go-kit/emailer"
 	"github.com/italypaleale/go-kit/webhook"
 	"github.com/stretchr/testify/assert"
@@ -919,4 +921,24 @@ func TestNoGoroutineLeaks(t *testing.T) {
 func goroutineStacks() string {
 	buf := make([]byte, 1<<20)
 	return string(buf[:runtime.Stack(buf, true)])
+}
+
+// The notifications in the sample config must be accepted at startup
+func TestSampleConfigNotifications(t *testing.T) {
+	t.Setenv("DDUP_CONFIG", filepath.Join("..", "..", "config.sample.yaml"))
+
+	cfg := config.GetDefaultConfig()
+	err := configkit.LoadConfig(cfg, configkit.LoadConfigOpts{
+		EnvVar:  "DDUP_CONFIG",
+		DirName: "ddup",
+	})
+	require.NoError(t, err)
+	err = cfg.Validate(slog.Default())
+	require.NoError(t, err)
+
+	n, err := New(t.Context(), cfg)
+	require.NoError(t, err)
+	require.NotNil(t, n)
+	assert.Len(t, n.senders, 3)
+	shutdownNotifier(t, n)
 }
