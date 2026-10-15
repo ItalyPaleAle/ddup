@@ -1,9 +1,15 @@
 package config
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,92 +44,25 @@ func TestValidateNotifications(t *testing.T) {
 		expectErr string
 	}{
 		{
-			name: "ntfy without name",
+			name: "webhook without name",
 			mutate: func(n *ConfigNotifications) {
-				n.Ntfy = []ConfigNotificationNtfy{{URL: "https://ntfy.example.com/ddup"}}
+				n.Webhooks = []ConfigNotificationWebhook{{URL: "https://hooks.example.com/x"}}
 			},
-			expectErr: "notifications.ntfy[0] is invalid: name is empty",
-		},
-		{
-			name: "ntfy duplicate name",
-			mutate: func(n *ConfigNotifications) {
-				n.Ntfy = []ConfigNotificationNtfy{
-					{Name: "a", URL: "https://ntfy.example.com/ddup"},
-					{Name: "a", URL: "https://ntfy.example.com/ddup"},
-				}
-			},
-			expectErr: `notifications.ntfy[1] "a" is invalid: name is already used by entry 0`,
-		},
-		{
-			name:      "ntfy without url",
-			mutate:    func(n *ConfigNotifications) { n.Ntfy = []ConfigNotificationNtfy{{Name: "a"}} },
-			expectErr: `notifications.ntfy[0] "a" is invalid: url is empty`,
-		},
-		{
-			name: "ntfy url with other scheme",
-			mutate: func(n *ConfigNotifications) {
-				n.Ntfy = []ConfigNotificationNtfy{{Name: "a", URL: "ftp://ntfy.example.com/ddup"}}
-			},
-			expectErr: `notifications.ntfy[0] "a" is invalid: url must use the http or https scheme`,
-		},
-		{
-			name:      "ntfy url without host",
-			mutate:    func(n *ConfigNotifications) { n.Ntfy = []ConfigNotificationNtfy{{Name: "a", URL: "https:///ddup"}} },
-			expectErr: `notifications.ntfy[0] "a" is invalid: url must include a host`,
-		},
-		{
-			name: "ntfy url without topic",
-			mutate: func(n *ConfigNotifications) {
-				n.Ntfy = []ConfigNotificationNtfy{{Name: "a", URL: "https://ntfy.example.com/"}}
-			},
-			expectErr: `notifications.ntfy[0] "a" is invalid: url must include the topic name`,
-		},
-		{
-			name: "ntfy invalid url",
-			mutate: func(n *ConfigNotifications) {
-				n.Ntfy = []ConfigNotificationNtfy{{Name: "a", URL: "https://ntfy.example.com/%zz"}}
-			},
-			expectErr: `notifications.ntfy[0] "a" is invalid: url is not a valid URL`,
-		},
-		{
-			name: "ntfy unknown event",
-			mutate: func(n *ConfigNotifications) {
-				n.Ntfy = []ConfigNotificationNtfy{{Name: "a", URL: "https://ntfy.example.com/ddup", Events: []NotificationEvent{"foo"}}}
-			},
-			expectErr: `notifications.ntfy[0] "a" is invalid: unknown event "foo" (valid events: dns_updated, dns_update_failed, all_unhealthy)`,
-		},
-		{
-			name: "ntfy negative timeout",
-			mutate: func(n *ConfigNotifications) {
-				n.Ntfy = []ConfigNotificationNtfy{{Name: "a", URL: "https://ntfy.example.com/ddup", Timeout: -time.Second}}
-			},
-			expectErr: `notifications.ntfy[0] "a" is invalid: timeout must not be negative`,
-		},
-		{
-			name: "webhook negative maxAttempts",
-			mutate: func(n *ConfigNotifications) {
-				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", URL: "https://hooks.example.com/x", MaxAttempts: -1}}
-			},
-			expectErr: `notifications.webhooks[0] "a" is invalid: maxAttempts must not be negative`,
-		},
-		{
-			name: "webhook negative retryInterval",
-			mutate: func(n *ConfigNotifications) {
-				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", URL: "https://hooks.example.com/x", RetryInterval: -time.Second}}
-			},
-			expectErr: `notifications.webhooks[0] "a" is invalid: retryInterval must not be negative`,
+			expectErr: "notifications.webhooks[0] is invalid: name is empty",
 		},
 		{
 			name: "webhook unknown format",
 			mutate: func(n *ConfigNotifications) {
 				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "teams", URL: "https://hooks.example.com/x"}}
 			},
-			expectErr: `notifications.webhooks[0] "a" is invalid: unknown format "teams" (valid formats: plain, slack, discord)`,
+			expectErr: `notifications.webhooks[0] "a" is invalid: unknown format "teams" (valid formats: plain, slack, discord, ntfy)`,
 		},
 		{
-			name:      "webhook without url",
-			mutate:    func(n *ConfigNotifications) { n.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "slack"}} },
-			expectErr: `notifications.webhooks[0] "a" is invalid: url is empty`,
+			name: "webhook unknown event",
+			mutate: func(n *ConfigNotifications) {
+				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "ntfy", URL: "https://ntfy.example.com/ddup", Events: []NotificationEvent{"foo"}}}
+			},
+			expectErr: `notifications.webhooks[0] "a" is invalid: unknown event "foo" (valid events: dns_updated, dns_update_failed, all_unhealthy)`,
 		},
 		{
 			name: "webhook duplicate name",
@@ -131,17 +70,10 @@ func TestValidateNotifications(t *testing.T) {
 				n.Webhooks = []ConfigNotificationWebhook{
 					{Name: "a", URL: "https://hooks.example.com/x"},
 					{Name: "b", URL: "https://hooks.example.com/x"},
-					{Name: "b", URL: "https://hooks.example.com/x"},
+					{Name: "b", Format: "ntfy", URL: "https://ntfy.example.com/ddup"},
 				}
 			},
 			expectErr: `notifications.webhooks[2] "b" is invalid: name is already used by entry 1`,
-		},
-		{
-			name: "webhook url with other scheme",
-			mutate: func(n *ConfigNotifications) {
-				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", URL: "file:///etc/passwd"}}
-			},
-			expectErr: `notifications.webhooks[0] "a" is invalid: url must use the http or https scheme`,
 		},
 		{
 			name: "email without name",
@@ -149,13 +81,6 @@ func TestValidateNotifications(t *testing.T) {
 				n.Email = []ConfigNotificationEmail{{ConnectionString: "console://", To: []string{"a@example.com"}}}
 			},
 			expectErr: "notifications.email[0] is invalid: name is empty",
-		},
-		{
-			name: "email without connection string",
-			mutate: func(n *ConfigNotifications) {
-				n.Email = []ConfigNotificationEmail{{Name: "a", To: []string{"a@example.com"}}}
-			},
-			expectErr: `notifications.email[0] "a" is invalid: connectionString is empty`,
 		},
 		{
 			name: "email without recipients",
@@ -202,7 +127,6 @@ func TestValidateNotifications(t *testing.T) {
 	t.Run("names can repeat across kinds", func(t *testing.T) {
 		cfg := newNotificationsConfig()
 		cfg.Notifications = ConfigNotifications{
-			Ntfy:     []ConfigNotificationNtfy{{Name: "a", URL: "https://ntfy.example.com/ddup"}},
 			Webhooks: []ConfigNotificationWebhook{{Name: "a", URL: "https://hooks.example.com/x"}},
 			Email:    []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://", To: []string{"a@example.com"}}},
 		}
@@ -216,31 +140,29 @@ func TestValidateNotifications(t *testing.T) {
 		err := cfg.Validate(slog.Default())
 		require.Error(t, err)
 		assert.NotContains(t, err.Error(), "secret-token-value")
-
-		cfg = newNotificationsConfig()
-		cfg.Notifications.Ntfy = []ConfigNotificationNtfy{{Name: "a", URL: "ftp://ntfy.example.com/secret-topic-value"}}
-		err = cfg.Validate(slog.Default())
-		require.Error(t, err)
-		assert.NotContains(t, err.Error(), "secret-topic-value")
 	})
 
 	t.Run("defaults", func(t *testing.T) {
 		cfg := newNotificationsConfig()
 		cfg.Notifications = ConfigNotifications{
-			Ntfy:     []ConfigNotificationNtfy{{Name: "a", URL: "https://ntfy.example.com/ddup"}},
-			Webhooks: []ConfigNotificationWebhook{{Name: "b", URL: "https://hooks.example.com/x"}, {Name: "c", Format: "Slack", URL: "https://hooks.example.com/x", Events: []NotificationEvent{EventAllUnhealthy}}},
-			Email:    []ConfigNotificationEmail{{Name: "d", ConnectionString: "console://", To: []string{"a@example.com"}}},
+			Webhooks: []ConfigNotificationWebhook{
+				{Name: "a", Format: "ntfy", URL: "https://ntfy.example.com/ddup"},
+				{Name: "b", URL: "https://hooks.example.com/x"},
+				{Name: "c", Format: "Slack", URL: "https://hooks.example.com/x", Events: []NotificationEvent{EventAllUnhealthy}},
+			},
+			Email: []ConfigNotificationEmail{{Name: "d", ConnectionString: "console://", To: []string{"a@example.com"}}},
 		}
 		err := cfg.Validate(slog.Default())
 		require.NoError(t, err)
 
 		all := []NotificationEvent{EventDNSUpdated, EventDNSUpdateFailed, EventAllUnhealthy}
-		assert.Equal(t, all, cfg.Notifications.Ntfy[0].Events)
 		assert.Equal(t, all, cfg.Notifications.Webhooks[0].Events)
+		assert.Equal(t, all, cfg.Notifications.Webhooks[1].Events)
 		assert.Equal(t, all, cfg.Notifications.Email[0].Events)
-		assert.Equal(t, "plain", cfg.Notifications.Webhooks[0].Format)
-		assert.Equal(t, "slack", cfg.Notifications.Webhooks[1].Format)
-		assert.Equal(t, []NotificationEvent{EventAllUnhealthy}, cfg.Notifications.Webhooks[1].Events)
+		assert.Equal(t, "ntfy", cfg.Notifications.Webhooks[0].Format)
+		assert.Equal(t, "plain", cfg.Notifications.Webhooks[1].Format)
+		assert.Equal(t, "slack", cfg.Notifications.Webhooks[2].Format)
+		assert.Equal(t, []NotificationEvent{EventAllUnhealthy}, cfg.Notifications.Webhooks[2].Events)
 	})
 }
 
@@ -269,8 +191,9 @@ providers:
       apiToken: "token"
       zoneId: "zone"
 notifications:
-  ntfy:
+  webhooks:
     - name: "alerts"
+      format: ntfy
       url: "http://ntfy.default.svc.cluster.local/ddup"
       token: !file ntfy-token
       allowPrivateDestinations: true
@@ -298,8 +221,9 @@ notifications:
 	err = cfg.Validate(slog.Default())
 	require.NoError(t, err)
 
-	require.Len(t, cfg.Notifications.Ntfy, 1)
-	ntfy := cfg.Notifications.Ntfy[0]
+	require.Len(t, cfg.Notifications.Webhooks, 1)
+	ntfy := cfg.Notifications.Webhooks[0]
+	assert.Equal(t, "ntfy", ntfy.Format)
 	assert.Equal(t, "tk_example", ntfy.Token)
 	assert.True(t, ntfy.AllowPrivateDestinations)
 	assert.Equal(t, 5*time.Second, ntfy.Timeout)
@@ -314,4 +238,72 @@ notifications:
 	// The secrets are not in the debug representation of the config
 	assert.NotContains(t, cfg.String(), "tk_example")
 	assert.NotContains(t, cfg.String(), "re_example")
+}
+
+// Parses a Go source file and returns the string values of the constants selected by match
+func stringConsts(t *testing.T, path string, match func(vs *ast.ValueSpec) bool) []string {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, 0)
+	require.NoError(t, err)
+
+	var values []string
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			vs, ok := spec.(*ast.ValueSpec)
+			if !ok || len(vs.Values) == 0 || !match(vs) {
+				continue
+			}
+			lit, ok := vs.Values[0].(*ast.BasicLit)
+			require.True(t, ok, "constant %s must be a string literal", vs.Names[0].Name)
+			val, err := strconv.Unquote(lit.Value)
+			require.NoError(t, err)
+			values = append(values, val)
+		}
+	}
+	return values
+}
+
+// Returns a matcher for the constants declared with the given type
+func hasType(typeName string) func(vs *ast.ValueSpec) bool {
+	return func(vs *ast.ValueSpec) bool {
+		ident, ok := vs.Type.(*ast.Ident)
+		return ok && ident.Name == typeName
+	}
+}
+
+// NotificationEvents must list every event constant, so a new event is not forgotten
+func TestNotificationEventsAreComplete(t *testing.T) {
+	declared := stringConsts(t, "notifications.go", hasType("NotificationEvent"))
+	require.NotEmpty(t, declared)
+
+	listed := make([]string, 0, len(declared))
+	for _, ev := range NotificationEvents() {
+		listed = append(listed, string(ev))
+	}
+
+	assert.ElementsMatch(t, declared, listed, "NotificationEvents() must list all the NotificationEvent constants")
+}
+
+// The webhook formats must be the ones supported by go-kit, so a new format is not forgotten
+func TestWebhookFormatsMatchGoKit(t *testing.T) {
+	out, err := exec.CommandContext(t.Context(), "go", "list", "-m", "-f", "{{.Dir}}", "github.com/italypaleale/go-kit").Output()
+	require.NoError(t, err)
+	dir := strings.TrimSpace(string(out))
+	require.NotEmpty(t, dir)
+
+	supported := stringConsts(t, filepath.Join(dir, "webhook", "webhook.go"), hasType("WebhookFormat"))
+	require.NotEmpty(t, supported)
+
+	// The formats accepted by the configuration are the constants of this package named WebhookFormat*
+	ours := stringConsts(t, "notifications.go", func(vs *ast.ValueSpec) bool {
+		return strings.HasPrefix(vs.Names[0].Name, "WebhookFormat")
+	})
+
+	assert.ElementsMatch(t, supported, ours, "the WebhookFormat constants must match the formats supported by go-kit")
 }

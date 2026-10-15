@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -27,20 +26,19 @@ func NotificationEvents() []NotificationEvent {
 	return []NotificationEvent{EventDNSUpdated, EventDNSUpdateFailed, EventAllUnhealthy}
 }
 
-// Valid webhook formats
+// Webhook formats
+// The list must match the formats supported by go-kit, and a test checks that
 const (
 	WebhookFormatPlain   = "plain"
 	WebhookFormatSlack   = "slack"
 	WebhookFormatDiscord = "discord"
+	WebhookFormatNtfy    = "ntfy"
 )
 
 // ConfigNotifications configures the notifications sent when something happens to a domain
 // All kinds are optional, and if none is configured ddup does not send notifications
 type ConfigNotifications struct {
-	// Notifications sent to ntfy topics
-	Ntfy []ConfigNotificationNtfy `yaml:"ntfy"`
-
-	// Notifications sent to webhooks, using the plain, Slack, or Discord formats
+	// Notifications sent to webhooks, using the plain, Slack, Discord, or ntfy formats
 	Webhooks []ConfigNotificationWebhook `yaml:"webhooks"`
 
 	// Notifications sent by email
@@ -69,28 +67,6 @@ type ConfigNotificationDelivery struct {
 	AllowPrivateDestinations bool `yaml:"allowPrivateDestinations"`
 }
 
-// ConfigNotificationNtfy configures notifications sent to an ntfy topic
-type ConfigNotificationNtfy struct {
-	ConfigNotificationDelivery `yaml:",inline"`
-
-	// Name of the notification, used in logs
-	// Must be unique among the ntfy notifications
-	// +required
-	Name string `yaml:"name"`
-
-	// URL of the topic, including the topic name (for example "https://ntfy.example.com/ddup")
-	// +required
-	URL string `json:"-" yaml:"url"`
-
-	// Access token for the topic, sent as "Bearer <token>"
-	// Use `!file` to read it from a file
-	Token string `json:"-" yaml:"token"`
-
-	// Events to send, among "dns_updated", "dns_update_failed" and "all_unhealthy"
-	// +default all events
-	Events []NotificationEvent `yaml:"events"`
-}
-
 // ConfigNotificationWebhook configures notifications sent to a webhook
 type ConfigNotificationWebhook struct {
 	ConfigNotificationDelivery `yaml:",inline"`
@@ -100,14 +76,19 @@ type ConfigNotificationWebhook struct {
 	// +required
 	Name string `yaml:"name"`
 
-	// Format of the message: "plain", "slack", or "discord"
+	// Format of the message: "plain", "slack", "discord", or "ntfy"
 	// +default "plain"
 	Format string `yaml:"format"`
 
 	// URL of the webhook
-	// Slack and Discord URLs are secrets: use `!file` to read it from a file
+	// For the "ntfy" format, it includes the topic name (for example "https://ntfy.example.com/ddup")
+	// Slack and Discord URLs are secrets
 	// +required
 	URL string `json:"-" yaml:"url"`
+
+	// Optional token sent in the Authorization header as "Bearer <token>"
+	// Some formats may not use it
+	Token string `json:"-" yaml:"token"`
 
 	// Events to send, among "dns_updated", "dns_update_failed" and "all_unhealthy"
 	// +default all events
@@ -122,7 +103,7 @@ type ConfigNotificationEmail struct {
 	Name string `yaml:"name"`
 
 	// Connection string for the email provider, such as "resend://<api-key>?fromAddress=ddup@example.com" or "smtp://..."
-	// It contains secrets: use `!file` to read it from a file
+	// It contains secrets
 	// +required
 	ConnectionString string `json:"-" yaml:"connectionString"`
 
@@ -136,33 +117,10 @@ type ConfigNotificationEmail struct {
 }
 
 // validate the notifications configuration and sets the defaults
+// URLs, timeouts, and connection strings are validated by go-kit when the notifications are created
 // Error messages never include URLs, tokens, or connection strings, because they are secrets
 func (c *ConfigNotifications) validate() error {
-	names := make(map[string]int, len(c.Ntfy))
-	for i := range c.Ntfy {
-		n := &c.Ntfy[i]
-		label := notificationLabel("ntfy", i, n.Name)
-
-		err := checkNotificationName(names, i, n.Name)
-		if err != nil {
-			return fmt.Errorf("%s is invalid: %w", label, err)
-		}
-
-		err = validateNotificationURL(n.URL, true)
-		if err != nil {
-			return fmt.Errorf("%s is invalid: %w", label, err)
-		}
-		err = n.validate()
-		if err != nil {
-			return fmt.Errorf("%s is invalid: %w", label, err)
-		}
-		n.Events, err = validateNotificationEvents(n.Events)
-		if err != nil {
-			return fmt.Errorf("%s is invalid: %w", label, err)
-		}
-	}
-
-	clear(names)
+	names := make(map[string]int, len(c.Webhooks))
 	for i := range c.Webhooks {
 		w := &c.Webhooks[i]
 		label := notificationLabel("webhooks", i, w.Name)
@@ -176,19 +134,11 @@ func (c *ConfigNotifications) validate() error {
 		switch w.Format {
 		case "":
 			w.Format = WebhookFormatPlain
-		case WebhookFormatPlain, WebhookFormatSlack, WebhookFormatDiscord:
+		case WebhookFormatPlain, WebhookFormatSlack, WebhookFormatDiscord, WebhookFormatNtfy:
 		default:
-			return fmt.Errorf("%s is invalid: unknown format %q (valid formats: %s, %s, %s)", label, w.Format, WebhookFormatPlain, WebhookFormatSlack, WebhookFormatDiscord)
+			return fmt.Errorf("%s is invalid: unknown format %q (valid formats: %s, %s, %s, %s)", label, w.Format, WebhookFormatPlain, WebhookFormatSlack, WebhookFormatDiscord, WebhookFormatNtfy)
 		}
 
-		err = validateNotificationURL(w.URL, false)
-		if err != nil {
-			return fmt.Errorf("%s is invalid: %w", label, err)
-		}
-		err = w.validate()
-		if err != nil {
-			return fmt.Errorf("%s is invalid: %w", label, err)
-		}
 		w.Events, err = validateNotificationEvents(w.Events)
 		if err != nil {
 			return fmt.Errorf("%s is invalid: %w", label, err)
@@ -205,9 +155,6 @@ func (c *ConfigNotifications) validate() error {
 			return fmt.Errorf("%s is invalid: %w", label, err)
 		}
 
-		if strings.TrimSpace(e.ConnectionString) == "" {
-			return fmt.Errorf("%s is invalid: connectionString is empty", label)
-		}
 		if len(e.To) == 0 {
 			return fmt.Errorf("%s is invalid: to is empty; specify at least one recipient", label)
 		}
@@ -223,19 +170,6 @@ func (c *ConfigNotifications) validate() error {
 		}
 	}
 
-	return nil
-}
-
-func (d ConfigNotificationDelivery) validate() error {
-	if d.Timeout < 0 {
-		return errors.New("timeout must not be negative")
-	}
-	if d.MaxAttempts < 0 {
-		return errors.New("maxAttempts must not be negative")
-	}
-	if d.RetryInterval < 0 {
-		return errors.New("retryInterval must not be negative")
-	}
 	return nil
 }
 
@@ -257,29 +191,6 @@ func checkNotificationName(seen map[string]int, index int, name string) error {
 		return fmt.Errorf("name is already used by entry %d", prev)
 	}
 	seen[name] = index
-	return nil
-}
-
-// validateNotificationURL ensures that the URL uses http or https
-// The URL is never included in the errors
-func validateNotificationURL(val string, requireTopic bool) error {
-	if val == "" {
-		return errors.New("url is empty")
-	}
-
-	u, err := url.Parse(val)
-	if err != nil {
-		return errors.New("url is not a valid URL")
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return errors.New("url must use the http or https scheme")
-	}
-	if u.Host == "" {
-		return errors.New("url must include a host")
-	}
-	if requireTopic && strings.Trim(u.Path, "/") == "" {
-		return errors.New("url must include the topic name, like https://ntfy.example.com/topic")
-	}
 	return nil
 }
 

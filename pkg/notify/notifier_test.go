@@ -217,8 +217,9 @@ func TestNtfyDelivery(t *testing.T) {
 	ts := newTestServer(t, nil)
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        ts.URL + "/ddup",
 				Token:                      testNtfyToken,
@@ -267,8 +268,9 @@ func TestNtfyWithoutToken(t *testing.T) {
 	ts := newTestServer(t, nil)
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        ts.URL + "/ddup",
 				ConfigNotificationDelivery: fastDelivery(),
@@ -367,15 +369,14 @@ func TestEventFilter(t *testing.T) {
 	other := newTestServer(t, nil)
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "only-failures",
 				URL:                        ts.URL + "/ddup",
 				Events:                     []config.NotificationEvent{config.EventDNSUpdateFailed, config.EventAllUnhealthy},
 				ConfigNotificationDelivery: fastDelivery(),
 			},
-		},
-		Webhooks: []config.ConfigNotificationWebhook{
 			{
 				Name:                       "all",
 				URL:                        other.URL + "/hook",
@@ -407,8 +408,9 @@ func TestRetries(t *testing.T) {
 	logs := captureLogs(t)
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        ts.URL + "/ddup",
 				ConfigNotificationDelivery: fastDelivery(),
@@ -432,8 +434,9 @@ func TestRetriesGiveUp(t *testing.T) {
 	delivery := fastDelivery()
 	delivery.MaxAttempts = 2
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        ts.URL + "/ddup",
 				ConfigNotificationDelivery: delivery,
@@ -460,14 +463,13 @@ func TestPrivateDestinations(t *testing.T) {
 		delivery.AllowPrivateDestinations = false
 		delivery.MaxAttempts = 1
 		n := newTestNotifier(t, config.ConfigNotifications{
-			Ntfy: []config.ConfigNotificationNtfy{
+			Webhooks: []config.ConfigNotificationWebhook{
 				{
+					Format:                     "ntfy",
 					Name:                       "alerts",
 					URL:                        ts.URL + "/ddup",
 					ConfigNotificationDelivery: delivery,
 				},
-			},
-			Webhooks: []config.ConfigNotificationWebhook{
 				{
 					Name:                       "chat",
 					URL:                        ts.URL + "/hook",
@@ -490,8 +492,9 @@ func TestPrivateDestinations(t *testing.T) {
 		ts := newTestServer(t, nil)
 
 		n := newTestNotifier(t, config.ConfigNotifications{
-			Ntfy: []config.ConfigNotificationNtfy{
+			Webhooks: []config.ConfigNotificationWebhook{
 				{
+					Format:                     "ntfy",
 					Name:                       "alerts",
 					URL:                        ts.URL + "/ddup",
 					ConfigNotificationDelivery: fastDelivery(),
@@ -573,22 +576,36 @@ func TestEmailDelivery(t *testing.T) {
 	assert.Equal(t, []string{"resend://" + testResendKey + "?fromAddress=ddup@example.com"}, connStrings)
 
 	// One email per recipient and per event, and the filtered event was not sent
+	// The recipients are sent in parallel, so the order is not defined
 	sent := fake.Sent()
 	require.Len(t, sent, 4)
 
 	updated := newMessage(testEvent(config.EventDNSUpdated))
-	assert.Equal(t, emailer.EmailAddress{Address: "postmaster@example.com"}, sent[0].To)
-	assert.Equal(t, updated.title, sent[0].Subject)
-	assert.Equal(t, updated.body, sent[0].Message.Text)
-	assert.Empty(t, sent[0].Message.HTML)
-	assert.Equal(t, emailer.EmailAddress{Name: "Ops Team", Address: "ops@example.com"}, sent[1].To)
-	assert.Equal(t, updated.title, sent[1].Subject)
-
 	unhealthy := newMessage(testEvent(config.EventAllUnhealthy))
-	assert.Equal(t, "postmaster@example.com", sent[2].To.Address)
-	assert.Equal(t, unhealthy.title, sent[2].Subject)
-	assert.Equal(t, unhealthy.body, sent[2].Message.Text)
-	assert.Equal(t, "ops@example.com", sent[3].To.Address)
+	postmaster := emailer.EmailAddress{Address: "postmaster@example.com"}
+	ops := emailer.EmailAddress{Name: "Ops Team", Address: "ops@example.com"}
+	expected := []sentEmail{
+		{To: postmaster, Subject: updated.title, Message: emailer.SendEmailMessage{Text: updated.body}},
+		{To: ops, Subject: updated.title, Message: emailer.SendEmailMessage{Text: updated.body}},
+		{To: postmaster, Subject: unhealthy.title, Message: emailer.SendEmailMessage{Text: unhealthy.body}},
+		{To: ops, Subject: unhealthy.title, Message: emailer.SendEmailMessage{Text: unhealthy.body}},
+	}
+	assert.ElementsMatch(t, expected, sent)
+}
+
+func TestEmailHasASenderForEachRecipient(t *testing.T) {
+	n := newTestNotifier(t, config.ConfigNotifications{
+		Email: []config.ConfigNotificationEmail{
+			{
+				Name:             "ops",
+				ConnectionString: "resend://" + testResendKey + "?fromAddress=ddup@example.com",
+				To:               []string{"first@example.com", "second@example.com", "third@example.com"},
+			},
+		},
+	}, fakeEmailerDeps(&fakeEmailer{}, nil))
+
+	assert.Len(t, n.senders, 3, "the emails to the recipients are queued and sent independently")
+	shutdownNotifier(t, n)
 }
 
 func TestEmailFailureForOneRecipient(t *testing.T) {
@@ -724,15 +741,14 @@ func TestSecretsNotInLogs(t *testing.T) {
 	deps := fakeEmailerDeps(fake, nil)
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        closedURL + "/" + testTopic,
 				Token:                      testNtfyToken,
 				ConfigNotificationDelivery: delivery,
 			},
-		},
-		Webhooks: []config.ConfigNotificationWebhook{
 			{
 				Name:                       "slack",
 				Format:                     "slack",
@@ -755,10 +771,7 @@ func TestSecretsNotInLogs(t *testing.T) {
 		},
 	}, deps)
 
-	// The error of the DNS provider can include its token
-	ev := testEvent(config.EventDNSUpdateFailed)
-	ev.Error = "cloudflare: request failed with token " + testCFToken + " and Authorization: Bearer abc.def-123"
-	n.Notify(ev)
+	n.Notify(testEvent(config.EventDNSUpdateFailed))
 	shutdownNotifier(t, n)
 
 	out := logs.String()
@@ -766,37 +779,12 @@ func TestSecretsNotInLogs(t *testing.T) {
 	for _, name := range []string{"alerts", "slack", "discord", "ops"} {
 		assert.Contains(t, out, "notification="+name)
 	}
-	for _, secret := range []string{testNtfyToken, testTopic, testHookToken, testResendKey, testCFToken, "abc.def-123"} {
+	for _, secret := range []string{testNtfyToken, testTopic, testHookToken, testResendKey} {
 		assert.NotContains(t, out, secret)
 	}
 
-	// The events sent do not include the DNS provider token either
 	sent := fake.Sent()
 	assert.Empty(t, sent)
-}
-
-func TestEventErrorIsRedacted(t *testing.T) {
-	ts := newTestServer(t, nil)
-
-	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
-			{
-				Name:                       "alerts",
-				URL:                        ts.URL + "/ddup",
-				ConfigNotificationDelivery: fastDelivery(),
-			},
-		},
-	}, realDeps())
-
-	ev := testEvent(config.EventDNSUpdateFailed)
-	ev.Error = "request to https://api.example.com/zones?token=" + testCFToken + " failed: " + testCFToken
-	n.Notify(ev)
-	shutdownNotifier(t, n)
-
-	reqs := ts.Requests()
-	require.Len(t, reqs, 1)
-	assert.NotContains(t, reqs[0].Body, testCFToken)
-	assert.Contains(t, reqs[0].Body, "Error: request to https://api.example.com/zones?token=[redacted] failed: [redacted]")
 }
 
 func TestSlowReceiverDoesNotBlock(t *testing.T) {
@@ -806,8 +794,9 @@ func TestSlowReceiverDoesNotBlock(t *testing.T) {
 	delivery := fastDelivery()
 	delivery.MaxAttempts = 1
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        ts.URL + "/ddup",
 				ConfigNotificationDelivery: delivery,
@@ -849,8 +838,9 @@ func TestShutdownDrainsQueue(t *testing.T) {
 	t.Cleanup(slow.Close)
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        slow.URL + "/ddup",
 				ConfigNotificationDelivery: fastDelivery(),
@@ -878,14 +868,13 @@ func TestNoGoroutineLeaks(t *testing.T) {
 	fake := &fakeEmailer{}
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Ntfy: []config.ConfigNotificationNtfy{
+		Webhooks: []config.ConfigNotificationWebhook{
 			{
+				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        ts.URL + "/ddup",
 				ConfigNotificationDelivery: fastDelivery(),
 			},
-		},
-		Webhooks: []config.ConfigNotificationWebhook{
 			{
 				Name:                       "chat",
 				Format:                     "slack",

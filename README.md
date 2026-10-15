@@ -319,7 +319,7 @@ providers:
 
 ddup can notify you when something happens to a domain. Notifications are optional: with no `notifications` section, ddup sends nothing.
 
-Notifications can be sent to [ntfy](https://ntfy.sh), to webhooks (plain text, Slack, or Discord), and by email.
+Notifications can be sent to webhooks (plain text, Slack, Discord, or [ntfy](https://ntfy.sh)), and by email.
 The messages are built by ddup and are not customizable.
 
 #### Events
@@ -327,7 +327,7 @@ The messages are built by ddup and are not customizable.
 | Event | When it is sent |
 | :---- | :-------------- |
 | `dns_updated` | The DNS records of a domain were changed. The message has the addresses published now and the ones that were in DNS before |
-| `dns_update_failed` | Updating the DNS records of a domain failed. The message has the error (with secrets removed). ddup retries at every check, and the same error is notified only once |
+| `dns_update_failed` | Updating the DNS records of a domain failed. The message has the error. ddup retries at every check, and the same error is notified only once |
 | `all_unhealthy` | A domain has no healthy endpoint. DNS is left unchanged. It is sent once, when the domain enters this state (including at startup), and not on every check |
 
 When a domain recovers after `all_unhealthy`, ddup updates DNS as usual and sends `dns_updated`. If the records in DNS are already the right ones, nothing changed and no event is sent.
@@ -337,15 +337,11 @@ Every notification has an optional `events` list to choose the events to receive
 #### Settings
 
 - `notifications`: Notifications to send
-  - `ntfy`: List of ntfy topics
-    - `name`: Name of the notification, used in logs. Required, and unique among the `ntfy` entries
-    - `url`: URL of the topic, including the topic name, such as `https://ntfy.example.com/ddup`. Required
-    - `token`: Optional access token, sent as `Authorization: Bearer <token>`
-    - `events`: Events to send (default: all)
   - `webhooks`: List of webhooks
     - `name`: Name of the notification, used in logs. Required, and unique among the `webhooks` entries
-    - `format`: `plain` (default, the message as plain text), `slack` (a Slack-compatible message), or `discord` (Discord's Slack-compatible endpoint)
-    - `url`: URL of the webhook. Required
+    - `format`: `plain` (default, the message as plain text), `slack` (a Slack-compatible message), `discord` (Discord's Slack-compatible endpoint), or `ntfy` (a message for an [ntfy](https://ntfy.sh) topic)
+    - `url`: URL of the webhook. Required. For `ntfy`, it includes the topic name, such as `https://ntfy.example.com/ddup`
+    - `token`: Optional token, sent as `Authorization: Bearer <token>`. Some formats do not use it
     - `events`: Events to send (default: all)
   - `email`: List of email notifications
     - `name`: Name of the notification, used in logs. Required, and unique among the `email` entries
@@ -353,7 +349,7 @@ Every notification has an optional `events` list to choose the events to receive
     - `to`: List of recipients. One email is sent to each address. Required
     - `events`: Events to send (default: all)
 
-`ntfy` and `webhooks` entries also have these optional settings for delivering the request:
+`webhooks` entries also have these optional settings for delivering the request:
 
 - `timeout`: Timeout of each request (default: `20s`)
 - `maxAttempts`: Maximum number of attempts to send each notification, including the first (default: 3). Network errors and `408`, `429` and `5xx` responses are retried, while other errors are not. Set it to `1` to disable retries
@@ -363,7 +359,7 @@ Every notification has an optional `events` list to choose the events to receive
 Redirects are never followed.
 Emails are sent once, without retries.
 
-The URLs of webhooks, ntfy tokens, and email connection strings are secrets. Read them from files with `!file` (see [Configuration](#configuration)), so the configuration file does not contain them. ddup never writes these values to its logs: notification failures are logged with the `name` of the notification and the error, with the URL and secrets removed.
+The URLs and tokens of webhooks, and the email connection strings, are secrets. Read them from files with `!file` (see [Configuration](#configuration)), so the configuration file does not contain them. ddup never writes these values to its logs: notification failures are logged with the `name` of the notification and the error, with the URL and secrets removed.
 
 #### Examples
 
@@ -371,8 +367,9 @@ Send all events to an ntfy topic on a server in a private network:
 
 ```yaml
 notifications:
-  ntfy:
+  webhooks:
     - name: "alerts"
+      format: "ntfy"
       url: "https://ntfy.example.com/ddup"
       token: !file /run/secrets/ntfy-token
       allowPrivateDestinations: true

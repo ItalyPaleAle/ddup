@@ -254,8 +254,9 @@ func TestNotifyDeliveryDoesNotAffectChecks(t *testing.T) {
 			},
 		},
 		Notifications: config.ConfigNotifications{
-			Ntfy: []config.ConfigNotificationNtfy{
+			Webhooks: []config.ConfigNotificationWebhook{
 				{
+					Format:                   "ntfy",
 					Name:                     "alerts",
 					URL:                      srv.URL + "/ddup",
 					Timeout:                  10 * time.Second,

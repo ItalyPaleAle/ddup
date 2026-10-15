@@ -1,7 +1,6 @@
 package notify
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -25,21 +24,22 @@ func newMessage(ev Event) message {
 	status := ev.status()
 	m := message{
 		body: messageBody(ev, status),
+		tags: make([]string, 0, 2),
 	}
 
 	// The tag shows a colored circle for the health of the domain
 	switch status {
 	case StatusHealthy:
-		m.tags = []string{"green_circle"}
+		m.tags = append(m.tags, "green_circle")
 	case StatusWarning:
-		m.tags = []string{"yellow_circle"}
+		m.tags = append(m.tags, "yellow_circle")
 	default:
-		m.tags = []string{"red_circle"}
+		m.tags = append(m.tags, "red_circle")
 	}
 
 	switch ev.Type {
 	case config.EventDNSUpdated:
-		m.title = fmt.Sprintf("%s now points to %s", ev.Domain, joinSorted(ev.Published))
+		m.title = ev.Domain + " now points to " + joinSorted(ev.Published)
 	case config.EventDNSUpdateFailed:
 		m.title = "DNS update failed for " + ev.Domain
 		m.priority = webhook.NtfyPriorityHigh
@@ -57,7 +57,15 @@ func newMessage(ev Event) message {
 
 func messageBody(ev Event, status string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Event: %s\nDomain: %s\nTime: %s\nStatus: %s\n", ev.Type, ev.Domain, ev.Time.UTC().Format(time.RFC3339), status)
+	b.WriteString("Event: ")
+	b.WriteString(string(ev.Type))
+	b.WriteString("\nDomain: ")
+	b.WriteString(ev.Domain)
+	b.WriteString("\nTime: ")
+	b.WriteString(ev.Time.UTC().Format(time.RFC3339))
+	b.WriteString("\nStatus: ")
+	b.WriteString(status)
+	b.WriteByte('\n')
 
 	switch ev.Type {
 	case config.EventDNSUpdated:
@@ -71,7 +79,9 @@ func messageBody(ev Event, status string) string {
 	}
 
 	if ev.Error != "" {
-		fmt.Fprintf(&b, "Error: %s\n", ev.Error)
+		b.WriteString("Error: ")
+		b.WriteString(ev.Error)
+		b.WriteByte('\n')
 	}
 
 	if len(ev.Endpoints) > 0 {
@@ -81,7 +91,13 @@ func messageBody(ev Event, status string) string {
 			if !ep.Healthy {
 				state = "UNHEALTHY"
 			}
-			fmt.Fprintf(&b, "  %s (%s): %s\n", ep.Name, ep.IP, state)
+			b.WriteString("  ")
+			b.WriteString(ep.Name)
+			b.WriteString(" (")
+			b.WriteString(ep.IP)
+			b.WriteString("): ")
+			b.WriteString(state)
+			b.WriteByte('\n')
 		}
 	}
 
@@ -92,7 +108,10 @@ func writeAddresses(b *strings.Builder, label string, addrs []string) {
 	if len(addrs) == 0 {
 		return
 	}
-	fmt.Fprintf(b, "%s: %s\n", label, joinSorted(addrs))
+	b.WriteString(label)
+	b.WriteString(": ")
+	b.WriteString(joinSorted(addrs))
+	b.WriteByte('\n')
 }
 
 func joinSorted(addrs []string) string {

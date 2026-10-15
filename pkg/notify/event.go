@@ -29,7 +29,6 @@ type Event struct {
 	// Addresses that were in DNS before the event
 	Previous []string
 	// Error that caused the event, if any
-	// The notifier removes known secrets from it
 	Error string
 }
 

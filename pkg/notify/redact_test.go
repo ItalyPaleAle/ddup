@@ -7,8 +7,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/italypaleale/ddup/pkg/config"
 )
 
 func TestRedactor(t *testing.T) {
@@ -69,14 +67,6 @@ func TestConnStringSecrets(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestProviderSecrets(t *testing.T) {
-	secrets := providerSecrets(config.ConfigProvider{
-		Cloudflare: &config.CloudflareConfig{APIToken: "cf-token", ZoneID: "zone-id"},
-		OVH:        &config.OVHConfig{APIKey: "ovh-key", APISecret: "ovh-secret", ConsumerKey: "ovh-consumer", ZoneName: "example.com"},
-	})
-	assert.ElementsMatch(t, []string{"cf-token", "ovh-key", "ovh-secret", "ovh-consumer"}, secrets)
 }
 
 func TestRedactingLogger(t *testing.T) {

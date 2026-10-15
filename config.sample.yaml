@@ -64,12 +64,13 @@ providers:
 # URLs, tokens and connection strings are secrets: instead of writing them here, read them from files, as in `token: !file /run/secrets/ntfy-token`
 # Every notification has an optional "events" list, with any of: dns_updated, dns_update_failed, all_unhealthy (default: all of them)
 notifications:
-  # ntfy topics
-  ntfy:
+  # Webhooks, with the format "plain" (default), "slack", "discord", or "ntfy"
+  webhooks:
     - name: "alerts"
-      # URL of the topic, including the topic name
+      format: "ntfy"
+      # For ntfy, the URL includes the topic name
       url: "https://ntfy.example.com/ddup"
-      # Optional access token
+      # Optional token, sent as "Bearer <token>"
       token: "your-ntfy-token"
       events: ["dns_updated", "dns_update_failed", "all_unhealthy"]
       # Allow sending to private addresses, such as a ntfy server in your LAN or cluster (default: false)
@@ -78,8 +79,6 @@ notifications:
       timeout: "10s"
       maxAttempts: 3
       retryInterval: "20s"
-  # Webhooks, with the format "plain" (default), "slack", or "discord"
-  webhooks:
     - name: "chat"
       format: "slack"
       url: "https://hooks.slack.com/services/your-webhook-path"

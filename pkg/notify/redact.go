@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
-	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -15,9 +14,8 @@ const redacted = "[redacted]"
 
 // Secrets that are not known in advance, as found in error messages
 var (
-	bearerRegexp      = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+`)
-	queryRegexp       = regexp.MustCompile(`(?i)([?&](?:key|api_?key|token|access_token|secret|password|sig|signature)=)[^&\s"]+`)
-	secretFieldRegexp = regexp.MustCompile(`(?i)token|secret|key|password`)
+	bearerRegexp = regexp.MustCompile(`(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+`)
+	queryRegexp  = regexp.MustCompile(`(?i)([?&](?:key|api_?key|token|access_token|secret|password|sig|signature)=)[^&\s"]+`)
 )
 
 // redactor removes secrets from text
@@ -124,32 +122,6 @@ func connStringSecrets(raw string) []string {
 	}
 	for _, values := range u.Query() {
 		secrets = append(secrets, values...)
-	}
-	return secrets
-}
-
-// providerSecrets returns the values of the settings of a DNS provider that look like secrets (tokens, keys, and similar)
-func providerSecrets(provider any) []string {
-	val := reflect.ValueOf(provider)
-	if val.Kind() == reflect.Pointer {
-		if val.IsNil() {
-			return nil
-		}
-		val = val.Elem()
-	}
-	if val.Kind() != reflect.Struct {
-		return nil
-	}
-
-	var secrets []string
-	for i := range val.NumField() {
-		field := val.Field(i)
-		switch {
-		case field.Kind() == reflect.Pointer && !field.IsNil() && field.Elem().Kind() == reflect.Struct:
-			secrets = append(secrets, providerSecrets(field.Interface())...)
-		case field.Kind() == reflect.String && secretFieldRegexp.MatchString(val.Type().Field(i).Name):
-			secrets = append(secrets, field.String())
-		}
 	}
 	return secrets
 }
