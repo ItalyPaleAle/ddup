@@ -103,9 +103,9 @@ providers:
 
 When you don't set `credentialsFile`, ddup uses [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials), which look for credentials in places that include:
 
-- **The `GOOGLE_APPLICATION_CREDENTIALS` environment variable**, with the path to a service account key or to a Workload Identity Federation configuration file.
-- **The service account attached to the resource** that runs ddup, such as a Compute Engine virtual machine or a Cloud Run service, or the one bound to a Kubernetes service account with Workload Identity Federation for GKE.
-- **Your user account**, after you run `gcloud auth application-default login`. This is handy for trying ddup on your computer.
+- The `GOOGLE_APPLICATION_CREDENTIALS` environment variable, with the path to a service account key or to a Workload Identity Federation configuration file
+- The service account attached to the resource that runs ddup, such as a Compute Engine virtual machine or a Cloud Run service, or the one bound to a Kubernetes service account with Workload Identity Federation for GKE
+- Your user account, after you run `gcloud auth application-default login`, which is handy for trying ddup on your computer
 
 On Compute Engine, the virtual machine's access scopes must allow Cloud DNS. The default access scopes don't: set the access scopes to allow full access to all Cloud APIs, or include the Cloud DNS scope.
 
@@ -132,6 +132,6 @@ dns.resourceRecordSets.delete
 
 ## Things to know
 
-- **No routing policies.** If the name already has a record set with a routing policy (such as weighted round robin or geolocation), the update fails with an error.
-- **Atomic changes.** ddup sends all the changes for a domain in one change, which Cloud DNS applies all at once.
-- **Existing records.** ddup replaces the A and AAAA record sets with the domain's name, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).
+- Record sets with a routing policy aren't supported. If the name already has one, such as weighted round robin or geolocation, the update fails with an error.
+- All the changes for a domain go in one change, which Cloud DNS applies at once.
+- The A and AAAA record sets with the domain's name are replaced, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).

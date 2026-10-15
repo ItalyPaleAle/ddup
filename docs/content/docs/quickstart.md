@@ -3,7 +3,7 @@ title: "Quickstart"
 weight: 10
 ---
 
-This guide sets up ddup to manage one domain, `app.example.com`, served by two web servers. When one of the servers stops responding, ddup removes its IP from DNS, and adds it back when the server recovers.
+You'll set up ddup to manage one domain, `app.example.com`, served by two web servers. When one of the servers stops responding, ddup removes its IP from DNS, and adds it back when the server recovers.
 
 ## Prerequisites
 

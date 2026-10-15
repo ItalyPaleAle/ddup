@@ -120,10 +120,10 @@ For a system-assigned managed identity, don't set any authentication option: ddu
 
 When you don't set `clientId`, `clientSecret`, or `managedIdentityClientId`, ddup tries the authentication methods of the Azure SDK in order, and uses the first one that works. They include:
 
-- **Environment variables**: `AZURE_TENANT_ID` and `AZURE_CLIENT_ID`, with either `AZURE_CLIENT_SECRET` or `AZURE_CLIENT_CERTIFICATE_PATH` for a certificate. See the [full list](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables).
-- **Workload identity**, for example on Azure Kubernetes Service.
-- **Managed identity**, system-assigned, or user-assigned with its client ID in `AZURE_CLIENT_ID`.
-- **Azure CLI**: the account you signed in with `az login`. This is handy for trying ddup on your computer.
+- The `AZURE_TENANT_ID` and `AZURE_CLIENT_ID` environment variables, with either `AZURE_CLIENT_SECRET`, or `AZURE_CLIENT_CERTIFICATE_PATH` for a certificate (see the [full list](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables))
+- Workload identity, for example on Azure Kubernetes Service
+- A managed identity: system-assigned, or user-assigned with its client ID in `AZURE_CLIENT_ID`
+- The account you signed in with `az login` in the Azure CLI, which is handy for trying ddup on your computer
 
 ```yaml
 providers:
@@ -179,5 +179,5 @@ Microsoft.Network/dnsZones/AAAA/delete
 
 ## Things to know
 
-- **Existing records.** ddup replaces the A and AAAA record sets with the domain's name, including records you created in the Azure portal. See [How ddup manages records](/providers#how-ddup-manages-records).
-- **Azure public cloud only.** ddup connects to the Azure Resource Manager endpoint of the global Azure cloud (`management.azure.com`), so zones in national clouds such as Azure Government or Azure China aren't supported.
+- The A and AAAA record sets with the domain's name are replaced, including records you created in the Azure portal. See [How ddup manages records](/providers#how-ddup-manages-records).
+- Only the global Azure cloud is supported. ddup connects to its Azure Resource Manager endpoint (`management.azure.com`), so zones in national clouds such as Azure Government or Azure China won't work.

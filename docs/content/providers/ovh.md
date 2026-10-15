@@ -101,5 +101,5 @@ providers:
 
 ## Things to know
 
-- **Record names.** `recordName` must be the zone name or a subdomain of it. For example, with `zoneName: example.com`, `app.example.com` and `example.com` work, and `app.example.net` makes the update fail.
-- **Existing records.** ddup deletes the A and AAAA records with the domain's name that don't belong to a published endpoint, including records you created in the OVHcloud Control Panel. See [How ddup manages records](/providers#how-ddup-manages-records).
+- `recordName` must be the zone name or a subdomain of it. For example, with `zoneName: example.com`, `app.example.com` and `example.com` work, and `app.example.net` makes the update fail.
+- A and AAAA records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the OVHcloud Control Panel. See [How ddup manages records](/providers#how-ddup-manages-records).

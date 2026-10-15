@@ -98,11 +98,11 @@ Access keys don't expire on their own, so anyone who gets the key can use it unt
 
 When you don't set `accessKeyId` and `secretAccessKey`, ddup looks for credentials the same way as the AWS CLI and SDKs, in places that include:
 
-- **Environment variables**: `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, plus `AWS_SESSION_TOKEN` for temporary credentials.
-- **Shared configuration and credentials files** in `~/.aws`, with the profile selected by `AWS_PROFILE`.
-- **IAM roles for service accounts** on Amazon EKS.
-- **Task roles** on Amazon ECS.
-- **Instance profiles** on Amazon EC2.
+- The `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` environment variables, plus `AWS_SESSION_TOKEN` for temporary credentials
+- The shared configuration and credentials files in `~/.aws`, with the profile in `AWS_PROFILE`
+- IAM roles for service accounts on Amazon EKS
+- Task roles on Amazon ECS
+- Instance profiles on Amazon EC2
 
 See the [AWS documentation](https://docs.aws.amazon.com/sdkref/latest/guide/standardized-credentials.html) for the full list.
 
@@ -171,6 +171,6 @@ This policy allows changing every record in the zone. To allow only the names an
 
 ## Things to know
 
-- **Simple routing only.** ddup manages record sets that use simple routing. If the name already has an alias record, or a record set with another routing policy (such as weighted, latency, or failover), the update fails with an error.
-- **Atomic changes.** ddup sends all the changes for a domain in one change batch, which Route 53 applies all at once.
-- **Existing records.** ddup replaces the A and AAAA record sets with the domain's name, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).
+- Only record sets with simple routing are supported. If the name already has an alias record, or a record set with another routing policy such as weighted, latency, or failover, the update fails with an error.
+- All the changes for a domain go in one change batch, which Route 53 applies at once.
+- The A and AAAA record sets with the domain's name are replaced, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).

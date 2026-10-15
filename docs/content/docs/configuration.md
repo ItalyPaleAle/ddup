@@ -207,14 +207,14 @@ The server hosts the [dashboard and API](/docs/dashboard).
 | `level` | string | `info` | Minimum level of the messages to log: `debug`, `info`, `warn`, or `error` |
 | `json` | boolean | `false` | Write logs as JSON, one object per line, instead of text |
 
-See [Observability](/docs/observability) for logs and metrics.
+See [Logs and metrics](/docs/observability) for logs and metrics.
 
 ## Environment variables
 
 | Variable | Description |
 |----------|-------------|
 | `DDUP_CONFIG` | Path to the configuration file |
-| `OTEL_*` | OpenTelemetry options for exporting logs and metrics, see [Observability](/docs/observability) |
+| `OTEL_*` | OpenTelemetry options for exporting logs and metrics, see [Logs and metrics](/docs/observability) |
 | `AWS_*` | Credentials for AWS Route 53, see [AWS Route 53](/providers/aws-route53#default-credential-chain) |
 | `AZURE_*` | Credentials for Azure DNS, see [Azure DNS](/providers/azure-dns#default-credentials) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Credentials for Google Cloud DNS, see [Google Cloud DNS](/providers/google-cloud-dns#application-default-credentials) |

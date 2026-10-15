@@ -77,6 +77,6 @@ The response has `"success": true` if both are right.
 
 ## Things to know
 
-- **Records are not proxied.** ddup creates DNS-only records (the grey cloud in the dashboard), so clients connect to your servers' IPs directly, without going through Cloudflare's proxy.
-- **Minimum TTL.** Cloudflare doesn't accept a `ttl` lower than 60 seconds, or 30 seconds on Enterprise plans.
-- **Existing records.** ddup deletes the A and AAAA records with the domain's name that don't belong to a published endpoint, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).
+- The records that ddup creates are DNS-only (the grey cloud in the dashboard), so clients connect to your servers' IPs directly, without going through Cloudflare's proxy.
+- Cloudflare doesn't accept a `ttl` lower than 60 seconds, or 30 seconds on Enterprise plans.
+- A and AAAA records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).

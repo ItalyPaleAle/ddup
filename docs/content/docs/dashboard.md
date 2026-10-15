@@ -30,9 +30,11 @@ By default, ddup listens only on `127.0.0.1`, so the dashboard can't be reached 
 
 The top of the page counts the domains in each state:
 
-- **Healthy**: all endpoints of the domain are healthy.
-- **Warning**: some endpoints are unhealthy.
-- **Unhealthy**: no endpoint is healthy, or the last attempt to update DNS failed.
+| State | Meaning |
+|-------|---------|
+| Healthy | All endpoints of the domain are healthy |
+| Warning | Some endpoints are unhealthy |
+| Unhealthy | No endpoint is healthy, or the last attempt to update DNS failed |
 
 Each domain has a card with its provider, the time of its last check, and its endpoints. For each endpoint, the card shows its IP, whether it's healthy, and how many checks it failed in a row. An endpoint can be healthy and have failures: it failed fewer than `attempts` checks, so it's still in DNS.
 
@@ -40,11 +42,11 @@ An endpoint that is passing checks again, but hasn't reached `recoverAfter` succ
 
 If ddup couldn't update the domain's DNS records, the card shows the error. ddup tries again on the next check.
 
-Other things you can do:
+Type in the search box to show only the domains whose name, or the IP of one of their endpoints, matches.
 
-- **Search** for a domain name or an IP address, to show only the matching domains.
-- **Check now** runs the health checks for all domains right away, instead of waiting for the next interval, and shows the results.
-- **Auto-refresh** reloads the status every minute. Turn it off with the button, or reload the status once with **Refresh now** in the menu next to it. Reloading shows the results of the latest checks, but doesn't run new ones.
+Select **Check now** to run the health checks for all domains right away, instead of waiting for the next interval.
+
+The dashboard reloads the status every minute. To stop it, select **Auto-refresh**. To reload once, select **Refresh now** in the menu next to it. Reloading shows the results of the latest checks without running new ones.
 
 The icon in the browser tab shows the overall status, so you can keep the dashboard open in a background tab: a check mark when all domains are healthy, a warning sign when some endpoints are unhealthy, and a cross when a domain is unhealthy.
 

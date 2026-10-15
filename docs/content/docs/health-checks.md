@@ -3,7 +3,7 @@ title: "Health checks"
 weight: 40
 ---
 
-ddup decides which IPs to publish by sending an HTTP request to each endpoint's health check URL. This page explains how checks work, and how to tune them for your servers.
+ddup decides which IPs to publish by sending an HTTP request to each endpoint's health check URL and looking at the response.
 
 ## How endpoints are checked
 
@@ -24,12 +24,13 @@ The health check URL doesn't need to use the same port or protocol as your app. 
 
 ## When endpoints are removed and added back
 
-ddup publishes the endpoints that pass their checks, following these rules:
+At startup, ddup publishes the endpoints that pass the first check, and updates DNS to match.
 
-- **At startup**, ddup publishes the endpoints that pass the first check, and updates DNS to match.
-- **Removing an endpoint**: a published endpoint stays in DNS until it fails `attempts` checks in a row (2 by default). If it passes a check before then, the count starts over. This way, a single slow response doesn't remove a server.
-- **Adding an endpoint back**: once an endpoint has failed `attempts` checks in a row, it must pass `recoverAfter` checks in a row before it's published again (1 by default). Increase `recoverAfter` to keep a server that keeps going up and down out of DNS until it's stable.
-- **When no endpoint is healthy**, ddup doesn't change DNS: it keeps the records that were there before. Removing all records would make the domain impossible to resolve, while the old records may still work for some clients.
+After that, a published endpoint stays in DNS until it fails `attempts` checks in a row (2 by default). If it passes a check before then, the count starts over, so a single slow response doesn't remove a server.
+
+Once an endpoint has failed `attempts` checks in a row, it must pass `recoverAfter` checks in a row before ddup publishes it again (1 by default). Increase `recoverAfter` to keep a server that keeps going up and down out of DNS until it's stable.
+
+If none of a domain's endpoints are healthy, ddup leaves DNS as it is. Removing every record would make the domain impossible to resolve, and the old records may still work for some clients.
 
 If you also set [priorities](/docs/failover-priorities), ddup publishes only the healthy endpoints with the lowest priority value.
 
@@ -37,19 +38,13 @@ ddup changes DNS only when the set of endpoints to publish changes. If an update
 
 ## How long failover takes
 
-After a server goes down, clients can keep getting its IP for up to:
-
-```text
-interval × attempts + ttl
-```
-
-With the default settings, that's 30 seconds × 2 + 120 seconds, or about 3 minutes. If checks fail because of a timeout, add up to `timeout` for each check.
+After a server goes down, clients can keep getting its IP for up to `interval` times `attempts`, plus `ttl`. With the default settings, that's 30 seconds times 2, plus 120 seconds: 3 minutes. If the checks fail because of a timeout, add up to `timeout` for each check.
 
 To fail over sooner:
 
-- **Lower `interval`**, so failures are detected sooner. Each check sends one request to each endpoint, so lower intervals mean more requests.
-- **Lower `ttl`**, so clients ask for the records again sooner. Some providers have a minimum TTL: for example, Cloudflare doesn't accept TTLs below 60 seconds on most plans.
-- **Lower `attempts`**. With `attempts: 1`, a single failed check removes a server, so keep it at 2 or more unless your servers respond reliably.
+- Lower `interval`, so failures are detected sooner. Every check sends a request to each endpoint, so a lower interval means more requests.
+- Lower `ttl`, so clients ask for the records again sooner. Some providers have a minimum: Cloudflare, for example, doesn't accept TTLs below 60 seconds on most plans.
+- Lower `attempts`. With `attempts: 1`, a single failed check removes a server, so keep it at 2 or more unless your servers respond reliably.
 
 Keep `timeout` well below `interval`.
 
