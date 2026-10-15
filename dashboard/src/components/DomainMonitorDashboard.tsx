@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { apiFetch, pageBuildInfo, type BuildInfo } from '@/lib/build'
 import { setFavicon } from '@/lib/favicon'
 import type { OverallStatus } from '@/lib/favicon-shapes'
 import { StatusIcon } from '@/components/StatusIcon'
@@ -68,6 +69,14 @@ const SummarySegment = ({
   </div>
 )
 
+// The build that served the page, at the bottom of the page
+// The commit is left out when the build doesn't set it (a development build)
+const Footer = ({ info }: { info: BuildInfo }) => {
+  const parts = [`ddup ${info.version}`, info.commit ? info.commit.slice(0, 7) : null].filter(Boolean)
+
+  return <footer className="pt-2 text-center text-xs wrap-break-word text-muted-foreground">{parts.join(' · ')}</footer>
+}
+
 const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const [domains, setDomains] = useState<Domain[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -81,7 +90,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     setIsLoading(true)
     setError(null) // Clear previous errors
     try {
-      const response = await fetch(endpoint + '/api/status')
+      const response = await apiFetch(endpoint + '/api/status')
       if (!response.ok) {
         throw new Error(`HTTP error: ${response.status} ${response.statusText}`)
       }
@@ -119,7 +128,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
         setIsLoading(true)
         setError(null)
 
-        const response = await fetch(endpoint + '/api/status', { signal: controller.signal })
+        const response = await apiFetch(endpoint + '/api/status', { signal: controller.signal })
         if (!response.ok) {
           throw new Error(`HTTP error: ${response.status} ${response.statusText}`)
         }
@@ -175,7 +184,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
     setIsChecking(true)
     setError(null)
     try {
-      const response = await fetch(endpoint + '/api/check', {
+      const response = await apiFetch(endpoint + '/api/check', {
         method: 'POST',
         // The server requires this header, which blocks cross-site requests
         headers: { 'X-Requested-By': 'ddup-dashboard' },
@@ -478,6 +487,8 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
             <span className="ml-2">Loading domain data...</span>
           </div>
         )}
+
+        {pageBuildInfo && <Footer info={pageBuildInfo} />}
       </div>
     </div>
   )
