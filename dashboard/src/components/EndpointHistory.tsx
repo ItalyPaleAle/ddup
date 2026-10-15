@@ -10,13 +10,14 @@ export interface EndpointHistoryItem {
   lastFailure?: string
 }
 
-// Short local date and time, for example "Oct 9, 8:15 AM", with the year only for times that are not in the current year
-const timeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+// Short local date and time with seconds, for example "Oct 9, 8:15:30 AM", with the year only for times that are not in the current year
+const timeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'medium' })
 const timeFormatThisYear = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
   hour: 'numeric',
   minute: '2-digit',
+  second: '2-digit',
 })
 
 const Time = ({ value }: { value: string }) => {
