@@ -24,6 +24,8 @@ If you modify `pkg/config.Config` or any struct referenced from it, always run `
 
 The Go build tag `unit` is meant for files that contain helpers for unit tests. It should never be included in a Go test file (ending in `_test.go`).
 
+Tests for the functions defined in `<file>.go` go in `<file>_test.go`, next to the file. Do not create extra test files named after a feature (like `<file>_feature_test.go`). Add the tests to the existing `_test.go` file, or create the one that matches the source file.
+
 ## JavaScript, TypeScript, JSX, and TSX
 
 ### Package management
