@@ -138,6 +138,10 @@ type ConfigProvider struct {
 	OVH *OVHConfig `yaml:"ovh"`
 	// Config for the Azure DNS provider
 	Azure *AzureConfig `yaml:"azure"`
+	// Config for the AWS Route53 provider
+	AWSRoute53 *AWSRoute53Config `yaml:"awsRoute53"`
+	// Config for the Google Cloud DNS provider
+	GoogleCloudDNS *GoogleCloudDNSConfig `yaml:"googleCloudDns"`
 }
 
 // CloudflareConfig represents Cloudflare-specific configuration
@@ -169,6 +173,28 @@ type AzureConfig struct {
 	ClientSecret string `yaml:"clientSecret,omitempty"`
 	// Managed identity client ID for authenticating with a user-assigned managed identity
 	ManagedIdentityClientID string `yaml:"managedIdentityClientId,omitempty"`
+}
+
+// AWSRoute53Config represents AWS Route53-specific configuration
+type AWSRoute53Config struct {
+	// ID of the hosted zone (e.g. "Z0123456789ABCDEFGHIJ")
+	HostedZoneID string `yaml:"hostedZoneId"`
+	// Access key ID for authenticating with static credentials
+	// If empty, uses the default AWS credential chain
+	AccessKeyID string `yaml:"accessKeyId,omitempty"`
+	// Secret access key for authenticating with static credentials
+	SecretAccessKey string `yaml:"secretAccessKey,omitempty"`
+}
+
+// GoogleCloudDNSConfig represents Google Cloud DNS-specific configuration
+type GoogleCloudDNSConfig struct {
+	// ID of the Google Cloud project containing the managed zone
+	ProjectID string `yaml:"projectId"`
+	// Name of the managed zone resource (e.g. "my-zone"), which is not the DNS name
+	ManagedZone string `yaml:"managedZone"`
+	// Path to a service account key file
+	// If empty, uses Application Default Credentials
+	CredentialsFile string `yaml:"credentialsFile,omitempty"`
 }
 
 // ConfigLogs represents logging configuration

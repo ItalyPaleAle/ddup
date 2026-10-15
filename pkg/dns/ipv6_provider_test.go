@@ -152,6 +152,44 @@ func TestAzureProviderIPv6(t *testing.T) {
 	assert.Equal(t, "2001:db8::30", recordSet.Properties.AAAARecords[0].IPv6Address)
 }
 
+func TestAWSRoute53ProviderIPv6(t *testing.T) {
+	provider, mockTransport := newAWSRoute53TestProviderWithMock()
+	setAWSRoute53ListResponse(mockTransport, "ipv6.example.com.", recordTypeA, awsRoute53ListBody())
+	setAWSRoute53ListResponse(mockTransport, "ipv6.example.com.", recordTypeAAAA, awsRoute53ListBody())
+	setAWSRoute53ChangeResponse(mockTransport, http.StatusOK)
+
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, []string{"2001:db8::40"})
+	require.NoError(t, err)
+
+	requests := mockTransport.GetRequests()
+	require.Len(t, requests, 3)
+
+	body, err := io.ReadAll(requests[2].Body)
+	require.NoError(t, err)
+
+	changes := parseAWSRoute53Changes(t, body)
+	require.Len(t, changes, 1)
+	assert.Equal(t, recordTypeAAAA, changes[0].ResourceRecordSet.Type)
+	assert.Equal(t, []string{"2001:db8::40"}, awsRoute53Values(changes[0].ResourceRecordSet))
+}
+
+func TestGoogleCloudDNSProviderIPv6(t *testing.T) {
+	provider, mockTransport := newGoogleCloudDNSTestProviderWithMock()
+	setGoogleCloudDNSListResponse(mockTransport, "ipv6.example.com.", `{"rrsets":[]}`)
+	setGoogleCloudDNSChangeResponse(mockTransport, http.StatusOK)
+
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, []string{"2001:db8::50"})
+	require.NoError(t, err)
+
+	requests := mockTransport.GetRequests()
+	require.Len(t, requests, 2)
+
+	change := parseGoogleCloudDNSChange(t, requests[1])
+	require.Len(t, change.Additions, 1)
+	assert.Equal(t, recordTypeAAAA, change.Additions[0].Type)
+	assert.Equal(t, []string{"2001:db8::50"}, change.Additions[0].Rrdatas)
+}
+
 func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 	const (
 		domain       = "canonical.example.com"
@@ -231,6 +269,28 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
 		require.NoError(t, err)
 		assert.Len(t, mockTransport.GetRequests(), 2)
+	})
+
+	t.Run("AWS Route53", func(t *testing.T) {
+		provider, mockTransport := newAWSRoute53TestProviderWithMock()
+		setAWSRoute53ListResponse(mockTransport, domain+".", recordTypeA, awsRoute53ListBody())
+		setAWSRoute53ListResponse(mockTransport, domain+".", recordTypeAAAA, awsRoute53ListBody(
+			awsRoute53RecordSetXML(domain+".", recordTypeAAAA, 60, canonicalIP),
+		))
+
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
+		require.NoError(t, err)
+		assert.Len(t, mockTransport.GetRequests(), 2)
+	})
+
+	t.Run("Google Cloud DNS", func(t *testing.T) {
+		provider, mockTransport := newGoogleCloudDNSTestProviderWithMock()
+		setGoogleCloudDNSListResponse(mockTransport, domain+".", `{"rrsets":[`+
+			`{"name":"`+domain+`.","type":"AAAA","ttl":60,"rrdatas":["`+canonicalIP+`"]}]}`)
+
+		_, err := provider.UpdateRecords(t.Context(), domain, 60, []string{expandedIP})
+		require.NoError(t, err)
+		assert.Len(t, mockTransport.GetRequests(), 1)
 	})
 }
 

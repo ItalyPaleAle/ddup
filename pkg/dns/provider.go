@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/italypaleale/ddup/pkg/config"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
@@ -48,8 +49,28 @@ func NewProvider(name string, cfg *config.ConfigProvider, metrics *appmetrics.Ap
 			return nil, fmt.Errorf("error initializing Azure provider: %w", err)
 		}
 		return provider, nil
+	case cfg.AWSRoute53 != nil:
+		provider, err = NewAWSRoute53Provider(name, cfg.AWSRoute53, metrics)
+		if err != nil {
+			return nil, fmt.Errorf("error initializing AWS Route53 provider: %w", err)
+		}
+		return provider, nil
+	case cfg.GoogleCloudDNS != nil:
+		provider, err = NewGoogleCloudDNSProvider(name, cfg.GoogleCloudDNS, metrics)
+		if err != nil {
+			return nil, fmt.Errorf("error initializing Google Cloud DNS provider: %w", err)
+		}
+		return provider, nil
 	default:
 		// Indicates a development-time error
 		panic("invalid provider")
 	}
+}
+
+// toFQDN returns the domain as a fully-qualified name, with a trailing dot
+func toFQDN(domain string) string {
+	if strings.HasSuffix(domain, ".") {
+		return domain
+	}
+	return domain + "."
 }

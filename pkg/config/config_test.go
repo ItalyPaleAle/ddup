@@ -291,6 +291,9 @@ func TestCountSetProperties(t *testing.T) {
 	assert.Equal(t, 0, countSetProperties(ConfigProvider{}))
 	assert.Equal(t, 1, countSetProperties(ConfigProvider{Azure: &AzureConfig{}}))
 	assert.Equal(t, 2, countSetProperties(&ConfigProvider{Azure: &AzureConfig{}, OVH: &OVHConfig{}}))
+	assert.Equal(t, 1, countSetProperties(ConfigProvider{AWSRoute53: &AWSRoute53Config{}}))
+	assert.Equal(t, 1, countSetProperties(ConfigProvider{GoogleCloudDNS: &GoogleCloudDNSConfig{}}))
+	assert.Equal(t, 2, countSetProperties(ConfigProvider{AWSRoute53: &AWSRoute53Config{}, GoogleCloudDNS: &GoogleCloudDNSConfig{}}))
 	assert.Panics(t, func() {
 		countSetProperties("not a struct")
 	})
