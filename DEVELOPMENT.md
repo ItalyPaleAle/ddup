@@ -71,7 +71,7 @@ DDUP_CONFIG=config.yaml go run ./cmd/ddup
 
 Run `make dashboard` first, so the dashboard is available.
 The sample config uses a placeholder Cloudflare token, so with it ddup checks the sample endpoints (which don't exist) but can't update DNS records.
-To try ddup for real, use a provider you control: see the [README](./README.md#configuration) for the options.
+To try ddup for real, use a provider you control: see the [DNS providers](https://ddup.italypaleale.me/providers) in the docs for the options.
 
 ## Running the dashboard with sample data
 
