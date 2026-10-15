@@ -332,3 +332,7 @@ The server has no authentication, so keep it on a trusted network. It exposes:
 - `log`: Logging options
   - `level`: Controls log level and verbosity. Supported values: `debug`, `info` (default), `warn`, `error`.
   - `json`: If true, emits logs formatted as JSON, otherwise uses a text-based structured log format. Defaults to false if a TTY is attached (e.g. when running the binary directly in the terminal or in development); true otherwise.
+
+## Development
+
+To build, run and test ddup from source, see [DEVELOPMENT.md](./DEVELOPMENT.md).
