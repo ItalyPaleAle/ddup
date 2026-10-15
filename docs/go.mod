@@ -1,6 +1,6 @@
 module github.com/italypaleale/ddup/docs
 
-go 1.26.2
+go 1.27.2
 
 tool github.com/italypaleale/hugo-assets/cmd/vercel-docs-build
 

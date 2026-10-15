@@ -46,6 +46,7 @@ If you prefer to install them yourself:
 - `pkg/`: the Go code (config, DNS providers, health checks, the HTTP server, metrics)
 - `dashboard/`: the web dashboard, a React app built with Vite. `dashboard/e2e` has its Playwright tests
 - `config.sample.yaml`: a sample config, documenting every option
+- `docs/`: the documentation site at [ddup.italypaleale.me](https://ddup.italypaleale.me), built with Hugo. It's a separate Go module, which `go.work` adds to the workspace with the root module
 
 ## Building
 
