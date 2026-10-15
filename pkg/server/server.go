@@ -79,6 +79,7 @@ func (s *Server) init() error {
 
 func (s *Server) initAppServer() (err error) {
 	cfg := config.Get()
+	info := newBuildInfo()
 
 	// Create the mux
 	mux := http.NewServeMux()
@@ -132,17 +133,19 @@ func (s *Server) initAppServer() (err error) {
 	})
 
 	// Add static files (includes dashboard)
-	err = registerStatic(mux)
+	err = registerStatic(mux, info)
 	if err != nil {
 		return fmt.Errorf("failed to register static server: %w", err)
 	}
 
-	middlewares := make([]Middleware, 0, 4)
+	middlewares := make([]Middleware, 0, 5)
 	middlewares = append(middlewares,
 		// Recover from panics
 		sloghttp.Recovery,
 		// Limit request body to 1KB
 		MiddlewareMaxBodySize(1<<10),
+		// Tell clients which build answers the API requests
+		MiddlewareBuildHeader(info.Build),
 	)
 
 	if cfg.Dev.EnableCORS {
