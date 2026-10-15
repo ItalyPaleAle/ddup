@@ -23,7 +23,7 @@ import (
 type HealthChecker struct {
 	// Key is domain name
 	domainCheckers map[string]*domainChecker
-	// Optional; may be nil
+	// Optional, may be nil
 	notifier Notifier
 	// Requests to run a check right away; handled by Run, so checks never overlap
 	forceCh chan forceRequest

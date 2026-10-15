@@ -20,8 +20,6 @@ type message struct {
 	tags     []string
 }
 
-var _ webhook.MessageProvider = message{}
-
 // newMessage builds the notification for an event
 func newMessage(ev Event) message {
 	status := ev.status()

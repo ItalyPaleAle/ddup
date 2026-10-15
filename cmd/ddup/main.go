@@ -113,8 +113,7 @@ func main() {
 			return
 		}
 
-		// Init the notifier, which is nil if no notification is configured
-		// On shutdown, it delivers the notifications still in the queue
+		// If notifications are configured, init the notifier too
 		notifier, err := notify.New(ctx, cfg)
 		if err != nil {
 			shutdowns.Run(log)
@@ -123,6 +122,7 @@ func main() {
 		}
 		if notifier != nil {
 			hc.SetNotifier(notifier)
+			// On shutdown, it delivers the notifications still in the queue
 			shutdowns.Add(notifier.Shutdown)
 		}
 		services = append(services, hc.Run)

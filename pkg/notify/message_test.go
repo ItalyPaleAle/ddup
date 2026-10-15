@@ -13,6 +13,9 @@ import (
 
 var testTime = time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 
+// Interface assertion
+var _ webhook.MessageProvider = message{}
+
 func testEndpoints() []EndpointState {
 	return []EndpointState{
 		{Name: "server1", IP: "192.0.2.10", Healthy: true},
