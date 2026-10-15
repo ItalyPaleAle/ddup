@@ -138,10 +138,3 @@ func TestBuildInfoInPage(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, get(t, srv, "/missing.html", nil).Code)
 	})
 }
-
-func TestAppendHTMLSafeJSON(t *testing.T) {
-	// The input is what an encoder that doesn't escape for HTML would produce
-	got := appendHTMLSafeJSON([]byte("x"), []byte("{\"a\":\"</script> & <b>\u2028\u2029\"}"))
-	assert.Equal(t, `x{"a":"\u003c/script\u003e \u0026 \u003cb\u003e\u2028\u2029"}`, string(got))
-	assert.JSONEq(t, "{\"a\":\"</script> & <b>\u2028\u2029\"}", string(got[1:]))
-}

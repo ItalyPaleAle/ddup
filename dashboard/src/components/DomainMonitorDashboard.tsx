@@ -74,7 +74,7 @@ const SummarySegment = ({
 const Footer = ({ info }: { info: BuildInfo }) => {
   const parts = [`ddup ${info.version}`, info.commit ? info.commit.slice(0, 7) : null].filter(Boolean)
 
-  return <footer className="pt-2 text-center text-xs break-words text-muted-foreground">{parts.join(' · ')}</footer>
+  return <footer className="pt-2 text-center text-xs wrap-break-word text-muted-foreground">{parts.join(' · ')}</footer>
 }
 
 const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {

@@ -2,7 +2,8 @@ package server
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,14 +11,9 @@ import (
 	"github.com/italypaleale/ddup/pkg/buildinfo"
 )
 
-const (
-	// Response header with the identifier of the build, set on every /api/ response
-	// The dashboard compares it with the identifier in the page, and reloads when they differ
-	headerBuild = "X-Ddup-Build"
-
-	// ID of the script element in the page with the build info
-	buildScriptID = "ddup-build"
-)
+// Response header with the identifier of the build, set on every /api/ response
+// The dashboard compares it with the identifier in the page, and reloads when they differ
+const headerBuild = "X-Ddup-Build"
 
 // buildInfo describes the build of the running app
 // The values other than the version and the identifier are empty for a build that doesn't set them (a development build)
@@ -53,35 +49,14 @@ func buildIdentifier(version, buildID, commit string) string {
 	}, id)
 }
 
-// appendHTMLSafeJSON appends a JSON document to dst, escaping the characters that could end a <script> element or break a script
-// Escaping is done here instead of relying on the defaults of the JSON encoder, which differ between encoding/json and encoding/json/v2
-// The characters only occur inside JSON strings, where \uXXXX is an equivalent escape
-func appendHTMLSafeJSON(dst, data []byte) []byte {
-	for i := 0; i < len(data); i++ {
-		switch {
-		case data[i] == '<':
-			dst = append(dst, `\u003c`...)
-		case data[i] == '>':
-			dst = append(dst, `\u003e`...)
-		case data[i] == '&':
-			dst = append(dst, `\u0026`...)
-		case bytes.HasPrefix(data[i:], []byte("\u2028")):
-			dst = append(dst, `\u2028`...)
-			i += len("\u2028") - 1
-		case bytes.HasPrefix(data[i:], []byte("\u2029")):
-			dst = append(dst, `\u2029`...)
-			i += len("\u2029") - 1
-		default:
-			dst = append(dst, data[i])
-		}
-	}
-	return dst
-}
-
 // insertIntoPage returns the HTML page with the build info in a non-executable JSON script element before </head>
 // The JSON is escaped explicitly, so no value can end the element
 func (b buildInfo) insertIntoPage(page []byte) ([]byte, error) {
-	data, err := json.Marshal(b)
+	data, err := json.Marshal(
+		b,
+		jsontext.EscapeForHTML(true),
+		jsontext.EscapeForJS(true),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode the build info: %w", err)
 	}
@@ -93,8 +68,8 @@ func (b buildInfo) insertIntoPage(page []byte) ([]byte, error) {
 
 	res := make([]byte, 0, len(page)+len(data)+64)
 	res = append(res, page[:idx]...)
-	res = append(res, `<script type="application/json" id="`+buildScriptID+`">`...)
-	res = appendHTMLSafeJSON(res, data)
+	res = append(res, `<script type="application/json" id="ddup-build">`...)
+	res = append(res, data...)
 	res = append(res, `</script>`...)
 	res = append(res, page[idx:]...)
 	return res, nil

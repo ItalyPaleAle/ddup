@@ -41,16 +41,12 @@ type CachingFileServer struct {
 	lastModified            time.Time
 	lastModifiedHeaderValue string
 	assetsCacheControl      string
-	// The page with the build info inserted, computed once at startup
-	// It's nil if there's no page in the file system
-	page []byte
+	page                    []byte
 }
 
 const (
 	// Files in this folder have a hash in their name, so they never change and can be cached for a long time
 	hashedAssetsPrefix = "/assets/"
-	// The page is served at both paths
-	pagePath = "/index.html"
 	// Everything else (the page itself, the icon) can change when ddup is upgraded, and must be checked every time, or browsers show an old version for up to the cache time
 	revalidateCacheControl = "no-cache"
 )
@@ -76,23 +72,22 @@ func NewCachingFileServer(root http.FileSystem, maxAge int, info buildInfo) (*Ca
 // loadPage reads index.html and inserts the build info
 // It returns nil if there's no index.html
 func loadPage(root http.FileSystem, info buildInfo) ([]byte, error) {
-	f, err := root.Open(pagePath)
+	f, err := root.Open("/index.html")
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to open %s: %w", pagePath, err)
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to open index.html: %w", err)
 	}
 	defer f.Close() //nolint:errcheck
 
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %s: %w", pagePath, err)
+		return nil, fmt.Errorf("failed to read index.html: %w", err)
 	}
 
 	page, err := info.insertIntoPage(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to prepare %s: %w", pagePath, err)
+		return nil, fmt.Errorf("failed to prepare index.html: %w", err)
 	}
 	return page, nil
 }
@@ -119,8 +114,8 @@ func (f *CachingFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Last-Modified", f.lastModifiedHeaderValue)
 	w.Header().Set("Cache-Control", f.cacheControlFor(r.URL.Path))
 
-	if f.page != nil && (r.URL.Path == "/" || r.URL.Path == pagePath) {
-		http.ServeContent(w, r, pagePath, f.lastModified, bytes.NewReader(f.page))
+	if f.page != nil && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
+		http.ServeContent(w, r, "/index.html", f.lastModified, bytes.NewReader(f.page))
 		return
 	}
 
