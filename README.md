@@ -111,8 +111,8 @@ You can find an example of the configuration file, and a description of every op
     - `name`: Friendly name for the endpoint, used for logging (optional)
     - `url`: HTTP URL to check for health status. Optional for endpoints that use `ipLookupFamily`, which are then not health-checked
     - `ip`: The IPv4 or IPv6 address to include in DNS records when healthy. IPv4 addresses create A records and IPv6 addresses create AAAA records. Exactly one of `ip` and `ipLookupFamily` is required
-    - `ipLookupFamily`: `4` or `6`. Instead of a fixed `ip`, ddup looks up the public IP address of the network it runs in and publishes it: `4` creates an A record and `6` an AAAA record. See [Dynamic DNS](#dynamic-dns). Exactly one of `ip` and `ipLookupFamily` is required
-    - `ipLookupURLs`: Optional, only with `ipLookupFamily`. One or more services for this endpoint, which **replace** the top-level `ipLookupURLs` for it. See [Dynamic DNS](#dynamic-dns)
+    - `ipLookupFamily`: `4` or `6`. Instead of a fixed `ip`, ddup looks up the public IP address of the network it runs in and publishes it: `4` creates an A record and `6` an AAAA record. See [Dynamic DNS](#dynamic-dns). Exactly one of `ip` and `ipLookupFamily` is required, unless the endpoint has its own `ipLookupURLs`: then `ipLookupFamily` defaults to `4`
+    - `ipLookupURLs`: Optional, and not together with `ip`. One or more services for this endpoint, which **replace** the top-level `ipLookupURLs` for it. See [Dynamic DNS](#dynamic-dns)
     - `priority`: Optional non-negative integer for priority (default: 0). Only the healthy endpoints with the lowest priority value are published, and if none of them are healthy ddup falls back to the next value. When the preferred endpoints are healthy again (after `recoverAfter`, if set), ddup goes back to them. Endpoints with the same priority are all published together. If no endpoint is healthy, DNS is left unchanged
     - `host`: Optional hostname to include in the requests, when the request is made to an IP address or to a hostname different from the desired one
 
@@ -166,30 +166,31 @@ domains:
         # This list replaces the top-level ipLookupURLs for this endpoint
         ipLookupURLs:
           - url: "https://ip.example.com/v4"
-          - url: "https://ip2.example.com/json"
-            pattern: '"ip":\s*"([^"]+)"'
+          - url: "https://ip2.example.com/plain"
 ```
 
 Different endpoints can have different lists, also in the same domain.
+
+This is also how an endpoint gets its address from something other than a public service. The URL can be anything that answers with just an IP address, for example a script on a server you own or a page on your router. It needs to use `https`.
 
 #### Rules
 
 - The list of an endpoint **replaces** the top-level list for that endpoint. They are never merged: the top-level services are not contacted for it.
 - An endpoint's list can have one entry or several. All the services that apply to an endpoint (all the entries of its own list, or all the top-level entries with its family) are asked at the same time. With one entry, only that service is asked.
-- At the top level, `family` (`4` or `6`) is required in every entry, because one list serves both families.
-- In an endpoint's list, `family` is optional, because `ipLookupFamily` already says it. If it is set, it must be equal to `ipLookupFamily`: ddup refuses a configuration that mixes IPv4 and IPv6 services for one endpoint.
+- At the top level, `family` (`4` or `6`) says which IP version the service answers for. It defaults to `4`.
+- In an endpoint's list, `family` is optional, because `ipLookupFamily` already says it. If the endpoint sets neither `ip` nor `ipLookupFamily`, `ipLookupFamily` is `4`. If it is set, it must be equal to `ipLookupFamily`: ddup refuses a configuration that mixes IPv4 and IPv6 services for one endpoint.
 - An endpoint with `ipLookupFamily` needs at least one service, from its own list or from a top-level entry with its family. Otherwise the configuration is rejected, and the message says what to add. An empty list (`ipLookupURLs: []`) on an endpoint is rejected as well.
 - `ipLookupURLs` on an endpoint with a fixed `ip` is rejected, because it would never be used.
-- `url` must use `https`. An answer that can't be authenticated could be spoofed, and ddup would publish it. The URL can contain a token: ddup leaves the query string and credentials out of logs, errors and names.
-- `pattern` is optional. By default the response body must contain only the address, as plain text. For a service that returns more (JSON, for example), `pattern` is a regular expression with exactly one capture group, which is the address.
+- `url` must use `https`. An answer that can't be authenticated could be spoofed, and ddup would publish it.
+- A service must answer with just the IP address, as plain text.
 
 #### How the lookup works
 
 - With no `url` the endpoint isn't health-checked: it's healthy as long as the lookup works. With a `url`, the endpoint is also health-checked as usual, and the address that was looked up is the one published.
 - Requests are made over the requested IP version only, so a service sees (and returns) an address of that family.
 - The first valid answer is used. The other services finish in the background, and ddup logs a warning if they return a different address. A service that fails or returns something that is not valid is skipped; if all of them fail, the lookup fails, the endpoint is unhealthy, and DNS is left as it is until an address is found (like any other unhealthy endpoint).
-- An answer is rejected unless it is just an IP address of the right family: an IPv4 address for `ipLookupFamily: 4` and an IPv6 address for `6`. Loopback, private, link-local, multicast and unspecified addresses are rejected too. Responses are limited to 4 KB, redirects are not followed, and each service has the health check `timeout` to answer.
-- Lookups connect directly and ignore proxy environment variables, and every lookup opens a new connection, so the answer always reflects the current network path.
+- An answer is rejected unless it is just an IP address of the right family: an IPv4 address for `ipLookupFamily: 4` and an IPv6 address for `6`. Loopback, private, carrier-grade NAT (`100.64.0.0/10`), link-local, multicast and unspecified addresses are rejected too. Responses are limited to 4 KB, redirects are not followed, and each service has the health check `timeout` to answer.
+- Requests use the proxy settings of the environment, like any other request, and every lookup opens a new connection, so the answer always reflects the current network path.
 - If two endpoints end up with the same address, it is published once.
 - ddup replaces every `A`/`AAAA` record at the name that isn't the looked-up address, so don't point it at a name that has other records.
 

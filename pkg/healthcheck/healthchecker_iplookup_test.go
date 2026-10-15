@@ -192,7 +192,7 @@ func TestHealthChecker_DynamicIP_EndToEnd(t *testing.T) {
 	pool.AddCert(srv.Certificate())
 	lookuper := iplookup.New(
 		[]iplookup.Source{{URL: srv.URL, Family: 4}},
-		iplookup.WithTLSConfig(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}),
+		iplookup.Options{TLSConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}},
 	)
 
 	mockProvider := dns.NewMockProvider(false)
@@ -248,11 +248,5 @@ func TestNewHealthChecker_IPLookup(t *testing.T) {
 		hc, err := NewHealthChecker(providers, nil)
 		require.NoError(t, err)
 		assert.Equal(t, map[string]int{"192.0.2.2": 1}, hc.domainCheckers["home.example.com"].priorities)
-	})
-
-	t.Run("invalid pattern", func(t *testing.T) {
-		cfg.IPLookupURLs = []config.ConfigIPLookupURL{{URL: "https://ip.example.com", Family: 4, Pattern: "("}}
-		_, err := NewHealthChecker(providers, nil)
-		require.ErrorContains(t, err, "domain 'home.example.com': endpoint 'home': entry 0 in ipLookupURLs has an invalid pattern")
 	})
 }

@@ -28,7 +28,7 @@ type testService struct {
 
 // newTestService starts a service that answers with the given address after the given delay
 // All the services started by httptest share the same certificate, so the returned options trust every one of them
-func newTestService(t *testing.T, ip string, delay time.Duration) (*testService, []iplookup.Option) {
+func newTestService(t *testing.T, ip string, delay time.Duration) (*testService, iplookup.Options) {
 	t.Helper()
 
 	svc := &testService{}
@@ -42,7 +42,7 @@ func newTestService(t *testing.T, ip string, delay time.Duration) (*testService,
 
 	pool := x509.NewCertPool()
 	pool.AddCert(srv.Certificate())
-	return svc, []iplookup.Option{iplookup.WithTLSConfig(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12})}
+	return svc, iplookup.Options{TLSConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}
 }
 
 func TestBuildLookupers(t *testing.T) {
@@ -55,8 +55,7 @@ func TestBuildLookupers(t *testing.T) {
 		}}
 		ep := &config.ConfigEndpoint{Name: "home", IPLookupFamily: 4}
 
-		lookupers, err := buildLookupers(cfg, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{ep}}, opts...)
-		require.NoError(t, err)
+		lookupers := buildLookupers(cfg, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{ep}}, opts)
 
 		addr, err := lookupers[ep].Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -76,8 +75,7 @@ func TestBuildLookupers(t *testing.T) {
 			IPLookupURLs:   []config.ConfigIPLookupURL{{URL: own.URL}},
 		}
 
-		lookupers, err := buildLookupers(cfg, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{ep}}, opts...)
-		require.NoError(t, err)
+		lookupers := buildLookupers(cfg, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{ep}}, opts)
 
 		addr, err := lookupers[ep].Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -98,9 +96,8 @@ func TestBuildLookupers(t *testing.T) {
 
 		var buf syncBuffer
 		log := slog.New(slog.NewTextHandler(&buf, nil))
-		opts = append(opts, iplookup.WithLogger(log))
-		lookupers, err := buildLookupers(&config.Config{}, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{ep}}, opts...)
-		require.NoError(t, err)
+		opts.Logger = log
+		lookupers := buildLookupers(&config.Config{}, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{ep}}, opts)
 
 		addr, err := lookupers[ep].Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -118,8 +115,7 @@ func TestBuildLookupers(t *testing.T) {
 		epA := &config.ConfigEndpoint{Name: "a", IPLookupFamily: 4, IPLookupURLs: []config.ConfigIPLookupURL{{URL: a.URL}}}
 		epB := &config.ConfigEndpoint{Name: "b", IPLookupFamily: 4, IPLookupURLs: []config.ConfigIPLookupURL{{URL: b.URL}}}
 
-		lookupers, err := buildLookupers(&config.Config{}, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{epA, epB}}, opts...)
-		require.NoError(t, err)
+		lookupers := buildLookupers(&config.Config{}, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{epA, epB}}, opts)
 		assert.NotSame(t, lookupers[epA], lookupers[epB])
 
 		addr, err := lookupers[epA].Lookup(t.Context(), 4)
@@ -142,8 +138,7 @@ func TestBuildLookupers(t *testing.T) {
 			{Name: "own", IPLookupFamily: 4, IPLookupURLs: []config.ConfigIPLookupURL{{URL: svc.URL, Family: 4}}},
 		}
 
-		lookupers, err := buildLookupers(cfg, config.ConfigDomain{Endpoints: eps}, opts...)
-		require.NoError(t, err)
+		lookupers := buildLookupers(cfg, config.ConfigDomain{Endpoints: eps}, opts)
 		assert.Same(t, lookupers[eps[0]], lookupers[eps[1]])
 		assert.Same(t, lookupers[eps[0]], lookupers[eps[2]], "the same services give the same lookuper, wherever they are set")
 	})
@@ -161,24 +156,13 @@ func TestBuildLookupers(t *testing.T) {
 			HealthChecks: config.ConfigHealthChecks{Timeout: time.Second},
 		}
 
-		lookupers, err := buildLookupers(cfg, d, opts...)
-		require.NoError(t, err)
+		lookupers := buildLookupers(cfg, d, opts)
 		assert.Empty(t, lookupers)
 
 		results := checker.New(d.RecordName, d.Endpoints, d.HealthChecks, nil, lookupers).CheckAll(t.Context())
 		require.Len(t, results, 1)
 		assert.True(t, results[0].Healthy)
 		assert.Zero(t, svc.hits.Load())
-	})
-
-	t.Run("invalid pattern", func(t *testing.T) {
-		ep := &config.ConfigEndpoint{
-			Name:           "home",
-			IPLookupFamily: 4,
-			IPLookupURLs:   []config.ConfigIPLookupURL{{URL: "https://ip.example.com", Pattern: "("}},
-		}
-		_, err := buildLookupers(&config.Config{}, config.ConfigDomain{Endpoints: []*config.ConfigEndpoint{ep}})
-		require.ErrorContains(t, err, "endpoint 'home': entry 0 in the ipLookupURLs of the endpoint has an invalid pattern")
 	})
 }
 

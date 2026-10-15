@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -25,22 +24,32 @@ const (
 	// Responses larger than this are rejected; a response with an IP address is tiny
 	maxResponseSize = 4 << 10
 
-	userAgent = "ddup/1.0"
+	userAgent = "ddup/1.0 (iplookup)"
 )
 
 // Source is a service that returns the IP address of the caller
 type Source struct {
 	// URL of the service; it must use https
-	// It can contain a token, so use RedactURL before logging it
 	URL string
 
 	// IP version the service answers for, 4 or 6
 	// Requests to the service are made over that version only, so the service sees (and returns) the address of that family
 	Family int
+}
 
-	// Optional regular expression with exactly one capture group, to extract the IP address from the response
-	// If nil, the response must contain only the IP address
-	Pattern *regexp.Regexp
+// Options configures a Lookuper
+type Options struct {
+	// Time each service is given to answer
+	// If not positive, DefaultTimeout is used
+	Timeout time.Duration
+
+	// Logger to use
+	// By default it's slog's default logger
+	Logger *slog.Logger
+
+	// TLS config used to connect to the services
+	// By default, the system's root CAs are used
+	TLSConfig *tls.Config
 }
 
 // Lookuper looks up the public IP address by racing the services in a list of sources
@@ -50,54 +59,25 @@ type Lookuper struct {
 	log     *slog.Logger
 	clients map[int]*http.Client
 
-	tlsConfig *tls.Config
-
 	// Tracks the lookups that continue in the background after the answer has been returned
 	wg sync.WaitGroup
 }
 
-// Option configures a Lookuper
-type Option func(l *Lookuper)
-
-// WithTimeout sets the time each service is given to answer
-// If not positive, DefaultTimeout is used
-func WithTimeout(timeout time.Duration) Option {
-	return func(l *Lookuper) {
-		if timeout > 0 {
-			l.timeout = timeout
-		}
-	}
-}
-
-// WithLogger sets the logger; by default it's slog's default logger
-func WithLogger(log *slog.Logger) Option {
-	return func(l *Lookuper) {
-		l.log = log
-	}
-}
-
-// WithTLSConfig sets the TLS config used to connect to the services
-// By default, the system's root CAs are used
-func WithTLSConfig(cfg *tls.Config) Option {
-	return func(l *Lookuper) {
-		l.tlsConfig = cfg
-	}
-}
-
 // New returns a Lookuper that uses the given services
 // There are no built-in services: the caller decides which ones are contacted
-func New(sources []Source, opts ...Option) *Lookuper {
+func New(sources []Source, opts Options) *Lookuper {
 	l := &Lookuper{
 		sources: sources,
 		timeout: DefaultTimeout,
+		log:     opts.Logger,
 	}
-	for _, opt := range opts {
-		opt(l)
+	if opts.Timeout > 0 {
+		l.timeout = opts.Timeout
 	}
 
 	l.clients = map[int]*http.Client{
-		4: newClient("tcp4", l.tlsConfig),
-		6: newClient("tcp6", l.tlsConfig),
+		4: newClient("tcp4", opts.TLSConfig),
+		6: newClient("tcp6", opts.TLSConfig),
 	}
 	return l
 }
@@ -108,9 +88,6 @@ func newClient(network string, tlsConfig *tls.Config) *http.Client {
 
 	// Every lookup must open a new connection: a pooled connection would keep reporting the address of the network path it was opened on, even after the connection to the internet changes
 	transport.DisableKeepAlives = true
-
-	// Connect directly, ignoring proxy variables: the point is to learn the address that connections from this host really come from
-	transport.Proxy = nil
 
 	// Without this, a dual-stack service could answer over the other IP version than the one that was asked for
 	var dialer net.Dialer
@@ -124,7 +101,7 @@ func newClient(network string, tlsConfig *tls.Config) *http.Client {
 
 	return &http.Client{
 		Transport: transport,
-		// A redirect could send the request somewhere that was not configured, and a token in the URL with it
+		// A redirect could send the request somewhere that was not configured
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
@@ -171,7 +148,7 @@ func (l *Lookuper) Lookup(ctx context.Context, family int) (netip.Addr, error) {
 	for i := range sources {
 		r := <-results
 		if r.err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", RedactURL(r.source.URL), r.err))
+			errs = append(errs, fmt.Errorf("%s: %w", r.source.URL, r.err))
 			continue
 		}
 
@@ -201,13 +178,13 @@ func (l *Lookuper) compare(ctx context.Context, used result, results <-chan resu
 		case ctx.Err() != nil:
 			// The application is shutting down
 		case r.err != nil:
-			log.DebugContext(ctx, "IP lookup service failed", "source", RedactURL(r.source.URL), "error", r.err)
+			log.DebugContext(ctx, "IP lookup service failed", "source", r.source.URL, "error", r.err)
 		case r.addr != used.addr:
 			log.WarnContext(ctx, "IP lookup services returned different addresses",
 				"used", used.addr,
-				"usedSource", RedactURL(used.source.URL),
+				"usedSource", used.source.URL,
 				"other", r.addr,
-				"otherSource", RedactURL(r.source.URL),
+				"otherSource", r.source.URL,
 			)
 		}
 	}
@@ -220,13 +197,13 @@ func (l *Lookuper) query(ctx context.Context, source Source) (netip.Addr, error)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source.URL, nil)
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("creating request: %w", stripURL(err))
+		return netip.Addr{}, fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := l.clients[source.Family].Do(req)
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("request failed: %w", stripURL(err))
+		return netip.Addr{}, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck
 
@@ -236,25 +213,19 @@ func (l *Lookuper) query(ctx context.Context, source Source) (netip.Addr, error)
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
 	if err != nil {
-		return netip.Addr{}, fmt.Errorf("reading response: %w", stripURL(err))
+		return netip.Addr{}, fmt.Errorf("reading response: %w", err)
 	}
 	if len(body) > maxResponseSize {
 		return netip.Addr{}, errors.New("response is too large")
 	}
 
-	return ParseResponse(string(body), source.Family, source.Pattern)
+	return ParseResponse(string(body), source.Family)
 }
 
 // ParseResponse extracts and validates the IP address from the response of a service
-func ParseResponse(body string, family int, pattern *regexp.Regexp) (netip.Addr, error) {
+// The response must contain only the IP address
+func ParseResponse(body string, family int) (netip.Addr, error) {
 	value := strings.TrimSpace(body)
-	if pattern != nil {
-		m := pattern.FindStringSubmatch(body)
-		if m == nil {
-			return netip.Addr{}, errors.New("response doesn't match the pattern")
-		}
-		value = strings.TrimSpace(m[1])
-	}
 
 	addr, err := netip.ParseAddr(value)
 	if err != nil {
@@ -278,9 +249,12 @@ func ParseResponse(body string, family int, pattern *regexp.Regexp) (netip.Addr,
 	return addr, nil
 }
 
-// isPublic returns false for loopback, private, link-local, multicast and unspecified addresses, and for addresses with a zone (like fe80::1%eth0)
+// cgnatPrefix is the shared address space used by carrier-grade NAT (RFC 6598)
+var cgnatPrefix = netip.MustParsePrefix("100.64.0.0/10")
+
+// isPublic returns false for loopback, private, carrier-grade NAT, link-local, multicast and unspecified addresses, and for addresses with a zone (like fe80::1%eth0)
 func isPublic(addr netip.Addr) bool {
-	return addr.IsGlobalUnicast() && !addr.IsPrivate() && addr.Zone() == ""
+	return addr.IsGlobalUnicast() && !addr.IsPrivate() && !cgnatPrefix.Contains(addr) && addr.Zone() == ""
 }
 
 // ValidateURL checks that a service URL is an absolute https URL
@@ -294,28 +268,6 @@ func ValidateURL(raw string) error {
 		return errors.New("must be an absolute https URL")
 	}
 	return nil
-}
-
-// RedactURL removes the userinfo, query string and fragment of a URL, as they can contain secrets
-// It's meant for logs and display names; a value that isn't a valid URL is replaced entirely
-func RedactURL(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return "(invalid URL)"
-	}
-	u.User = nil
-	u.RawQuery = ""
-	u.Fragment = ""
-	return u.String()
-}
-
-// stripURL removes the URL from net/http errors, as it can contain a token; only the cause is kept
-func stripURL(err error) error {
-	urlErr, ok := errors.AsType[*url.Error](err)
-	if ok {
-		return urlErr.Err
-	}
-	return err
 }
 
 func truncate(s string, n int) string {

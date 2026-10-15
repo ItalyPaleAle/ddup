@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -87,20 +86,16 @@ func sources4(servers ...*httptest.Server) []Source {
 }
 
 func TestLookup_SingleSource(t *testing.T) {
-	jsonPattern := regexp.MustCompile(`"ip":\s*"([^"]+)"`)
 	tests := []struct {
 		name    string
 		body    string
-		pattern *regexp.Regexp
 		want    string
 		wantErr string
 	}{
 		{name: "plain address", body: "203.0.113.7", want: "203.0.113.7"},
 		{name: "trailing newline", body: "203.0.113.7\n", want: "203.0.113.7"},
 		{name: "mapped IPv6 is unmapped", body: "::ffff:203.0.113.7", want: "203.0.113.7"},
-		{name: "pattern", body: `{"ip": "203.0.113.7"}`, pattern: jsonPattern, want: "203.0.113.7"},
-		{name: "pattern doesn't match", body: `{"addr": "203.0.113.7"}`, pattern: jsonPattern, wantErr: "response doesn't match the pattern"},
-		{name: "JSON without a pattern", body: `{"ip": "203.0.113.7"}`, wantErr: "response is not an IP address"},
+		{name: "JSON", body: `{"ip": "203.0.113.7"}`, wantErr: "response is not an IP address"},
 		{name: "garbage", body: "hello", wantErr: "response is not an IP address"},
 		{name: "HTML", body: "<html><body>Rate limited</body></html>", wantErr: "response is not an IP address"},
 		{name: "empty", body: "", wantErr: "response is not an IP address"},
@@ -112,6 +107,9 @@ func TestLookup_SingleSource(t *testing.T) {
 		{name: "link-local", body: "169.254.1.1", wantErr: "169.254.1.1 is not a public IP address"},
 		{name: "unspecified", body: "0.0.0.0", wantErr: "0.0.0.0 is not a public IP address"},
 		{name: "multicast", body: "224.0.0.1", wantErr: "224.0.0.1 is not a public IP address"},
+		{name: "carrier-grade NAT", body: "100.64.0.1", wantErr: "100.64.0.1 is not a public IP address"},
+		{name: "carrier-grade NAT, end of the range", body: "100.127.255.254", wantErr: "100.127.255.254 is not a public IP address"},
+		{name: "just outside carrier-grade NAT", body: "100.128.0.1", want: "100.128.0.1"},
 		{name: "oversized", body: strings.Repeat("1", maxResponseSize+1), wantErr: "response is too large"},
 	}
 
@@ -119,8 +117,7 @@ func TestLookup_SingleSource(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			servers, tlsConfig := startServers(t, answer(tc.body))
 			src := sources4(servers...)
-			src[0].Pattern = tc.pattern
-			l := New(src, WithTLSConfig(tlsConfig))
+			l := New(src, Options{TLSConfig: tlsConfig})
 
 			addr, err := l.Lookup(t.Context(), 4)
 			if tc.wantErr != "" {
@@ -139,7 +136,7 @@ func TestLookup_RequestErrors(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("203.0.113.7"))
 		}))
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig})
 
 		_, err := l.Lookup(t.Context(), 4)
 		require.ErrorContains(t, err, "status code 503")
@@ -160,7 +157,7 @@ func TestLookup_RequestErrors(t *testing.T) {
 		)
 		targetURL.Store(servers[0].URL)
 
-		l := New(sources4(servers[1]), WithTLSConfig(tlsConfig))
+		l := New(sources4(servers[1]), Options{TLSConfig: tlsConfig})
 		_, err := l.Lookup(t.Context(), 4)
 		require.ErrorContains(t, err, "status code 302")
 		assert.Zero(t, hits.Load(), "the redirect target must not be called")
@@ -168,7 +165,7 @@ func TestLookup_RequestErrors(t *testing.T) {
 
 	t.Run("timeout", func(t *testing.T) {
 		servers, tlsConfig := startServers(t, slowAnswer("203.0.113.7", 10*time.Second))
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig), WithTimeout(100*time.Millisecond))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig, Timeout: 100 * time.Millisecond})
 
 		start := time.Now()
 		_, err := l.Lookup(t.Context(), 4)
@@ -179,7 +176,7 @@ func TestLookup_RequestErrors(t *testing.T) {
 
 	t.Run("context is respected", func(t *testing.T) {
 		servers, tlsConfig := startServers(t, slowAnswer("203.0.113.7", 10*time.Second))
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig), WithTimeout(time.Minute))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig, Timeout: time.Minute})
 
 		ctx, cancel := context.WithCancel(t.Context())
 		time.AfterFunc(100*time.Millisecond, cancel)
@@ -191,7 +188,7 @@ func TestLookup_RequestErrors(t *testing.T) {
 
 	t.Run("no service for the family", func(t *testing.T) {
 		servers, tlsConfig := startServers(t, answer("203.0.113.7"))
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig})
 
 		_, err := l.Lookup(t.Context(), 6)
 		require.ErrorContains(t, err, "no service is configured for IPv6")
@@ -200,7 +197,7 @@ func TestLookup_RequestErrors(t *testing.T) {
 	t.Run("the connection uses the IP version of the source", func(t *testing.T) {
 		// The server listens on IPv4 only, so a source for IPv6 can't reach it
 		servers, tlsConfig := startServers(t, answer("2001:db8::1"))
-		l := New([]Source{{URL: servers[0].URL, Family: 6}}, WithTLSConfig(tlsConfig))
+		l := New([]Source{{URL: servers[0].URL, Family: 6}}, Options{TLSConfig: tlsConfig})
 
 		_, err := l.Lookup(t.Context(), 6)
 		require.ErrorContains(t, err, "request failed")
@@ -219,7 +216,7 @@ func TestLookup_RequestErrors(t *testing.T) {
 		pool := x509.NewCertPool()
 		pool.AddCert(srv.Certificate())
 
-		l := New([]Source{{URL: srv.URL, Family: 6}}, WithTLSConfig(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}))
+		l := New([]Source{{URL: srv.URL, Family: 6}}, Options{TLSConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}})
 		addr, err := l.Lookup(t.Context(), 6)
 		require.NoError(t, err)
 		assert.Equal(t, "2001:db8::1", addr.String())
@@ -233,7 +230,7 @@ func TestLookup_Race(t *testing.T) {
 			answer("203.0.113.1"),
 		)
 		var logs syncBuffer
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig), WithLogger(newLogger(&logs)))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig, Logger: newLogger(&logs)})
 
 		start := time.Now()
 		addr, err := l.Lookup(t.Context(), 4)
@@ -251,7 +248,7 @@ func TestLookup_Race(t *testing.T) {
 			slowAnswer("198.51.100.2", 200*time.Millisecond),
 		)
 		var logs syncBuffer
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig), WithLogger(newLogger(&logs)))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig, Logger: newLogger(&logs)})
 
 		addr, err := l.Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -273,7 +270,7 @@ func TestLookup_Race(t *testing.T) {
 			slowAnswer("203.0.113.1", 100*time.Millisecond),
 		)
 		var logs syncBuffer
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig), WithLogger(newLogger(&logs)))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig, Logger: newLogger(&logs)})
 
 		addr, err := l.Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -287,7 +284,7 @@ func TestLookup_Race(t *testing.T) {
 			answer("<html>blocked</html>"),
 			slowAnswer("203.0.113.1", 100*time.Millisecond),
 		)
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig})
 
 		addr, err := l.Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -301,7 +298,7 @@ func TestLookup_Race(t *testing.T) {
 			}),
 			answer("not an address"),
 		)
-		l := New(sources4(servers...), WithTLSConfig(tlsConfig))
+		l := New(sources4(servers...), Options{TLSConfig: tlsConfig})
 
 		_, err := l.Lookup(t.Context(), 4)
 		require.ErrorContains(t, err, "IP lookup failed")
@@ -317,7 +314,7 @@ func TestLookup_Race(t *testing.T) {
 		l := New([]Source{
 			{URL: servers[0].URL, Family: 4},
 			{URL: servers[1].URL, Family: 6},
-		}, WithTLSConfig(tlsConfig))
+		}, Options{TLSConfig: tlsConfig})
 
 		_, err := l.Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -334,7 +331,7 @@ func TestLookup_NoLeakedGoroutines(t *testing.T) {
 		slowAnswer("203.0.113.1", 10*time.Second),
 		slowAnswer("203.0.113.1", 10*time.Second),
 	)
-	l := New(sources4(servers...), WithTLSConfig(tlsConfig), WithTimeout(time.Minute))
+	l := New(sources4(servers...), Options{TLSConfig: tlsConfig, Timeout: time.Minute})
 
 	// The fast service wins, and the context is canceled while the others are still running in the background
 	ctx, cancel := context.WithCancel(t.Context())
@@ -381,7 +378,7 @@ func TestLookup_NewConnectionEveryTime(t *testing.T) {
 	pool := x509.NewCertPool()
 	pool.AddCert(srv.Certificate())
 
-	l := New([]Source{{URL: srv.URL, Family: 4}}, WithTLSConfig(&tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}))
+	l := New([]Source{{URL: srv.URL, Family: 4}}, Options{TLSConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}})
 	for range 3 {
 		_, err := l.Lookup(t.Context(), 4)
 		require.NoError(t, err)
@@ -389,48 +386,26 @@ func TestLookup_NewConnectionEveryTime(t *testing.T) {
 	assert.Equal(t, int32(3), conns.Load(), "a reused connection would keep reporting the address of the old network path")
 }
 
-func TestLookup_SecretsAreRedacted(t *testing.T) {
-	const secret = "s3cret-token"
+func TestLookup_UserAgent(t *testing.T) {
+	var got atomic.Value
+	servers, tlsConfig := startServers(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.Store(r.Header.Get("User-Agent"))
+		_, _ = w.Write([]byte("203.0.113.1"))
+	}))
+	l := New(sources4(servers...), Options{TLSConfig: tlsConfig})
 
-	t.Run("in errors", func(t *testing.T) {
-		servers, tlsConfig := startServers(t, answer("not an address"))
-		srv := servers[0]
-		// The URL with a token in the userinfo and in the query
-		withSecret := strings.Replace(srv.URL, "https://", "https://user:"+secret+"@", 1) + "/ip?token=" + secret
-		l := New([]Source{{URL: withSecret, Family: 4}}, WithTLSConfig(tlsConfig))
+	_, err := l.Lookup(t.Context(), 4)
+	require.NoError(t, err)
+	assert.Equal(t, "ddup/1.0 (iplookup)", got.Load())
+}
 
-		_, err := l.Lookup(t.Context(), 4)
-		require.Error(t, err)
-		assert.NotContains(t, err.Error(), secret)
-		assert.Contains(t, err.Error(), srv.URL+"/ip")
-	})
-
-	t.Run("in connection errors", func(t *testing.T) {
-		servers, tlsConfig := startServers(t, answer("203.0.113.1"))
-		srv := servers[0]
-		url := srv.URL + "/ip?token=" + secret
-		srv.Close()
-
-		l := New([]Source{{URL: url, Family: 4}}, WithTLSConfig(tlsConfig))
-		_, err := l.Lookup(t.Context(), 4)
-		require.Error(t, err)
-		assert.NotContains(t, err.Error(), secret, "net/http puts the URL in its errors")
-	})
-
-	t.Run("in logs", func(t *testing.T) {
-		servers, tlsConfig := startServers(t, answer("203.0.113.1"), slowAnswer("198.51.100.2", 100*time.Millisecond))
-		var logs syncBuffer
-		l := New([]Source{
-			{URL: servers[0].URL + "/ip?token=" + secret, Family: 4},
-			{URL: strings.Replace(servers[1].URL, "https://", "https://user:"+secret+"@", 1), Family: 4},
-		}, WithTLSConfig(tlsConfig), WithLogger(newLogger(&logs)))
-
-		_, err := l.Lookup(t.Context(), 4)
-		require.NoError(t, err)
-		l.Wait()
-		assert.Contains(t, logs.String(), "level=WARN")
-		assert.NotContains(t, logs.String(), secret)
-	})
+func TestNew_RespectsProxySettings(t *testing.T) {
+	l := New(nil, Options{})
+	for _, family := range []int{4, 6} {
+		transport, ok := l.clients[family].Transport.(*http.Transport)
+		require.True(t, ok)
+		assert.NotNil(t, transport.Proxy, "the proxy settings of the environment are used")
+	}
 }
 
 func TestParseResponse(t *testing.T) {
@@ -452,7 +427,7 @@ func TestParseResponse(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			addr, err := ParseResponse(tc.body, tc.family, nil)
+			addr, err := ParseResponse(tc.body, tc.family)
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 				return
@@ -470,11 +445,4 @@ func TestValidateURL(t *testing.T) {
 	require.ErrorContains(t, ValidateURL("/ip"), "must be an absolute https URL")
 	require.ErrorContains(t, ValidateURL("ftp://example.com"), "must be an absolute https URL")
 	require.ErrorContains(t, ValidateURL("https://"), "must be an absolute https URL")
-}
-
-func TestRedactURL(t *testing.T) {
-	assert.Equal(t, "https://ip.example.com/path", RedactURL("https://user:pass@ip.example.com/path?token=abc#frag"))
-	assert.Equal(t, "https://ip.example.com", RedactURL("https://ip.example.com"))
-	assert.Equal(t, "(invalid URL)", RedactURL("::not a url"))
-	assert.Equal(t, "(invalid URL)", RedactURL("no-host"))
 }

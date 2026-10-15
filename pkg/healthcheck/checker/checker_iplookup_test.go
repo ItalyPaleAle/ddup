@@ -49,7 +49,7 @@ func TestCheckEndpoint_Dynamic(t *testing.T) {
 	setIP("203.0.113.1")
 	var fail atomic.Bool
 	srv, tlsConfig := newLookupServer(t, &ip, &fail)
-	lookuper := iplookup.New([]iplookup.Source{{URL: srv.URL, Family: 4}}, iplookup.WithTLSConfig(tlsConfig))
+	lookuper := iplookup.New([]iplookup.Source{{URL: srv.URL, Family: 4}}, iplookup.Options{TLSConfig: tlsConfig})
 
 	t.Run("without a URL the endpoint is healthy when the lookup works", func(t *testing.T) {
 		ep := &config.ConfigEndpoint{Name: "home", IPLookupFamily: 4}

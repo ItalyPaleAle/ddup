@@ -15,6 +15,7 @@ import (
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
+	"github.com/italypaleale/ddup/pkg/iplookup"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
@@ -47,10 +48,7 @@ func NewHealthChecker(dnsProviders map[string]dns.Provider, metrics *appmetrics.
 		if !ok || provider == nil {
 			return nil, fmt.Errorf("domain '%s' references DNS provider '%s' that is not configured", d.RecordName, d.Provider)
 		}
-		lookupers, err := buildLookupers(cfg, d)
-		if err != nil {
-			return nil, fmt.Errorf("domain '%s': %w", d.RecordName, err)
-		}
+		lookupers := buildLookupers(cfg, d, iplookup.Options{})
 		dcs[d.RecordName] = &domainChecker{
 			checker:    checker.New(d.RecordName, d.Endpoints, d.HealthChecks, metrics, lookupers),
 			ttl:        d.TTL,
