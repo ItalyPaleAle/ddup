@@ -26,20 +26,23 @@ type domainChecker struct {
 	// Priority of each endpoint, by IP
 	priorities map[string]int
 
-	// When each endpoint last changed state and last failed, by IP; in memory only
+	// When each endpoint last changed state and last failed, by IP
 	times map[string]*endpointTimes
-	// Returns the current time; nil means time.Now
+	// Returns the current time
+	// nil means time.Now
 	clock func() time.Time
 }
 
 // endpointTimes tracks the state changes of one endpoint
 type endpointTimes struct {
 	healthy bool
-	// When the endpoint last changed state; for a new endpoint, when it was first checked
+	// When the endpoint last changed state
+	// For a new endpoint, when it was first checked
 	since time.Time
 	// True until the endpoint changes state for the first time, so `since` is only when ddup first saw it
 	sinceStart bool
-	// Last time a check of the endpoint failed; zero if never
+	// Last time a check of the endpoint failed
+	// Zero if never
 	lastFailure time.Time
 	// True if the endpoint was checked in the current cycle
 	seen bool
