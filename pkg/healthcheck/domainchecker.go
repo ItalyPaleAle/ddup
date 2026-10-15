@@ -11,7 +11,7 @@ import (
 )
 
 type domainChecker struct {
-	lock        sync.Mutex
+	lock        sync.RWMutex
 	checker     checker.Checker
 	ttl         int
 	healthyIPs  []string
@@ -101,8 +101,8 @@ func (dc *domainChecker) recordCycle(results []checker.Result, healthyIPs []stri
 
 // getTimes returns a copy of the times for an endpoint, or nil if there are none
 func (dc *domainChecker) getTimes(ip string) *endpointTimes {
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
+	dc.lock.RLock()
+	defer dc.lock.RUnlock()
 
 	t := dc.times[ip]
 	if t == nil {
@@ -113,8 +113,8 @@ func (dc *domainChecker) getTimes(ip string) *endpointTimes {
 }
 
 func (dc *domainChecker) getState() (healthyIPs []string, failedIPs map[string]int, lastUpdated time.Time, lastError string) {
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
+	dc.lock.RLock()
+	defer dc.lock.RUnlock()
 
 	return dc.healthyIPs, dc.failedIPs, dc.lastUpdated, dc.lastError
 }
@@ -139,8 +139,8 @@ func (dc *domainChecker) setError(err string) {
 
 // getRecovering returns a copy of the recovery counters
 func (dc *domainChecker) getRecovering() map[string]int {
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
+	dc.lock.RLock()
+	defer dc.lock.RUnlock()
 
 	res := make(map[string]int, len(dc.recovering))
 	maps.Copy(res, dc.recovering)

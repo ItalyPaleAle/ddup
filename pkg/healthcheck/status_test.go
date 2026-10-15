@@ -270,3 +270,33 @@ func TestDomainStatusJSON(t *testing.T) {
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"lastUpdated": "0001-01-01T00:00:00Z", "provider": "cf", "endpoints": []}`, string(enc))
 }
+
+func TestEndpointSince_APIFields(t *testing.T) {
+	marshal := func(e DomainStatusEndpoint) map[string]any {
+		raw, err := json.Marshal(e)
+		require.NoError(t, err)
+		m := map[string]any{}
+		require.NoError(t, json.Unmarshal(raw, &m))
+		return m
+	}
+
+	f := newSinceFixture(1)
+	f.check(t, true)
+	m := marshal(f.check(t, false))
+	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["since"])
+	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["lastFailure"])
+	assert.NotContains(t, m, "sinceStart")
+
+	// A new endpoint reports that its start is not known, and has no last failure
+	g := newSinceFixture(1)
+	m = marshal(g.check(t, true))
+	assert.Contains(t, m, "since")
+	assert.Equal(t, true, m["sinceStart"])
+	assert.NotContains(t, m, "lastFailure")
+
+	// Without times, all three fields are omitted
+	m = marshal(DomainStatusEndpoint{IP: "1.1.1.1"})
+	assert.NotContains(t, m, "since")
+	assert.NotContains(t, m, "sinceStart")
+	assert.NotContains(t, m, "lastFailure")
+}
