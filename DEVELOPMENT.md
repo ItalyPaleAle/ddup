@@ -5,13 +5,12 @@ The short version is `make check`, which runs everything CI runs.
 
 ## What you need
 
-| Tool          | Version                                                                  | Used for                                         |
-| ------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
-| Go            | The version in [`go.mod`](./go.mod) (`go 1.27.2` at the time of writing) | The backend                                      |
-| Node.js       | 24 (see [`.node-version`](./.node-version))                              | The dashboard                                    |
-| pnpm          | The version in `packageManager` in [`dashboard/package.json`](./dashboard/package.json) | Dashboard dependencies and scripts |
-| golangci-lint | The version in [`.golangci-lint-version`](./.golangci-lint-version)      | `make lint`                                      |
-| make          | Any recent version                                                       | The shortcuts below                              |
+| Tool | Version |
+| --- | --- |
+| Go | The version in [`go.mod`](./go.mod) |
+| Node.js | The version in [`.node-version`](./.node-version) |
+| pnpm | The version in `packageManager` in [`dashboard/package.json`](./dashboard/package.json) |
+| golangci-lint | The version in [`.golangci-lint-version`](./.golangci-lint-version) |
 
 You can also run the dashboard commands without `make`, see [Working on the dashboard](#working-on-the-dashboard).
 
