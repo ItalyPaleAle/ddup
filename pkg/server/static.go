@@ -1,7 +1,10 @@
 package server
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -15,14 +18,17 @@ import (
 // Copyright (c) 2024, Elias Schneider
 // License: BSD 2-Clause (https://github.com/pocket-id/pocket-id/tree/v1.11.2/LICENSE)
 
-func registerStatic(mux *http.ServeMux) error {
+func registerStatic(mux *http.ServeMux, info buildInfo) error {
 	distFS, err := fs.Sub(dashboard.DashboardFS, "dist")
 	if err != nil {
 		return fmt.Errorf("failed to create sub FS: %w", err)
 	}
 
 	cacheMaxAge := time.Hour * 24 * 365
-	fileServer := NewCachingFileServer(http.FS(distFS), int(cacheMaxAge.Seconds()))
+	fileServer, err := NewCachingFileServer(http.FS(distFS), int(cacheMaxAge.Seconds()), info)
+	if err != nil {
+		return fmt.Errorf("failed to create file server: %w", err)
+	}
 
 	mux.Handle("GET /", fileServer)
 
@@ -35,6 +41,7 @@ type CachingFileServer struct {
 	lastModified            time.Time
 	lastModifiedHeaderValue string
 	assetsCacheControl      string
+	page                    []byte
 }
 
 const (
@@ -45,13 +52,44 @@ const (
 )
 
 // NewCachingFileServer returns a file server that lets browsers cache the hashed files in /assets/ for maxAge seconds, and always revalidate everything else
-func NewCachingFileServer(root http.FileSystem, maxAge int) *CachingFileServer {
+// The page (index.html) is served with the build info inserted
+func NewCachingFileServer(root http.FileSystem, maxAge int, info buildInfo) (*CachingFileServer, error) {
+	page, err := loadPage(root, info)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
 	return &CachingFileServer{
 		root:                    root,
-		lastModified:            time.Now(),
-		lastModifiedHeaderValue: time.Now().UTC().Format(http.TimeFormat),
+		lastModified:            now,
+		lastModifiedHeaderValue: now.UTC().Format(http.TimeFormat),
 		assetsCacheControl:      fmt.Sprintf("public, max-age=%d, immutable", maxAge),
+		page:                    page,
+	}, nil
+}
+
+// loadPage reads index.html and inserts the build info
+// It returns nil if there's no index.html
+func loadPage(root http.FileSystem, info buildInfo) ([]byte, error) {
+	f, err := root.Open("/index.html")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to open index.html: %w", err)
 	}
+	defer f.Close() //nolint:errcheck
+
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read index.html: %w", err)
+	}
+
+	page, err := info.insertIntoPage(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare index.html: %w", err)
+	}
+	return page, nil
 }
 
 // cacheControlFor returns the Cache-Control header for a path
@@ -75,6 +113,11 @@ func (f *CachingFileServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Last-Modified", f.lastModifiedHeaderValue)
 	w.Header().Set("Cache-Control", f.cacheControlFor(r.URL.Path))
+
+	if f.page != nil && (r.URL.Path == "/" || r.URL.Path == "/index.html") {
+		http.ServeContent(w, r, "/index.html", f.lastModified, bytes.NewReader(f.page))
+		return
+	}
 
 	http.FileServer(f.root).ServeHTTP(w, r)
 }
