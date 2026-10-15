@@ -105,8 +105,18 @@ func (a *AzureProvider) Name() string {
 	return a.name
 }
 
+// Capabilities returns what the provider can publish
+func (a *AzureProvider) Capabilities() Capabilities {
+	return azureCapabilities
+}
+
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs.
-func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (result UpdateResult, err error) {
+func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
+	ips, err := plainIPsFromTargets(a.name, targets)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	ipv4, ipv6, err := splitIPs(ips)
 	if err != nil {
 		return UpdateResult{}, err
@@ -514,4 +524,9 @@ func (a *AzureProvider) deleteRecord(ctx context.Context, recordName string, rec
 
 	success = true
 	return nil
+}
+
+// azureCapabilities declares that the provider only publishes A and AAAA records that are not proxied
+var azureCapabilities = Capabilities{
+	Type: "azure",
 }

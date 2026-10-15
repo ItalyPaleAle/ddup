@@ -84,9 +84,19 @@ func (r *AWSRoute53Provider) Name() string {
 	return r.name
 }
 
+// Capabilities returns what the provider can publish
+func (r *AWSRoute53Provider) Capabilities() Capabilities {
+	return awsRoute53Capabilities
+}
+
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs
 // All changes are sent in a single change batch, which AWS Route53 applies atomically
-func (r *AWSRoute53Provider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (result UpdateResult, err error) {
+func (r *AWSRoute53Provider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
+	ips, err := plainIPsFromTargets(r.name, targets)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	ipv4, ipv6, err := splitIPs(ips)
 	if err != nil {
 		return UpdateResult{}, err
@@ -346,4 +356,9 @@ func awsRoute53UnescapeName(name string) string {
 		b.WriteByte(name[i])
 	}
 	return b.String()
+}
+
+// awsRoute53Capabilities declares that the provider only publishes A and AAAA records that are not proxied
+var awsRoute53Capabilities = Capabilities{
+	Type: "awsRoute53",
 }

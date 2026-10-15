@@ -10,8 +10,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/italypaleale/go-kit/utils"
-
 	"github.com/italypaleale/ddup/pkg/config"
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
@@ -139,19 +137,29 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		recoverAfter := dc.checker.GetRecoverAfter()
 		recovering := dc.getRecovering()
 		newHealthyIPs := make([]string, 0, len(results))
+		targets := make(map[string]dns.Target, len(results))
 		for _, result := range results {
-			ip := result.Endpoint.IP
+			// The key of an endpoint is what it publishes: its IP address or its CNAME hostname
+			ip := result.Endpoint.Target()
+
+			target, targetErr := endpointTarget(result.Endpoint)
+			if targetErr != nil {
+				// The configuration has been validated, so this indicates a development-time error
+				domainLog.ErrorContext(ctx, "Invalid endpoint", "endpoint", result.Endpoint.Name, "error", targetErr)
+				continue
+			}
+			targets[ip] = target
 
 			// If the endpoint is healthy, save it in the healthy list and remove any record of recent failed attempts
 			if result.Healthy {
-				domainLog.DebugContext(ctx, "✓ Endpoint is healthy", "endpoint", result.Endpoint.Name, "ip", ip)
+				domainLog.DebugContext(ctx, "✓ Endpoint is healthy", "endpoint", result.Endpoint.Name, "target", ip)
 
 				// An endpoint that was removed from DNS must pass recoverAfter consecutive checks before it's added back
 				// Endpoints that were not removed (including all endpoints on the first run) are added right away
 				if failedIPs[ip] >= maxAttempts && recoverAfter > 1 {
 					recovering[ip]++
 					if recovering[ip] < recoverAfter {
-						domainLog.InfoContext(ctx, "Endpoint is recovering", "endpoint", result.Endpoint.Name, "ip", ip, "passed", recovering[ip], "required", recoverAfter)
+						domainLog.InfoContext(ctx, "Endpoint is recovering", "endpoint", result.Endpoint.Name, "target", ip, "passed", recovering[ip], "required", recoverAfter)
 						continue
 					}
 				}
@@ -163,7 +171,7 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 			}
 
 			// Endpoint is unhealthy
-			domainLog.WarnContext(ctx, "✗ Endpoint health check failed", "endpoint", result.Endpoint.Name, "ip", ip, "error", result.Error)
+			domainLog.WarnContext(ctx, "✗ Endpoint health check failed", "endpoint", result.Endpoint.Name, "target", ip, "error", result.Error)
 			failedIPs[ip]++
 			delete(recovering, ip)
 
@@ -179,18 +187,21 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 			}
 		}
 		dc.setRecovering(recovering)
+		dc.setTargets(targets)
 
 		// Only the healthy endpoints with the lowest priority value are published
 		// The previous selection is derived from the previous healthy endpoints in the same way, so we only touch DNS when what's published changes
 		publishIPs := selectLowestPriority(dc.priorities, newHealthyIPs)
 		previousPublishIPs := selectLowestPriority(dc.priorities, currentHealthyIPs)
+		publishTargets := targetsFor(targets, publishIPs)
+		previousTargets := targetsFor(targets, previousPublishIPs)
 
-		// Check if the published IPs have changed
-		if !utils.StringSlicesMatch(previousPublishIPs, publishIPs) {
+		// Check if the published targets have changed
+		if !targetsMatch(previousTargets, publishTargets) {
 			// Update DNS records
-			if len(publishIPs) > 0 {
+			if len(publishTargets) > 0 {
 				var res dns.UpdateResult
-				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, publishIPs)
+				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, publishTargets)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					dc.setError("Error updating DNS records: " + err.Error())
@@ -200,18 +211,56 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 				}
 
 				if res.Changed {
-					domainLog.InfoContext(ctx, "Updated DNS records", "ips", publishIPs, "previous", res.Previous)
+					domainLog.InfoContext(ctx, "Updated DNS records", "targets", publishIPs, "previous", res.Previous)
 				} else {
-					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", publishIPs)
+					domainLog.InfoContext(ctx, "DNS records already up to date", "targets", publishIPs)
 				}
 			} else {
 				domainLog.WarnContext(ctx, "No healthy endpoints found, not updating DNS")
 			}
 		} else {
-			domainLog.DebugContext(ctx, "Published IPs unchanged, skipping DNS update", "healthy", newHealthyIPs, "published", publishIPs)
+			domainLog.DebugContext(ctx, "Published targets unchanged, skipping DNS update", "healthy", newHealthyIPs, "published", publishIPs)
 		}
 
 		// Update the stored previous IPs
 		dc.setState(newHealthyIPs, failedIPs)
 	}
+}
+
+// endpointTarget returns the target that DNS records should point to for an endpoint
+// The type of the record depends on which key the endpoint uses: an IP address is an A or AAAA record, depending on its family, and cname is a CNAME record
+func endpointTarget(ep *config.ConfigEndpoint) (dns.Target, error) {
+	if ep.CNAME != "" {
+		return dns.CNAMETarget(ep.CNAME, ep.Proxied()), nil
+	}
+	target, err := dns.IPTarget(ep.IP, ep.Proxied())
+	if err != nil {
+		return dns.Target{}, fmt.Errorf("invalid IP for endpoint %s: %w", ep.Name, err)
+	}
+	return target, nil
+}
+
+// targetsFor returns the targets for the keys, skipping those that are not known
+func targetsFor(targets map[string]dns.Target, keys []string) []dns.Target {
+	res := make([]dns.Target, 0, len(keys))
+	for _, key := range keys {
+		t, ok := targets[key]
+		if ok {
+			res = append(res, t)
+		}
+	}
+	return res
+}
+
+// targetsMatch returns true if both lists have the same targets, regardless of the order
+func targetsMatch(a, b []dns.Target) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, t := range a {
+		if !slices.Contains(b, t) {
+			return false
+		}
+	}
+	return true
 }
