@@ -212,6 +212,9 @@ func withoutTimes(endpoints []DomainStatusEndpoint) []DomainStatusEndpoint {
 		e.Since = nil
 		e.SinceStart = false
 		e.LastFailure = nil
+		e.LastError = ""
+		e.FirstFailure = nil
+		e.FirstError = ""
 		res[i] = e
 	}
 	return res
@@ -286,6 +289,16 @@ func TestEndpointSince_APIFields(t *testing.T) {
 	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["since"])
 	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["lastFailure"])
 	assert.NotContains(t, m, "sinceStart")
+	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["firstFailure"])
+	assert.Equal(t, "connection failed (check 2)", m["firstError"])
+	assert.Equal(t, "connection failed (check 2)", m["lastError"])
+
+	// After a passing check only the last failure is kept
+	m = marshal(f.check(t, true))
+	assert.Contains(t, m, "lastFailure")
+	assert.Contains(t, m, "lastError")
+	assert.NotContains(t, m, "firstFailure")
+	assert.NotContains(t, m, "firstError")
 
 	// A new endpoint reports that its start is not known, and has no last failure
 	g := newSinceFixture(1)
@@ -293,10 +306,14 @@ func TestEndpointSince_APIFields(t *testing.T) {
 	assert.Contains(t, m, "since")
 	assert.Equal(t, true, m["sinceStart"])
 	assert.NotContains(t, m, "lastFailure")
+	assert.NotContains(t, m, "firstFailure")
 
 	// Without times, all three fields are omitted
 	m = marshal(DomainStatusEndpoint{IP: "1.1.1.1"})
 	assert.NotContains(t, m, "since")
 	assert.NotContains(t, m, "sinceStart")
 	assert.NotContains(t, m, "lastFailure")
+	assert.NotContains(t, m, "lastError")
+	assert.NotContains(t, m, "firstFailure")
+	assert.NotContains(t, m, "firstError")
 }

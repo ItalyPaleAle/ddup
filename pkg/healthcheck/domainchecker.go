@@ -44,6 +44,12 @@ type endpointTimes struct {
 	// Last time a check of the endpoint failed
 	// Zero if never
 	lastFailure time.Time
+	// Error of the last failed check
+	lastError string
+	// First failed check of the current run of failures, and its error
+	// Zero and empty when the last check passed
+	firstFailure time.Time
+	firstError   string
 	// True if the endpoint was checked in the current cycle
 	seen bool
 }
@@ -56,7 +62,7 @@ func (dc *domainChecker) now() time.Time {
 }
 
 // recordCycle notes the outcome of a cycle of checks, given the IPs that are healthy after it
-// A failed check that is still within the allowed attempts only updates the last failure, because the endpoint is still healthy
+// A failed check that is still within the allowed attempts only updates the failure times and errors, because the endpoint is still healthy
 // Endpoints that were not checked in this cycle are forgotten
 func (dc *domainChecker) recordCycle(results []checker.Result, healthyIPs []string) {
 	dc.lock.Lock()
@@ -85,9 +91,22 @@ func (dc *domainChecker) recordCycle(results []checker.Result, healthyIPs []stri
 		}
 
 		t.seen = true
-		if !r.Healthy {
-			t.lastFailure = now
+		if r.Healthy {
+			t.firstFailure = time.Time{}
+			t.firstError = ""
+			continue
 		}
+
+		errMsg := ""
+		if r.Error != nil {
+			errMsg = r.Error.Error()
+		}
+		if t.firstFailure.IsZero() {
+			t.firstFailure = now
+			t.firstError = errMsg
+		}
+		t.lastFailure = now
+		t.lastError = errMsg
 	}
 
 	for ip, t := range dc.times {

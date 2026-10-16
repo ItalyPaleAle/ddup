@@ -1,7 +1,7 @@
 package healthcheck
 
 import (
-	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,6 +18,8 @@ type sinceFixture struct {
 	mock *checker.MockChecker
 	ep   *config.ConfigEndpoint
 	now  time.Time
+	// Number of checks run, to tell the errors apart
+	checks int
 }
 
 func newSinceFixture(maxAttempts int) *sinceFixture {
@@ -48,12 +50,13 @@ func (f *sinceFixture) check(t *testing.T, healthy bool) DomainStatusEndpoint {
 	t.Helper()
 
 	f.now = f.now.Add(time.Minute)
+	f.checks++
 	res := checker.Result{
 		Endpoint: f.ep,
 		Healthy:  healthy,
 	}
 	if !healthy {
-		res.Error = errors.New("connection failed")
+		res.Error = fmt.Errorf("connection failed (check %d)", f.checks)
 	}
 	f.mock.Results = []checker.Result{res}
 	f.hc.checkAndUpdateDNS(t.Context())
@@ -207,4 +210,51 @@ func TestEndpointSince_RemovedEndpointIsForgotten(t *testing.T) {
 	f.hc.checkAndUpdateDNS(t.Context())
 	assert.Nil(t, dc.getTimes("1.1.1.1"))
 	assert.Empty(t, dc.times)
+}
+
+func TestEndpointFailures_Warning(t *testing.T) {
+	// Three attempts, so two failed checks leave the endpoint healthy in the warning state
+	f := newSinceFixture(3)
+
+	e := f.check(t, true)
+	assert.Nil(t, e.FirstFailure)
+	assert.Empty(t, e.FirstError)
+	assert.Empty(t, e.LastError)
+
+	// First failed check
+	e = f.check(t, false)
+	assert.True(t, e.Healthy)
+	assert.Equal(t, 1, e.FailureCount)
+	require.NotNil(t, e.FirstFailure)
+	assert.Equal(t, f.now, *e.FirstFailure)
+	assert.Equal(t, "connection failed (check 2)", e.FirstError)
+	assert.Equal(t, "connection failed (check 2)", e.LastError)
+	firstFailure := f.now
+
+	// Second failed check: the first one stays, the last one moves
+	e = f.check(t, false)
+	assert.True(t, e.Healthy)
+	assert.Equal(t, 2, e.FailureCount)
+	require.NotNil(t, e.FirstFailure)
+	assert.Equal(t, firstFailure, *e.FirstFailure)
+	assert.Equal(t, "connection failed (check 2)", e.FirstError)
+	require.NotNil(t, e.LastFailure)
+	assert.Equal(t, f.now, *e.LastFailure)
+	assert.Equal(t, "connection failed (check 3)", e.LastError)
+
+	// A passing check ends the run: the first failure goes, the last one is kept
+	lastFailure := f.now
+	e = f.check(t, true)
+	assert.Equal(t, 0, e.FailureCount)
+	assert.Nil(t, e.FirstFailure)
+	assert.Empty(t, e.FirstError)
+	require.NotNil(t, e.LastFailure)
+	assert.Equal(t, lastFailure, *e.LastFailure)
+	assert.Equal(t, "connection failed (check 3)", e.LastError)
+
+	// A new run starts again with its own first failure
+	e = f.check(t, false)
+	require.NotNil(t, e.FirstFailure)
+	assert.Equal(t, f.now, *e.FirstFailure)
+	assert.Equal(t, "connection failed (check 5)", e.FirstError)
 }

@@ -32,6 +32,11 @@ interface DomainStatusEndpoint {
   sinceStart?: boolean
   // Last time a check of the endpoint failed
   lastFailure?: string
+  // Error of the last failed check
+  lastError?: string
+  // First failed check of the current run of failures, and its error
+  firstFailure?: string
+  firstError?: string
 }
 
 interface DomainStatus {
