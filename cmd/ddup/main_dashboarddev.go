@@ -54,7 +54,7 @@ func (m mockStatusProvider) GetAllDomainsStatus() map[string]healthcheck.DomainS
 			Error:       "",
 			Endpoints: []healthcheck.DomainStatusEndpoint{
 				{IP: "1.1.1.1", Healthy: true, FailureCount: 0, Since: ago(51 * time.Hour), LastFailure: ago(52 * time.Hour)},
-				{IP: "1.1.2.2", Healthy: false, FailureCount: 101, Since: ago(26 * time.Minute), FirstFailure: ago(26 * time.Minute), FirstError: "dial tcp 1.1.2.2:443: connect: connection refused", LastFailure: ago(30 * time.Second), LastError: "dial tcp 1.1.2.2:443: i/o timeout"},
+				{IP: "1.1.2.2", Healthy: false, FailureCount: 101, Since: ago(26 * time.Minute), FirstFailure: ago(26 * time.Minute), LastFailure: ago(30 * time.Second), LastError: "dial tcp 1.1.2.2:443: i/o timeout"},
 				{IP: "1.1.3.3", Healthy: true, FailureCount: 0, Since: ago(40 * time.Minute), SinceStart: true},
 			},
 		},
@@ -64,8 +64,8 @@ func (m mockStatusProvider) GetAllDomainsStatus() map[string]healthcheck.DomainS
 			Error:       "",
 			Endpoints: []healthcheck.DomainStatusEndpoint{
 				{IP: "2.2.1.1", Healthy: true, FailureCount: 0, Since: ago(40 * time.Minute), SinceStart: true},
-				{IP: "2.2.2.2", Healthy: true, FailureCount: 1, Since: ago(40 * time.Minute), SinceStart: true, FirstFailure: ago(70 * time.Second), FirstError: "unexpected status code: 503", LastFailure: ago(70 * time.Second), LastError: "unexpected status code: 503"},
-				{IP: "2.2.3.3", Healthy: true, FailureCount: 3, Since: ago(9 * 24 * time.Hour), FirstFailure: ago(3 * time.Minute), FirstError: "Get \"https://2.2.3.3/\": context deadline exceeded", LastFailure: ago(20 * time.Second), LastError: "unexpected status code: 502"},
+				{IP: "2.2.2.2", Healthy: true, FailureCount: 1, Since: ago(40 * time.Minute), SinceStart: true, FirstFailure: ago(70 * time.Second), LastFailure: ago(70 * time.Second), LastError: "unexpected status code: 503"},
+				{IP: "2.2.3.3", Healthy: true, FailureCount: 3, Since: ago(9 * 24 * time.Hour), FirstFailure: ago(3 * time.Minute), LastFailure: ago(20 * time.Second), LastError: "unexpected status code: 502"},
 			},
 		},
 		"alpha.dev": {
@@ -74,7 +74,7 @@ func (m mockStatusProvider) GetAllDomainsStatus() map[string]healthcheck.DomainS
 			Error:       "",
 			Endpoints: []healthcheck.DomainStatusEndpoint{
 				{IP: "10.10.10.1", Healthy: true, FailureCount: 0, Since: ago(5 * time.Hour)},
-				{IP: "10.10.10.2", Healthy: true, FailureCount: 1, Since: ago(5 * time.Hour), FirstFailure: ago(2 * time.Minute), FirstError: "unexpected status code: 500", LastFailure: ago(2 * time.Minute), LastError: "unexpected status code: 500"},
+				{IP: "10.10.10.2", Healthy: true, FailureCount: 1, Since: ago(5 * time.Hour), FirstFailure: ago(2 * time.Minute), LastFailure: ago(2 * time.Minute), LastError: "unexpected status code: 500"},
 			},
 		},
 		"beta.io": {

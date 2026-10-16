@@ -46,10 +46,9 @@ type endpointTimes struct {
 	lastFailure time.Time
 	// Error of the last failed check
 	lastError string
-	// First failed check of the current run of failures, and its error
+	// First failed check of the current run of failures
 	// Zero and empty when the last check passed
 	firstFailure time.Time
-	firstError   string
 	// True if the endpoint was checked in the current cycle
 	seen bool
 }
@@ -93,7 +92,6 @@ func (dc *domainChecker) recordCycle(results []checker.Result, healthyIPs []stri
 		t.seen = true
 		if r.Healthy {
 			t.firstFailure = time.Time{}
-			t.firstError = ""
 			continue
 		}
 
@@ -103,7 +101,6 @@ func (dc *domainChecker) recordCycle(results []checker.Result, healthyIPs []stri
 		}
 		if t.firstFailure.IsZero() {
 			t.firstFailure = now
-			t.firstError = errMsg
 		}
 		t.lastFailure = now
 		t.lastError = errMsg

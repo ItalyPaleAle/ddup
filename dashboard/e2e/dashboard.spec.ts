@@ -10,7 +10,6 @@ interface DomainStatusEndpoint {
     lastFailure?: string
     lastError?: string
     firstFailure?: string
-    firstError?: string
 }
 
 interface DomainStatus {
@@ -96,7 +95,6 @@ const historyDomains: DomainsResponse = {
                 lastFailure: '2026-10-13T09:29:00Z',
                 lastError: 'connection refused',
                 firstFailure: '2026-10-13T09:00:00Z',
-                firstError: 'timeout',
             },
             // Healthy since the first check after ddup started
             { healthy: true, ip: '192.0.2.12', since: '2026-10-13T07:45:00Z', sinceStart: true },
@@ -109,7 +107,6 @@ const historyDomains: DomainsResponse = {
                 failureCount: 2,
                 since: '2026-10-12T10:00:00Z',
                 firstFailure: '2026-10-13T09:27:00Z',
-                firstError: 'timeout',
                 lastFailure: '2026-10-13T09:28:00Z',
                 lastError: 'status 503',
             },
@@ -120,7 +117,6 @@ const historyDomains: DomainsResponse = {
                 failureCount: 1,
                 since: '2026-10-12T10:00:00Z',
                 firstFailure: '2026-10-13T09:28:30Z',
-                firstError: 'status 500',
                 lastFailure: '2026-10-13T09:28:30Z',
                 lastError: 'status 500',
             },
@@ -688,7 +684,7 @@ test.describe('endpoint history', () => {
         await expect(items.nth(1)).toContainText('192.0.2.11')
         await expect(items.nth(1)).toContainText('Unhealthy since Oct 13, 9:00:00 AM')
         await expect(items.nth(1)).toContainText('3 failed checks in a row')
-        await expect(items.nth(1)).toContainText('First failure: Oct 13, 9:00:00 AMtimeout')
+        await expect(items.nth(1)).toContainText('First failure: Oct 13, 9:00:00 AM')
         await expect(items.nth(1)).toContainText('Last failure: Oct 13, 9:29:00 AMconnection refused')
 
         // The start is not known
@@ -705,8 +701,8 @@ test.describe('endpoint history', () => {
         // Warning: healthy, with the failed checks in a row and the first and last failure
         await expect(items.nth(4)).toContainText('192.0.2.14')
         await expect(items.nth(4)).toContainText('Warning: 2 failed checks in a row')
-        await expect(items.nth(4)).toContainText('Healthy since Oct 12, 10:00:00 AM')
-        await expect(items.nth(4)).toContainText('First failure: Oct 13, 9:27:00 AMtimeout')
+        await expect(items.nth(4)).not.toContainText('Healthy since')
+        await expect(items.nth(4)).toContainText('First failure: Oct 13, 9:27:00 AM')
         await expect(items.nth(4)).toContainText('Last failure: Oct 13, 9:28:00 AMstatus 503')
 
         // A single failed check is shown once

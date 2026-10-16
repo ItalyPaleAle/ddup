@@ -24,10 +24,9 @@ type DomainStatusEndpoint struct {
 	LastFailure *time.Time `json:"lastFailure,omitempty"`
 	// Error of the last failed check
 	LastError string `json:"lastError,omitempty"`
-	// First failed check of the current run of failures, and its error
+	// First failed check of the current run of failures
 	// Left out when the last check passed, so it is set for an endpoint in the warning state
 	FirstFailure *time.Time `json:"firstFailure,omitempty"`
-	FirstError   string     `json:"firstError,omitempty"`
 }
 
 func (hc *HealthChecker) GetAllDomainsStatus() map[string]DomainStatus {
@@ -69,7 +68,6 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 			}
 			if !times.firstFailure.IsZero() {
 				e.FirstFailure = &times.firstFailure
-				e.FirstError = times.firstError
 			}
 		}
 		return e

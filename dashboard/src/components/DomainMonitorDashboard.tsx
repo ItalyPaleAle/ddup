@@ -34,9 +34,8 @@ interface DomainStatusEndpoint {
   lastFailure?: string
   // Error of the last failed check
   lastError?: string
-  // First failed check of the current run of failures, and its error
+  // First failed check of the current run of failures
   firstFailure?: string
-  firstError?: string
 }
 
 interface DomainStatus {

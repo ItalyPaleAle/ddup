@@ -218,7 +218,6 @@ func TestEndpointFailures_Warning(t *testing.T) {
 
 	e := f.check(t, true)
 	assert.Nil(t, e.FirstFailure)
-	assert.Empty(t, e.FirstError)
 	assert.Empty(t, e.LastError)
 
 	// First failed check
@@ -227,7 +226,6 @@ func TestEndpointFailures_Warning(t *testing.T) {
 	assert.Equal(t, 1, e.FailureCount)
 	require.NotNil(t, e.FirstFailure)
 	assert.Equal(t, f.now, *e.FirstFailure)
-	assert.Equal(t, "connection failed (check 2)", e.FirstError)
 	assert.Equal(t, "connection failed (check 2)", e.LastError)
 	firstFailure := f.now
 
@@ -237,7 +235,6 @@ func TestEndpointFailures_Warning(t *testing.T) {
 	assert.Equal(t, 2, e.FailureCount)
 	require.NotNil(t, e.FirstFailure)
 	assert.Equal(t, firstFailure, *e.FirstFailure)
-	assert.Equal(t, "connection failed (check 2)", e.FirstError)
 	require.NotNil(t, e.LastFailure)
 	assert.Equal(t, f.now, *e.LastFailure)
 	assert.Equal(t, "connection failed (check 3)", e.LastError)
@@ -247,7 +244,6 @@ func TestEndpointFailures_Warning(t *testing.T) {
 	e = f.check(t, true)
 	assert.Equal(t, 0, e.FailureCount)
 	assert.Nil(t, e.FirstFailure)
-	assert.Empty(t, e.FirstError)
 	require.NotNil(t, e.LastFailure)
 	assert.Equal(t, lastFailure, *e.LastFailure)
 	assert.Equal(t, "connection failed (check 3)", e.LastError)
@@ -256,5 +252,4 @@ func TestEndpointFailures_Warning(t *testing.T) {
 	e = f.check(t, false)
 	require.NotNil(t, e.FirstFailure)
 	assert.Equal(t, f.now, *e.FirstFailure)
-	assert.Equal(t, "connection failed (check 5)", e.FirstError)
 }

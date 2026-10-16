@@ -11,7 +11,6 @@ export interface EndpointHistoryItem {
   lastFailure?: string
   lastError?: string
   firstFailure?: string
-  firstError?: string
 }
 
 // Short local date and time with seconds, for example "Oct 9, 8:15:30 AM", with the year only for times that are not in the current year
@@ -96,13 +95,12 @@ const EndpointStatus = ({ endpoint }: { endpoint: EndpointHistoryItem }) => {
           )}
         </span>
       </div>
-      {warning && since && <div className="pl-[22px] text-muted-foreground">Healthy {since}</div>}
       {!warning && !endpoint.healthy && failureCount > 0 && (
         <div className="pl-[22px] text-muted-foreground">
           {failureCount} failed {failureCount === 1 ? 'check' : 'checks'} in a row
         </div>
       )}
-      {showFirst && <Failure label="First failure" time={endpoint.firstFailure!} error={endpoint.firstError} />}
+      {showFirst && <Failure label="First failure" time={endpoint.firstFailure!} />}
       {endpoint.lastFailure && <Failure label="Last failure" time={endpoint.lastFailure} error={endpoint.lastError} />}
     </>
   )
