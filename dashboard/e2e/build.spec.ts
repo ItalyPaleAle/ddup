@@ -97,6 +97,52 @@ test.describe('footer', () => {
     })
 })
 
+test.describe('footer position', () => {
+    test('does not move while the status is refreshed', async ({ page }) => {
+        await servePage(page, pageBuild)
+
+        // The response of a refresh can be held, to look at the page while the request is in flight
+        let hold = false
+        let release: (() => void) | undefined
+        await page.route('**/api/status', async (route) => {
+            if (hold) {
+                await new Promise<void>((resolve) => {
+                    release = resolve
+                })
+            }
+            await route.fulfill({
+                json: {
+                    'a.example': {
+                        lastUpdated: '2026-10-13T09:30:00Z',
+                        provider: 'cloudflare',
+                        endpoints: [{ healthy: true, ip: '192.0.2.1' }],
+                    },
+                },
+                headers: { [buildHeader]: pageBuild.build },
+            })
+        })
+        await page.goto('/')
+        await expect(page.getByText('a.example', { exact: true })).toBeVisible()
+        await expect(footer(page)).toBeVisible()
+        const before = (await footer(page).boundingBox())?.y
+
+        hold = true
+        await page.getByRole('button', { name: 'More refresh options' }).click()
+        await page.getByRole('menuitem', { name: 'Refresh now' }).click()
+        await expect.poll(() => release !== undefined).toBe(true)
+
+        // The list stays, there is no loading block, and the footer is where it was
+        await expect(page.getByText('a.example', { exact: true })).toBeVisible()
+        await expect(page.getByText('Loading domain data...')).toHaveCount(0)
+        expect((await footer(page).boundingBox())?.y).toBe(before)
+
+        hold = false
+        release?.()
+        await expect(page.getByRole('button', { name: 'Check now' })).toBeEnabled()
+        expect((await footer(page).boundingBox())?.y).toBe(before)
+    })
+})
+
 test.describe('reload when the server is upgraded', () => {
     test('reloads once when the build in the header is different', async ({ page }) => {
         const served = await servePage(page, pageBuild)
