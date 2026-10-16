@@ -324,6 +324,7 @@ providers:
 The server has no authentication, so keep it on a trusted network. It exposes:
 
 - `GET /api/status` and `GET /api/status/{recordname}`: current status of the domains
+  Each endpoint also has the optional fields `since` (when it last changed between healthy and unhealthy), `lastFailure` (the last time a check of it failed, kept after it recovers) and `sinceStart` (true when `since` is only the time of the first check after ddup started, because the real time is not known). For failed checks it also has `lastError` (the error of the last failed check), and `firstFailure` (the time of the first failed check of the current run of failures, left out once a check passes again). With `failureCount`, which counts the failed checks in a row, they show why an endpoint is in the warning state, where it failed some checks but is still healthy. They are kept in memory, so they start again when ddup restarts, and they are left out when they are not known
 - `POST /api/check`: runs health checks for all domains right away (the dashboard's "Check now" button), and returns the updated status. The request must include the header `X-Requested-By: ddup-dashboard`, which keeps other websites from triggering it through a visitor's browser. If a check finished less than 5 seconds ago, no new one is run. A forced check counts towards `attempts` and `recoverAfter` like a scheduled one, and the next scheduled check is then a full `interval` later
 - `GET /healthz`: returns 204 when the server is up
 
