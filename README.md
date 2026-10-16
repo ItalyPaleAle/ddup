@@ -16,13 +16,10 @@ ddup isn't a DNS server. It changes the records in the DNS service that already 
 
 ## Features
 
-- Health checks over HTTP or HTTPS, with your choice of method, expected status code, timeout, and number of attempts
+- Health checks multiple apps over HTTP or HTTPS
 - Round-robin across all healthy endpoints, or priorities that keep backup servers out of DNS until the main ones fail
 - A records for IPv4 addresses, and AAAA records for IPv6
-- An endpoint is removed only after several failed checks in a row, and you can require several successful checks before it's added back, so a server that keeps going up and down doesn't keep changing DNS
 - A dashboard and an API with the health of every domain and endpoint
-- Metrics for OpenTelemetry and Prometheus
-- A single binary, also published as a container image for amd64, arm64, and armv7
 
 ## Supported DNS providers
 

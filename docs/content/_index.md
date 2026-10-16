@@ -17,17 +17,14 @@ Use it to set up [round-robin DNS](https://en.wikipedia.org/wiki/Round-robin_DNS
 3. When the set of healthy endpoints changes, ddup updates the domain's records through your DNS provider's API. It adds the IPs of endpoints that pass their checks, and removes the IPs of endpoints that fail them.
 4. Clients that resolve the domain get only the IPs of healthy endpoints.
 
-ddup isn't a DNS server. It changes the records in the DNS service that already hosts your zone, using that service's API.
+**ddup is not a DNS server**. It changes the records in the DNS service that already hosts your zone, using that service's API.
 
 ## Features
 
 - Health checks over HTTP or HTTPS, with your choice of method, expected status code, timeout, and number of attempts
 - Round-robin across all healthy endpoints, or [priorities](/docs/failover-priorities) that keep backup servers out of DNS until the main ones fail
 - A records for IPv4 addresses, and AAAA records for IPv6
-- An endpoint is removed only after several failed checks in a row, and you can require several successful checks before it's added back, so a server that keeps going up and down doesn't keep changing DNS
 - A dashboard and an API with the health of every domain and endpoint
-- Metrics for OpenTelemetry and Prometheus
-- A single binary, also published as a container image for amd64, arm64, and armv7
 
 ## Supported DNS providers
 

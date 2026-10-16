@@ -133,5 +133,4 @@ dns.resourceRecordSets.delete
 ## Things to know
 
 - Record sets with a routing policy aren't supported. If the name already has one, such as weighted round robin or geolocation, the update fails with an error.
-- All the changes for a domain go in one change, which Cloud DNS applies at once.
 - The A and AAAA record sets with the domain's name are replaced, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).

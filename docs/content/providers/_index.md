@@ -76,7 +76,7 @@ You don't need to create the records in advance: ddup creates them on its first 
 - Other types of records with the same name, such as TXT or MX, aren't changed.
 - If no endpoint is healthy, ddup leaves the records as they are.
 
-ddup writes to DNS when it starts, and when the set of endpoints to publish changes. If you change the records by hand while ddup is running, ddup doesn't notice until the next time the set of endpoints changes, or until it restarts.
+ddup writes to DNS when it starts, and when the set of endpoints to publish changes.  If you change the records by hand while ddup is running, ddup doesn't notice until the next time the set of endpoints changes, or until it restarts.
 
 ### Record names
 

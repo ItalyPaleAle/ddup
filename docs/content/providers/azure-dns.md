@@ -123,7 +123,7 @@ When you don't set `clientId`, `clientSecret`, or `managedIdentityClientId`, ddu
 - The `AZURE_TENANT_ID` and `AZURE_CLIENT_ID` environment variables, with either `AZURE_CLIENT_SECRET`, or `AZURE_CLIENT_CERTIFICATE_PATH` for a certificate (see the [full list](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity#readme-environment-variables))
 - Workload identity, for example on Azure Kubernetes Service
 - A managed identity: system-assigned, or user-assigned with its client ID in `AZURE_CLIENT_ID`
-- The account you signed in with `az login` in the Azure CLI, which is handy for trying ddup on your computer
+- The account you signed in with `az login` in the Azure CLI, when using ddup on your local machine
 
 ```yaml
 providers:
@@ -163,8 +163,6 @@ az role assignment create \
   --role "DNS Zone Contributor" \
   --scope "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Network/dnsZones/<zone-name>"
 ```
-
-Role assignments can take a few minutes to take effect.
 
 The DNS Zone Contributor role allows changing every record in the zone. To allow only what ddup needs, create a [custom role](https://learn.microsoft.com/azure/role-based-access-control/custom-roles) with these actions, which cover A and AAAA records:
 

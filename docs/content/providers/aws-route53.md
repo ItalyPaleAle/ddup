@@ -62,7 +62,7 @@ ddup picks how to authenticate based on the options you set:
 | `accessKeyId` and `secretAccessKey` | [Access key](#access-key) of an IAM user |
 | Neither | [Default credential chain](#default-credential-chain) of the AWS SDK |
 
-Setting only one of `accessKeyId` and `secretAccessKey` is an error. Whichever method you choose, the identity needs the permissions in [Permissions](#permissions).
+Whichever method you choose, the identity needs the permissions in [Permissions](#permissions).
 
 At startup, ddup logs which method it's using: `Authenticating to AWS with static credentials` or `Authenticating to AWS with the default credential chain`.
 
@@ -120,7 +120,7 @@ docker run -d \
 
 ## Permissions
 
-The identity that ddup uses needs permission to list and change the record sets of the hosted zone. Replace `Z0123456789ABCDEFGHIJ` with the ID of your hosted zone:
+The identity that ddup uses needs permission to list and change the record sets of the hosted zone. Replace `<your-zone-id>` with the ID of your hosted zone:
 
 ```json
 {
@@ -132,7 +132,7 @@ The identity that ddup uses needs permission to list and change the record sets 
         "route53:ListResourceRecordSets",
         "route53:ChangeResourceRecordSets"
       ],
-      "Resource": "arn:aws:route53:::hostedzone/Z0123456789ABCDEFGHIJ"
+      "Resource": "arn:aws:route53:::hostedzone/<your-zone-id>"
     }
   ]
 }
@@ -172,5 +172,4 @@ This policy allows changing every record in the zone. To allow only the names an
 ## Things to know
 
 - Only record sets with simple routing are supported. If the name already has an alias record, or a record set with another routing policy such as weighted, latency, or failover, the update fails with an error.
-- All the changes for a domain go in one change batch, which Route 53 applies at once.
 - The A and AAAA record sets with the domain's name are replaced, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).
