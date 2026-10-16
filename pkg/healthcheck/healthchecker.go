@@ -16,12 +16,15 @@ import (
 	"github.com/italypaleale/ddup/pkg/dns"
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
+	"github.com/italypaleale/ddup/pkg/notify"
 )
 
 // HealthChecker manages health checking and DNS updates
 type HealthChecker struct {
 	// Key is domain name
 	domainCheckers map[string]*domainChecker
+	// Optional, may be nil
+	notifier Notifier
 	// Requests to run a check right away; handled by Run, so checks never overlap
 	forceCh chan forceRequest
 }
@@ -185,6 +188,10 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		publishIPs := selectLowestPriority(dc.priorities, newHealthyIPs)
 		previousPublishIPs := selectLowestPriority(dc.priorities, currentHealthyIPs)
 
+		// Notify when the domain has no healthy endpoints
+		endpointStates := notifyEndpointStates(results, newHealthyIPs)
+		hc.notifyOutage(dc, domainName, endpointStates, previousPublishIPs, len(newHealthyIPs) == 0)
+
 		// Check if the published IPs have changed
 		if !utils.StringSlicesMatch(previousPublishIPs, publishIPs) {
 			// Update DNS records
@@ -194,13 +201,22 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					dc.setError("Error updating DNS records: " + err.Error())
+					hc.notifyUpdateFailed(dc, domainName, endpointStates, publishIPs, previousPublishIPs, err)
 
 					// Continue, so we don't update the cached previous IPs
 					continue
 				}
 
+				dc.swapNotifiedError("")
 				if res.Changed {
 					domainLog.InfoContext(ctx, "Updated DNS records", "ips", publishIPs, "previous", res.Previous)
+					hc.notify(notify.Event{
+						Type:      config.EventDNSUpdated,
+						Domain:    domainName,
+						Endpoints: endpointStates,
+						Published: publishIPs,
+						Previous:  res.Previous,
+					})
 				} else {
 					domainLog.InfoContext(ctx, "DNS records already up to date", "ips", publishIPs)
 				}
