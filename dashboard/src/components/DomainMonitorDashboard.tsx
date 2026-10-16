@@ -419,7 +419,6 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                         {status.charAt(0).toUpperCase() + status.slice(1)}
                       </Badge>
                     </div>
-                    <div className="text-xs text-muted-foreground">Provider: {domain.status.provider}</div>
                     {/* The history is about the endpoints, so its button is on the line that counts them */}
                     <div className="flex flex-wrap items-center justify-between gap-x-2 text-sm text-muted-foreground">
                       <span>
