@@ -3,7 +3,7 @@ title: "Configuration"
 weight: 30
 ---
 
-ddup reads its configuration from a YAML file, usually named `config.yaml`.
+ddup reads its configuration from a YAML file, usually named `config.yaml` (or `config.yml`).
 
 ## Configuration file
 
@@ -14,11 +14,7 @@ ddup looks for the configuration file in this order:
 3. `~/.ddup/config.yaml`
 4. `/etc/ddup/config.yaml`
 
-The file can also be named `config.yml`.
-
 > When running ddup in a container, mount the folder that contains `config.yaml` at `/etc/ddup`.
-
-ddup reads the configuration only when it starts: restart it after making changes. If the file contains an unknown option or an invalid value, ddup logs an error and exits.
 
 ## Example
 
@@ -90,10 +86,9 @@ providers:
 
 - `!file <path>` reads the whole file. Trailing newlines are removed, and other whitespace is kept.
 - `!envfile <path> <name>` reads the variable `<name>` from a dotenv file.
-- Relative paths are relative to the folder that contains the configuration file, not to the current folder.
+- Relative paths are relative to the folder that contains the configuration file.
 - The tag and its value must be on the same line. Quotes are optional, but needed when the path contains characters such as ` #` or `: `, for example `!file "/path/to/my secret.txt"`.
 - The values are always text: they can't be used for numbers or booleans, such as `ttl` or `server.enabled`.
-- If a file or a variable doesn't exist, ddup reports an error and doesn't start. Errors include the path and the variable name, but never the contents of the file.
 
 Dotenv files have one `NAME=value` per line, optionally starting with `export`. Lines starting with `#` are comments.
 
@@ -215,6 +210,5 @@ See [Logs and metrics](/docs/observability) for logs and metrics.
 |----------|-------------|
 | `DDUP_CONFIG` | Path to the configuration file |
 | `OTEL_*` | OpenTelemetry options for exporting logs and metrics, see [Logs and metrics](/docs/observability) |
-| `AWS_*` | Credentials for AWS Route 53, see [AWS Route 53](/providers/aws-route53#default-credential-chain) |
-| `AZURE_*` | Credentials for Azure DNS, see [Azure DNS](/providers/azure-dns#default-credentials) |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Credentials for Google Cloud DNS, see [Google Cloud DNS](/providers/google-cloud-dns#application-default-credentials) |
+
+Some providers may support authenticating with environmental variables too. See the documentation for each provider for more info.

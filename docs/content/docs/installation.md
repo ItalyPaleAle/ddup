@@ -107,8 +107,7 @@ On Linux distributions that use systemd, run ddup as a service so it starts at b
 3. Download the [sample unit file](https://github.com/italypaleale/ddup/blob/main/ddup.service) to `/etc/systemd/system/ddup.service`:
 
    ```sh
-   sudo curl -fsSL -o /etc/systemd/system/ddup.service \
-     https://raw.githubusercontent.com/italypaleale/ddup/main/ddup.service
+   sudo curl -fsSL -o /etc/systemd/system/ddup.service https://raw.githubusercontent.com/italypaleale/ddup/main/ddup.service
    ```
 
 4. Start the service and enable it at boot:

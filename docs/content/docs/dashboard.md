@@ -24,7 +24,7 @@ Then open `http://127.0.0.1:7401` in a browser on the same machine.
 By default, ddup listens only on `127.0.0.1`, so the dashboard can't be reached from other machines. When ddup runs in a container, set `bind: "0.0.0.0"` and publish the port, for example with `-p 127.0.0.1:7401:7401`.
 
 > [!WARNING]
-> The dashboard and API have no authentication: anyone who can reach them can see your domains and IPs, and start health checks. To open the dashboard from other machines, put it behind a reverse proxy that requires authentication, or reach it over a VPN.
+> The dashboard and API have no authentication: anyone who can reach them can see your domains and IPs, and start health checks. To open the dashboard from other machines, put it behind a reverse proxy that requires authentication.
 
 ## Using the dashboard
 
@@ -37,20 +37,6 @@ The top of the page counts the domains in each state:
 | Unhealthy | No endpoint is healthy, or the last attempt to update DNS failed |
 
 Each domain has a card with its provider, the time of its last check, and its endpoints. For each endpoint, the card shows its IP, whether it's healthy, and how many checks it failed in a row. An endpoint can be healthy and have failures: it failed fewer than `attempts` checks, so it's still in DNS.
-
-An endpoint that is passing checks again, but hasn't reached `recoverAfter` successful checks yet, is still shown as unhealthy.
-
-If ddup couldn't update the domain's DNS records, the card shows the error. ddup tries again on the next check.
-
-Type in the search box to show only the domains whose name, or the IP of one of their endpoints, matches.
-
-Select **Check now** to run the health checks for all domains right away, instead of waiting for the next interval.
-
-The dashboard reloads the status every minute. To stop it, select **Auto-refresh**. To reload once, select **Refresh now** in the menu next to it. Reloading shows the results of the latest checks without running new ones.
-
-The icon in the browser tab shows the overall status, so you can keep the dashboard open in a background tab: a check mark when all domains are healthy, a warning sign when some endpoints are unhealthy, and a cross when a domain is unhealthy.
-
-The bottom of the page shows the version of ddup. When you upgrade ddup, a dashboard that's already open reloads itself the next time it gets data from ddup, so it always runs the code of the new version.
 
 ## API
 
