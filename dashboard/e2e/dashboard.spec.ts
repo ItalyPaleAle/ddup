@@ -705,6 +705,11 @@ test.describe('endpoint history', () => {
         await expect(items.nth(4)).toContainText('First failure: Oct 13, 9:27:00 AM')
         await expect(items.nth(4)).toContainText('Last failure: Oct 13, 9:28:00 AMstatus 503')
 
+        // The last failure is above the first one
+        const warningText = (await items.nth(4).innerText()).replace(/\s+/g, ' ')
+        expect(warningText.indexOf('Last failure')).toBeGreaterThan(-1)
+        expect(warningText.indexOf('Last failure')).toBeLessThan(warningText.indexOf('First failure'))
+
         // A single failed check is shown once
         await expect(items.nth(5)).toContainText('Warning: 1 failed check in a row')
         await expect(items.nth(5)).toContainText('Last failure: Oct 13, 9:28:30 AMstatus 500')

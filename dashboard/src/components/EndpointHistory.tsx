@@ -78,6 +78,7 @@ const EndpointStatus = ({ endpoint }: { endpoint: EndpointHistoryItem }) => {
       ? 'text-green-700 dark:text-green-400'
       : 'text-red-700 dark:text-red-400'
 
+  // The most recent failure goes first
   // The first failure is only different from the last one when more than one check failed
   const showFirst = failureCount > 1 && endpoint.firstFailure
   return (
@@ -100,8 +101,8 @@ const EndpointStatus = ({ endpoint }: { endpoint: EndpointHistoryItem }) => {
           {failureCount} failed {failureCount === 1 ? 'check' : 'checks'} in a row
         </div>
       )}
-      {showFirst && <Failure label="First failure" time={endpoint.firstFailure!} />}
       {endpoint.lastFailure && <Failure label="Last failure" time={endpoint.lastFailure} error={endpoint.lastError} />}
+      {showFirst && <Failure label="First failure" time={endpoint.firstFailure!} />}
     </>
   )
 }
