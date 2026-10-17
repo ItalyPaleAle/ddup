@@ -142,7 +142,7 @@ The `-p` flag makes the dashboard available on port 7401 of your machine, only f
 ddup checks all endpoints as soon as it starts. Look at its logs:
 
 ```sh
-docker logs ddup
+docker logs -f ddup
 ```
 
 For each domain, you should see a line with the message `Updated DNS records`, which lists the IPs that ddup published. If the records already matched, the message is `DNS records already up to date` instead. If something is wrong, such as invalid credentials, the logs show the error.

@@ -11,12 +11,10 @@ ddup checks all endpoints when it starts, and then every `interval` (30 seconds 
 
 For each endpoint, ddup sends a request to its `url`:
 
-- The method is `GET`, or `HEAD` if you set `method: HEAD`.
-- The `User-Agent` header is `ddup/1.0`, which you can use to recognize checks in your server's logs.
-- Each check opens a new connection, so problems with connecting or with the TLS handshake are noticed on every check.
-- Redirects are not followed: a 3xx response is a failure, unless `expectStatus` is set to that code.
-- For HTTPS URLs, the server's certificate must be valid for the host name. Checks of servers with self-signed or expired certificates fail.
-- The response body is ignored.
+- Method is `GET` (default) or `HEAD`
+- `User-Agent` header is `ddup/1.0`
+- Redirects are not followed: a 3xx response is a failure, unless `expectStatus` is set to that code
+- For HTTPS URLs, the server's certificate must be valid for the host name; checks of servers with self-signed or expired certificates fail
 
 The endpoint passes the check if it responds within `timeout` (3 seconds by default) with the [expected status code](#expected-status-code). Anything else is a failure: an error connecting, a timeout, a TLS error, or a different status code.
 
@@ -38,12 +36,12 @@ ddup changes DNS only when the set of endpoints to publish changes. If an update
 
 ## How long failover takes
 
-After a server goes down, clients can keep getting its IP for up to `interval` times `attempts`, plus `ttl`. With the default settings, that's 30 seconds times 2, plus 120 seconds: 3 minutes. If the checks fail because of a timeout, add up to `timeout` for each check.
+After a server goes down, clients can keep getting its IP for up to `interval` times `attempts`, plus `ttl`. With the default settings, that's 30 seconds times 2, plus 120 seconds, for a total of 3 minutes. If the checks fail because of a timeout, add up to `timeout` for each check.
 
 To fail over sooner:
 
 - Lower `interval`, so failures are detected sooner. Every check sends a request to each endpoint, so a lower interval means more requests.
-- Lower `ttl`, so clients ask for the records again sooner. Some providers have a minimum: Cloudflare, for example, doesn't accept TTLs below 60 seconds on most plans.
+- Lower `ttl`, so clients ask for the records again sooner. Many providers don't accept TTLs below 60 seconds.
 - Lower `attempts`. With `attempts: 1`, a single failed check removes a server, so keep it at 2 or more unless your servers respond reliably.
 
 Keep `timeout` well below `interval`.
@@ -79,11 +77,11 @@ healthChecks:
   expectStatus: "204"
 ```
 
-`expectStatus` accepts one exact code between 100 and 599, or `2xx`. Since ddup doesn't follow redirects, you can also use a 3xx code: for example, `"301"` for a URL that always redirects.
+`expectStatus` accepts one exact code between 100 and 599, or `2xx` for all codes in the range 200-299. Since ddup doesn't follow redirects, you can also use a 3xx code: for example, `"301"` for a URL that always redirects.
 
 ## Request method
 
-ddup sends `GET` requests by default. Set `method: HEAD` to ask the server for the headers only, which is useful when the health check URL returns a large response. Some servers don't support `HEAD` and respond with `405 Method Not Allowed`, which ddup counts as a failure.
+ddup sends `GET` requests by default. Set `method: HEAD` to ask the server for the headers only, which is useful when the health check URL returns a large response.
 
 ```yaml
 healthChecks:
@@ -95,8 +93,6 @@ healthChecks:
 When several servers serve the same domain, check each server directly, using its IP address in `url`. A URL with the domain name would reach whichever server DNS returns, which isn't necessarily the one you meant to check.
 
 If your server needs a host name to route the request (for example, a web server with several virtual hosts), set `host`. ddup connects to the address in `url`, and sends `host` in the `Host` header.
-
-For HTTPS URLs, ddup also uses `host` for TLS: it requests the certificate for `host` and checks that it's valid for that name. So the check works with the certificate your server already has for the domain, even though the URL contains an IP.
 
 ```yaml
 endpoints:

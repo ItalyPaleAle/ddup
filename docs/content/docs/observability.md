@@ -17,25 +17,12 @@ logs:
   json: false
 ```
 
-At the `info` level, ddup logs every change to DNS and every failed check. These are the messages to look for:
-
-| Message | Level | Meaning |
-|---------|-------|---------|
-| `Health checker started` | info | ddup started, and is about to run the first checks |
-| `✗ Endpoint health check failed` | warn | An endpoint failed a check. The `error` field says why. |
-| `Endpoint is recovering` | info | A removed endpoint passed a check, but hasn't reached `recoverAfter` successful checks yet |
-| `Updated DNS records` | info | ddup changed the records. The `ips` field lists the published IPs, and `previous` the IPs before the change. |
-| `DNS records already up to date` | info | ddup was about to update the records, but they already listed the right IPs, for example when ddup restarts |
-| `No healthy endpoints found, not updating DNS` | warn | No endpoint of the domain is healthy, so ddup left the records as they were |
-| `Error updating DNS records` | error | The provider's API returned an error. ddup tries again on the next check. |
-
+At the `info` level, ddup logs every change to DNS and every failed check.  
 At the `debug` level, ddup also logs every successful check, and every check that didn't need a DNS update.
-
-If the configuration is invalid or a provider can't be set up (for example, because of missing credentials), ddup logs the error and exits.
 
 ## Exporting with OpenTelemetry
 
-ddup can send logs and metrics to an [OpenTelemetry](https://opentelemetry.io) collector, or to any backend that accepts OTLP, such as Grafana Cloud, Honeycomb, or Datadog. Exporting is off by default: turn it on with environment variables.
+ddup can send logs and metrics to an [OpenTelemetry](https://opentelemetry.io) collector, or to any backend that accepts OTLP, such as Grafana, Honeycomb, or Datadog. Exporting is off by default: turn it on with environment variables.
 
 ```sh
 # Export metrics
