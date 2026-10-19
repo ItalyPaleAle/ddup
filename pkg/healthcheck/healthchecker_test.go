@@ -251,23 +251,102 @@ func TestHealthChecker_DNSProviderError(t *testing.T) {
 	}
 
 	// Create the test HealthChecker
+	dc := &domainChecker{
+		checker:    mockChecker,
+		ttl:        60,
+		healthyIPs: []string{}, // Start with empty to trigger DNS update
+		failedIPs:  make(map[string]int),
+		provider:   mockProvider,
+	}
 	hc := &HealthChecker{
 		domainCheckers: map[string]*domainChecker{
-			"example.com": {
-				checker:    mockChecker,
-				ttl:        60,
-				healthyIPs: []string{}, // Start with empty to trigger DNS update
-				failedIPs:  make(map[string]int),
-				provider:   mockProvider,
-			},
+			"example.com": dc,
 		},
 	}
 
 	// Run the check
 	hc.checkAndUpdateDNS(t.Context())
 
-	// Verify that healthy IPs were NOT updated due to DNS provider error
-	assert.Empty(t, hc.domainCheckers["example.com"].healthyIPs, "Expected healthy IPs to remain unchanged due to DNS error")
+	// The error is reported, and the health of the endpoints is tracked anyway
+	assert.Equal(t, 1, mockProvider.CallCount)
+	assert.Equal(t, "Error updating DNS records: mock error", dc.lastError)
+	assert.Equal(t, []string{"1.1.1.1"}, dc.healthyIPs)
+
+	// The next check tries again, even if the published IPs did not change
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 2, mockProvider.CallCount)
+	assert.Equal(t, "Error updating DNS records: mock error", dc.lastError)
+
+	// When the provider works again, the update goes through and the error is cleared
+	mockProvider.ShouldError = false
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 3, mockProvider.CallCount)
+	assert.Equal(t, []string{"1.1.1.1"}, mockProvider.LastIPs)
+	assert.Empty(t, dc.lastError)
+
+	// Nothing changes any more, so DNS is left alone
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 3, mockProvider.CallCount)
+}
+
+func TestHealthChecker_DNSProviderErrorKeepsTrackingHealth(t *testing.T) {
+	mockProvider := dns.NewMockProvider(false)
+
+	endpoints := []*config.ConfigEndpoint{
+		{Name: "endpoint1", IP: "1.1.1.1"},
+		{Name: "endpoint2", IP: "2.2.2.2"},
+	}
+	mockChecker := &checker.MockChecker{
+		Domain:      "example.com",
+		MaxAttempts: 2,
+		Results: []checker.Result{
+			{Endpoint: endpoints[0], Healthy: true},
+			{Endpoint: endpoints[1], Healthy: true},
+		},
+	}
+	dc := &domainChecker{
+		checker:   mockChecker,
+		ttl:       60,
+		failedIPs: make(map[string]int),
+		provider:  mockProvider,
+	}
+	hc := &HealthChecker{
+		domainCheckers: map[string]*domainChecker{
+			"example.com": dc,
+		},
+	}
+
+	// Both endpoints are healthy and published
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 1, mockProvider.CallCount)
+
+	// The second endpoint fails while the provider is down
+	mockProvider.ShouldError = true
+	mockChecker.Results = []checker.Result{
+		{Endpoint: endpoints[0], Healthy: true},
+		{Endpoint: endpoints[1], Healthy: false, Error: errors.New("connection failed")},
+	}
+
+	// The first failure is still within the attempts, so the endpoint is healthy and nothing is published
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 1, mockProvider.CallCount)
+	assert.ElementsMatch(t, []string{"1.1.1.1", "2.2.2.2"}, dc.healthyIPs)
+	assert.Equal(t, 1, dc.failedIPs["2.2.2.2"])
+
+	// The second failure removes it, and the update fails
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 2, mockProvider.CallCount)
+	assert.Equal(t, []string{"1.1.1.1"}, mockProvider.LastIPs)
+	assert.Equal(t, []string{"1.1.1.1"}, dc.healthyIPs, "the failing endpoint is not healthy any more, even if DNS could not be updated")
+	assert.Equal(t, 2, dc.failedIPs["2.2.2.2"])
+	assert.Equal(t, "Error updating DNS records: mock error", dc.lastError)
+
+	// The provider works again, and the endpoint is removed from DNS
+	mockProvider.ShouldError = false
+	hc.checkAndUpdateDNS(t.Context())
+	assert.Equal(t, 3, mockProvider.CallCount)
+	assert.Equal(t, []string{"1.1.1.1"}, mockProvider.LastIPs)
+	assert.Empty(t, dc.lastError)
 }
 
 func TestHealthChecker_NoChangeSkipsUpdate(t *testing.T) {
