@@ -1,5 +1,6 @@
 /scratch
 /dist/
+/.bin/
 /config.yaml
 /config.*.yaml
 !config.test.yaml
@@ -28,8 +29,6 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# Go workspace file
-go.work
 
 ### Linux ###
 *~

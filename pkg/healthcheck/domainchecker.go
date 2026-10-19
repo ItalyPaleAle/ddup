@@ -27,6 +27,10 @@ type domainChecker struct {
 
 	// Target published for each endpoint, by IP or CNAME hostname
 	targets map[string]dns.Target
+
+	// True if the last update of the DNS records failed, so the next check tries again even if the published IPs did not change
+	// Only used by the health check loop
+	updatePending bool
 }
 
 func (dc *domainChecker) getState() (healthyIPs []string, failedIPs map[string]int, lastUpdated time.Time, lastError string) {

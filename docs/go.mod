@@ -1,0 +1,7 @@
+module github.com/italypaleale/ddup/docs
+
+go 1.27.2
+
+tool github.com/italypaleale/hugo-assets/cmd/vercel-docs-build
+
+require github.com/italypaleale/hugo-assets v0.4.2 // indirect

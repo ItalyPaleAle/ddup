@@ -196,34 +196,44 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		publishTargets := targetsFor(targets, publishIPs)
 		previousTargets := targetsFor(targets, previousPublishIPs)
 
-		// Check if the published targets have changed
-		if !targetsMatch(previousTargets, publishTargets) {
+		// Check if the published targets have changed, or if the last update failed
+		var updateErr string
+		if dc.updatePending || !targetsMatch(previousTargets, publishTargets) {
 			// Update DNS records
 			if len(publishTargets) > 0 {
 				var res dns.UpdateResult
 				res, err = dc.provider.UpdateRecords(ctx, dc.checker.GetDomain(), dc.ttl, publishTargets)
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
-					dc.setError("Error updating DNS records: " + err.Error())
+					updateErr = "Error updating DNS records: " + err.Error()
 
-					// Continue, so we don't update the cached previous IPs
-					continue
-				}
-
-				if res.Changed {
-					domainLog.InfoContext(ctx, "Updated DNS records", "targets", publishIPs, "previous", res.Previous)
+					// Try again at the next check, even if the published targets do not change
+					dc.updatePending = true
 				} else {
-					domainLog.InfoContext(ctx, "DNS records already up to date", "targets", publishIPs)
+					dc.updatePending = false
+					if res.Changed {
+						domainLog.InfoContext(ctx, "Updated DNS records", "targets", publishIPs, "previous", res.Previous)
+					} else {
+						domainLog.InfoContext(ctx, "DNS records already up to date", "targets", publishIPs)
+					}
 				}
 			} else {
 				domainLog.WarnContext(ctx, "No healthy endpoints found, not updating DNS")
+
+				// There is nothing to publish, and DNS is left as it is
+				dc.updatePending = false
 			}
 		} else {
 			domainLog.DebugContext(ctx, "Published targets unchanged, skipping DNS update", "healthy", newHealthyIPs, "published", publishIPs)
 		}
 
-		// Update the stored previous IPs
+		// Update the stored state, also when the update failed, so the health of the endpoints keeps being tracked
 		dc.setState(newHealthyIPs, failedIPs)
+
+		// The state resets the error, so it is set again after it
+		if updateErr != "" {
+			dc.setError(updateErr)
+		}
 	}
 }
 
