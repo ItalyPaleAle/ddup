@@ -500,7 +500,8 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
           </div>
         )}
 
-        {isLoading && (
+        {/* Only while there is nothing to show yet: on a refresh the list stays, and this block would push the footer down until the response arrives */}
+        {isLoading && domains.length === 0 && (
           <div className="flex items-center justify-center py-8">
             <RefreshCw className="h-6 w-6 animate-spin" />
             <span className="ml-2">Loading domain data...</span>

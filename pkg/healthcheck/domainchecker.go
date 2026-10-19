@@ -31,6 +31,10 @@ type domainChecker struct {
 	// Returns the current time
 	// nil means time.Now
 	clock func() time.Time
+
+	// True if the last update of the DNS records failed, so the next check tries again even if the published IPs did not change
+	// Only used by the health check loop
+	updatePending bool
 }
 
 // endpointTimes tracks the state changes of one endpoint

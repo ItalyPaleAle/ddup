@@ -1,0 +1,29 @@
+{
+  "baseURL": "https://ddup.italypaleale.me/",
+  "title": "ddup",
+  "locale": "en-us",
+  "description": "Health-checked DNS records for failover and round-robin load balancing",
+  "plausibleAnalytics": true,
+  "github": {
+    "url": "https://github.com/italypaleale/ddup",
+    "repo": "https://github.com/italypaleale/ddup",
+    "branch": "main",
+    "path": "docs"
+  },
+  "theme": {
+    "scheme": "blue",
+    "iconLight": "icon-light.svg",
+    "iconDark": "icon-dark.svg",
+    "favicon": "favicon.svg"
+  },
+  "robots": {
+    "llmsTXT": true,
+    "disallow": []
+  },
+  "imageMounts": [
+    {
+      "source": "../screenshot.webp",
+      "target": "assets/img/screenshot.webp"
+    }
+  ]
+}

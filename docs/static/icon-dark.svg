@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" stroke-linecap="round" stroke-linejoin="round" role="img" aria-labelledby="title desc">
+  <title id="title">ddup app icon for dark backgrounds</title>
+  <desc id="desc">A light rounded square app icon with a dark lowercase d</desc>
+  <path d="M14 0h36a14 14 0 0 1 14 14v36a14 14 0 0 1-14 14h-36a14 14 0 0 1-14-14v-36a14 14 0 0 1 14-14z" fill="#f1f5f9"/>
+  <path d="M14 0.75h36a13.25 13.25 0 0 1 13.25 13.25v36a13.25 13.25 0 0 1-13.25 13.25h-36a13.25 13.25 0 0 1-13.25-13.25v-36a13.25 13.25 0 0 1 13.25-13.25z" fill="none" stroke="#cbd5e1" stroke-width="1.5"/>
+  <path d="M13 34a13 13 0 1 0 26 0a13 13 0 1 0 -26 0z" fill="none" stroke="#1e293b" stroke-width="7"/>
+  <path d="M39.5 10a3.5 3.5 0 0 1 3.5 3.5v31a3.5 3.5 0 0 1-7 0v-31a3.5 3.5 0 0 1 3.5-3.5z" fill="#1e293b"/>
+</svg>
