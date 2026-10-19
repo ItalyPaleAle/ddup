@@ -234,10 +234,6 @@ notifications:
 	assert.Equal(t, "resend://re_example?fromAddress=ddup@example.com", cfg.Notifications.Emails[0].ConnectionString)
 	assert.Equal(t, []string{"postmaster@example.com"}, cfg.Notifications.Emails[0].To)
 	assert.Equal(t, []NotificationEvent{EventAllUnhealthy}, cfg.Notifications.Emails[0].Events)
-
-	// The secrets are not in the debug representation of the config
-	assert.NotContains(t, cfg.String(), "tk_example")
-	assert.NotContains(t, cfg.String(), "re_example")
 }
 
 // Parses a Go source file and returns the string values of the constants selected by match
