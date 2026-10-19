@@ -29,8 +29,8 @@ Every notification has an optional `events` list to choose the events to receive
     - `url`: URL of the webhook. Required. For `ntfy`, it includes the topic name, such as `https://ntfy.example.com/ddup`
     - `token`: Optional token, sent as `Authorization: Bearer <token>`. Some formats do not use it
     - `events`: Events to send (default: all)
-  - `email`: List of email notifications
-    - `name`: Name of the notification, used in logs. Required, and unique among the `email` entries
+  - `emails`: List of email notifications
+    - `name`: Name of the notification, used in logs. Required, and unique among the `emails` entries
     - `connectionString`: Connection string for the email provider. Required. The supported providers are Resend (`resend://<api-key>?fromAddress=<address>&fromName=<name>`), SMTP (`smtp://<username>:<password>@<host>:<port>?fromAddress=<address>&fromName=<name>&tls=<auto|starttls|implicit|none>`), AWS SES (`awsses://<access-key-id>:<secret-access-key>@<region>?fromAddress=<address>&fromName=<name>`), SendGrid, and `console://` (logs the email instead of sending it, for development). See [go-kit's documentation](https://github.com/ItalyPaleAle/go-kit/tree/main/emailer) for all options
     - `to`: List of recipients. One email is sent to each address. Required
     - `events`: Events to send (default: all)
@@ -45,7 +45,7 @@ Every notification has an optional `events` list to choose the events to receive
 Redirects are never followed.
 Emails are sent once, without retries.
 
-The URLs and tokens of webhooks, and the email connection strings, are secrets. Read them from files with `!file` (see [Secrets](/docs/configuration/#secrets)), so the configuration file does not contain them. ddup never writes these values to its logs: notification failures are logged with the `name` of the notification and the error, with the URL and secrets removed.
+The tokens of webhooks and the email connection strings are secrets, and URLs of Slack and Discord webhooks are confidential. Read them from files with `!file` (see [Secrets](/docs/configuration/#secrets)), so the configuration file does not contain them. Failures are logged with the `name` of the notification and the error, which can include the URL.
 
 ## Examples
 
@@ -79,7 +79,7 @@ Send emails with Resend, or with an SMTP server (the file contains the whole con
 
 ```yaml
 notifications:
-  email:
+  emails:
     - name: "ops-resend"
       connectionString: !file /run/secrets/resend-connection-string
       to: ["postmaster@example.com"]

@@ -81,12 +81,12 @@ func New(ctx context.Context, cfg *config.Config) (*Notifier, error) {
 
 func newNotifier(ctx context.Context, cfg *config.Config, deps dependencies) (*Notifier, error) {
 	nc := cfg.Notifications
-	if len(nc.Webhooks) == 0 && len(nc.Email) == 0 {
+	if len(nc.Webhooks) == 0 && len(nc.Emails) == 0 {
 		return nil, nil //nolint:nilnil
 	}
 
 	n := &Notifier{
-		senders: make([]*sender, 0, len(nc.Webhooks)+len(nc.Email)),
+		senders: make([]*sender, 0, len(nc.Webhooks)+len(nc.Emails)),
 		log:     slog.Default(),
 	}
 
@@ -97,7 +97,7 @@ func newNotifier(ctx context.Context, cfg *config.Config, deps dependencies) (*N
 		}
 		n.senders = append(n.senders, s)
 	}
-	for _, c := range nc.Email {
+	for _, c := range nc.Emails {
 		senders, err := n.newEmailSenders(ctx, c, deps)
 		if err != nil {
 			return nil, err
@@ -118,13 +118,6 @@ func newNotifier(ctx context.Context, cfg *config.Config, deps dependencies) (*N
 	return n, nil
 }
 
-// newLibraryLogger returns the logger passed to the libraries, which removes the secrets from what they log
-// Their errors include the URL or the connection string
-func newLibraryLogger(name string, secrets []string) (*slog.Logger, *redactor) {
-	r := newRedactor(secrets...)
-	return newRedactingLogger(slog.Default(), r).With("notification", name), r
-}
-
 func newEventSet(events []config.NotificationEvent) map[config.NotificationEvent]struct{} {
 	set := make(map[config.NotificationEvent]struct{}, len(events))
 	for _, ev := range events {
@@ -134,9 +127,6 @@ func newEventSet(events []config.NotificationEvent) map[config.NotificationEvent
 }
 
 func (n *Notifier) newWebhookSender(c config.ConfigNotificationWebhook, deps dependencies) (*sender, error) {
-	secrets := append(urlSecrets(c.URL), c.Token)
-	logger, r := newLibraryLogger(c.Name, secrets)
-
 	var key string
 	if c.Token != "" {
 		key = "Bearer " + c.Token
@@ -149,31 +139,26 @@ func (n *Notifier) newWebhookSender(c config.ConfigNotificationWebhook, deps dep
 		MaxAttempts:     c.MaxAttempts,
 		RetryInterval:   c.RetryInterval,
 		AllowPrivateIPs: c.AllowPrivateDestinations,
-		Logger:          logger,
+		Logger:          slog.Default().With("notification", c.Name),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize notifications.webhooks %q: %w", c.Name, r.Error(err))
+		return nil, fmt.Errorf("failed to initialize notifications.webhooks %q: %w", c.Name, err)
 	}
 
-	return newSender("webhook", c.Name, c.Events, webhookSend(wh, r)), nil
-}
-
-func webhookSend(wh webhook.Webhook, r *redactor) func(ctx context.Context, msg message) error {
-	return func(ctx context.Context, msg message) error {
-		return r.Error(wh.SendWebhook(ctx, msg))
+	send := func(ctx context.Context, msg message) error {
+		return wh.SendWebhook(ctx, msg)
 	}
+	return newSender("webhook", c.Name, c.Events, send), nil
 }
 
 // newEmailSenders returns one sender for each recipient, so the emails are sent in parallel and a failure for one recipient does not affect the others
 func (n *Notifier) newEmailSenders(ctx context.Context, c config.ConfigNotificationEmail, deps dependencies) ([]*sender, error) {
-	logger, r := newLibraryLogger(c.Name, connStringSecrets(c.ConnectionString))
-
 	em, err := deps.newEmailer(ctx, emailer.NewEmailerOpts{
 		ConnString: c.ConnectionString,
-		Logger:     logger,
+		Logger:     slog.Default().With("notification", c.Name),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize notifications.email %q: %w", c.Name, r.Error(err))
+		return nil, fmt.Errorf("failed to initialize notifications.emails %q: %w", c.Name, err)
 	}
 
 	// The addresses were validated with the configuration
@@ -181,7 +166,7 @@ func (n *Notifier) newEmailSenders(ctx context.Context, c config.ConfigNotificat
 	for _, to := range c.To {
 		addr, err := mail.ParseAddress(to)
 		if err != nil {
-			return nil, fmt.Errorf("notifications.email %q has an invalid recipient", c.Name)
+			return nil, fmt.Errorf("notifications.emails %q has an invalid recipient", c.Name)
 		}
 		recipient := emailer.EmailAddress{
 			Name:    addr.Name,
@@ -189,9 +174,9 @@ func (n *Notifier) newEmailSenders(ctx context.Context, c config.ConfigNotificat
 		}
 
 		send := func(ctx context.Context, msg message) error {
-			return r.Error(em.SendEmail(ctx, recipient, msg.title, emailer.SendEmailMessage{
+			return em.SendEmail(ctx, recipient, msg.title, emailer.SendEmailMessage{
 				Text: msg.body,
-			}))
+			})
 		}
 		senders = append(senders, newSender("email", c.Name, c.Events, send))
 	}

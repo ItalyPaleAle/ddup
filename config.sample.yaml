@@ -84,7 +84,7 @@ notifications:
       url: "https://hooks.slack.com/services/your-webhook-path"
       events: ["dns_update_failed", "all_unhealthy"]
   # Email
-  email:
+  emails:
     - name: "ops"
       # Connection string for Resend, SMTP (smtp://user:password@host:587?fromAddress=...&tls=starttls), AWS SES, SendGrid, or console://
       connectionString: "resend://your-resend-api-key?fromAddress=ddup@example.com&fromName=ddup"

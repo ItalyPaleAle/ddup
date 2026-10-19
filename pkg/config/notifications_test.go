@@ -78,40 +78,40 @@ func TestValidateNotifications(t *testing.T) {
 		{
 			name: "email without name",
 			mutate: func(n *ConfigNotifications) {
-				n.Email = []ConfigNotificationEmail{{ConnectionString: "console://", To: []string{"a@example.com"}}}
+				n.Emails = []ConfigNotificationEmail{{ConnectionString: "console://", To: []string{"a@example.com"}}}
 			},
-			expectErr: "notifications.email[0] is invalid: name is empty",
+			expectErr: "notifications.emails[0] is invalid: name is empty",
 		},
 		{
 			name: "email without recipients",
 			mutate: func(n *ConfigNotifications) {
-				n.Email = []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://"}}
+				n.Emails = []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://"}}
 			},
-			expectErr: `notifications.email[0] "a" is invalid: to is empty; specify at least one recipient`,
+			expectErr: `notifications.emails[0] "a" is invalid: to is empty; specify at least one recipient`,
 		},
 		{
 			name: "email invalid recipient",
 			mutate: func(n *ConfigNotifications) {
-				n.Email = []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://", To: []string{"a@example.com", "not-an-address"}}}
+				n.Emails = []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://", To: []string{"a@example.com", "not-an-address"}}}
 			},
-			expectErr: `notifications.email[0] "a" is invalid: to[1] is not a valid email address`,
+			expectErr: `notifications.emails[0] "a" is invalid: to[1] is not a valid email address`,
 		},
 		{
 			name: "email unknown event",
 			mutate: func(n *ConfigNotifications) {
-				n.Email = []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://", To: []string{"a@example.com"}, Events: []NotificationEvent{"dns_updated", "nope"}}}
+				n.Emails = []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://", To: []string{"a@example.com"}, Events: []NotificationEvent{"dns_updated", "nope"}}}
 			},
-			expectErr: `notifications.email[0] "a" is invalid: unknown event "nope" (valid events: dns_updated, dns_update_failed, all_unhealthy)`,
+			expectErr: `notifications.emails[0] "a" is invalid: unknown event "nope" (valid events: dns_updated, dns_update_failed, all_unhealthy)`,
 		},
 		{
 			name: "email duplicate name",
 			mutate: func(n *ConfigNotifications) {
-				n.Email = []ConfigNotificationEmail{
+				n.Emails = []ConfigNotificationEmail{
 					{Name: "a", ConnectionString: "console://", To: []string{"a@example.com"}},
 					{Name: "a", ConnectionString: "console://", To: []string{"a@example.com"}},
 				}
 			},
-			expectErr: `notifications.email[1] "a" is invalid: name is already used by entry 0`,
+			expectErr: `notifications.emails[1] "a" is invalid: name is already used by entry 0`,
 		},
 	}
 
@@ -128,7 +128,7 @@ func TestValidateNotifications(t *testing.T) {
 		cfg := newNotificationsConfig()
 		cfg.Notifications = ConfigNotifications{
 			Webhooks: []ConfigNotificationWebhook{{Name: "a", URL: "https://hooks.example.com/x"}},
-			Email:    []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://", To: []string{"a@example.com"}}},
+			Emails:   []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://", To: []string{"a@example.com"}}},
 		}
 		err := cfg.Validate(slog.Default())
 		require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestValidateNotifications(t *testing.T) {
 				{Name: "b", URL: "https://hooks.example.com/x"},
 				{Name: "c", Format: "Slack", URL: "https://hooks.example.com/x", Events: []NotificationEvent{EventAllUnhealthy}},
 			},
-			Email: []ConfigNotificationEmail{{Name: "d", ConnectionString: "console://", To: []string{"a@example.com"}}},
+			Emails: []ConfigNotificationEmail{{Name: "d", ConnectionString: "console://", To: []string{"a@example.com"}}},
 		}
 		err := cfg.Validate(slog.Default())
 		require.NoError(t, err)
@@ -158,7 +158,7 @@ func TestValidateNotifications(t *testing.T) {
 		all := []NotificationEvent{EventDNSUpdated, EventDNSUpdateFailed, EventAllUnhealthy}
 		assert.Equal(t, all, cfg.Notifications.Webhooks[0].Events)
 		assert.Equal(t, all, cfg.Notifications.Webhooks[1].Events)
-		assert.Equal(t, all, cfg.Notifications.Email[0].Events)
+		assert.Equal(t, all, cfg.Notifications.Emails[0].Events)
 		assert.Equal(t, "ntfy", cfg.Notifications.Webhooks[0].Format)
 		assert.Equal(t, "plain", cfg.Notifications.Webhooks[1].Format)
 		assert.Equal(t, "slack", cfg.Notifications.Webhooks[2].Format)
@@ -200,7 +200,7 @@ notifications:
       timeout: 5s
       maxAttempts: 2
       retryInterval: 1s
-  email:
+  emails:
     - name: "ops"
       connectionString: !file conn
       to:
@@ -230,10 +230,10 @@ notifications:
 	assert.Equal(t, 2, ntfy.MaxAttempts)
 	assert.Equal(t, time.Second, ntfy.RetryInterval)
 
-	require.Len(t, cfg.Notifications.Email, 1)
-	assert.Equal(t, "resend://re_example?fromAddress=ddup@example.com", cfg.Notifications.Email[0].ConnectionString)
-	assert.Equal(t, []string{"postmaster@example.com"}, cfg.Notifications.Email[0].To)
-	assert.Equal(t, []NotificationEvent{EventAllUnhealthy}, cfg.Notifications.Email[0].Events)
+	require.Len(t, cfg.Notifications.Emails, 1)
+	assert.Equal(t, "resend://re_example?fromAddress=ddup@example.com", cfg.Notifications.Emails[0].ConnectionString)
+	assert.Equal(t, []string{"postmaster@example.com"}, cfg.Notifications.Emails[0].To)
+	assert.Equal(t, []NotificationEvent{EventAllUnhealthy}, cfg.Notifications.Emails[0].Events)
 
 	// The secrets are not in the debug representation of the config
 	assert.NotContains(t, cfg.String(), "tk_example")

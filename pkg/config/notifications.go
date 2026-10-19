@@ -42,7 +42,7 @@ type ConfigNotifications struct {
 	Webhooks []ConfigNotificationWebhook `yaml:"webhooks"`
 
 	// Notifications sent by email
-	Email []ConfigNotificationEmail `yaml:"email"`
+	Emails []ConfigNotificationEmail `yaml:"emails"`
 }
 
 // ConfigNotificationDelivery are the delivery settings shared by the notifications sent with HTTP requests
@@ -146,9 +146,9 @@ func (c *ConfigNotifications) validate() error {
 	}
 
 	clear(names)
-	for i := range c.Email {
-		e := &c.Email[i]
-		label := notificationLabel("email", i, e.Name)
+	for i := range c.Emails {
+		e := &c.Emails[i]
+		label := notificationLabel("emails", i, e.Name)
 
 		err := checkNotificationName(names, i, e.Name)
 		if err != nil {

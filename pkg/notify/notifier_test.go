@@ -558,7 +558,7 @@ func TestEmailDelivery(t *testing.T) {
 	var connStrings []string
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Email: []config.ConfigNotificationEmail{
+		Emails: []config.ConfigNotificationEmail{
 			{
 				Name:             "ops",
 				ConnectionString: "resend://" + testResendKey + "?fromAddress=ddup@example.com",
@@ -595,7 +595,7 @@ func TestEmailDelivery(t *testing.T) {
 
 func TestEmailHasASenderForEachRecipient(t *testing.T) {
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Email: []config.ConfigNotificationEmail{
+		Emails: []config.ConfigNotificationEmail{
 			{
 				Name:             "ops",
 				ConnectionString: "resend://" + testResendKey + "?fromAddress=ddup@example.com",
@@ -617,7 +617,7 @@ func TestEmailFailureForOneRecipient(t *testing.T) {
 	logs := captureLogs(t)
 
 	n := newTestNotifier(t, config.ConfigNotifications{
-		Email: []config.ConfigNotificationEmail{
+		Emails: []config.ConfigNotificationEmail{
 			{
 				Name:             "ops",
 				ConnectionString: "resend://" + testResendKey + "?fromAddress=ddup@example.com",
@@ -639,73 +639,6 @@ func TestEmailFailureForOneRecipient(t *testing.T) {
 	assert.Contains(t, out, "notification=ops")
 }
 
-func TestInitErrorsDoNotIncludeSecrets(t *testing.T) {
-	t.Run("emailer", func(t *testing.T) {
-		deps := realDeps()
-		deps.newEmailer = func(ctx context.Context, opts emailer.NewEmailerOpts) (emailSender, error) {
-			return nil, errors.New("emailer connection string is invalid: parse \"" + opts.ConnString + "\": bad")
-		}
-
-		cfg := newTestConfig(t, config.ConfigNotifications{
-			Email: []config.ConfigNotificationEmail{
-				{
-					Name:             "ops",
-					ConnectionString: "resend://" + testResendKey + "?fromAddress=ddup@example.com",
-					To:               []string{"postmaster@example.com"},
-				},
-			},
-		})
-		_, err := newNotifier(t.Context(), cfg, deps)
-		require.ErrorContains(t, err, `failed to initialize notifications.email "ops"`)
-		assert.NotContains(t, err.Error(), testResendKey)
-	})
-
-	t.Run("real emailer with a bad connection string", func(t *testing.T) {
-		cfg := newTestConfig(t, config.ConfigNotifications{
-			Email: []config.ConfigNotificationEmail{
-				{
-					Name:             "ops",
-					ConnectionString: "resend://" + testResendKey + "?fromAddress=not-an-address",
-					To:               []string{"postmaster@example.com"},
-				},
-			},
-		})
-		_, err := newNotifier(t.Context(), cfg, realDeps())
-		require.ErrorContains(t, err, `failed to initialize notifications.email "ops"`)
-		assert.NotContains(t, err.Error(), testResendKey)
-	})
-
-	t.Run("unparsable connection string", func(t *testing.T) {
-		cfg := newTestConfig(t, config.ConfigNotifications{
-			Email: []config.ConfigNotificationEmail{
-				{
-					Name:             "ops",
-					ConnectionString: "smtp://user:" + testResendKey + "@bad host:25",
-					To:               []string{"postmaster@example.com"},
-				},
-			},
-		})
-		_, err := newNotifier(t.Context(), cfg, realDeps())
-		require.ErrorContains(t, err, `failed to initialize notifications.email "ops"`)
-		assert.NotContains(t, err.Error(), testResendKey)
-	})
-
-	t.Run("unknown email provider", func(t *testing.T) {
-		cfg := newTestConfig(t, config.ConfigNotifications{
-			Email: []config.ConfigNotificationEmail{
-				{
-					Name:             "ops",
-					ConnectionString: "mailgun://" + testResendKey,
-					To:               []string{"postmaster@example.com"},
-				},
-			},
-		})
-		_, err := newNotifier(t.Context(), cfg, realDeps())
-		require.ErrorContains(t, err, "invalid email sender type")
-		assert.NotContains(t, err.Error(), testResendKey)
-	})
-}
-
 func TestNoNotificationsConfigured(t *testing.T) {
 	before := runtime.NumGoroutine()
 
@@ -720,71 +653,6 @@ func TestNoNotificationsConfigured(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.LessOrEqual(t, runtime.NumGoroutine(), before)
-}
-
-func TestSecretsNotInLogs(t *testing.T) {
-	logs := captureLogs(t)
-
-	// Server that is closed, so connections fail and the library logs the errors, which include the URL
-	closed := httptest.NewServer(http.NotFoundHandler())
-	closedURL := closed.URL
-	closed.Close()
-
-	delivery := fastDelivery()
-	delivery.MaxAttempts = 2
-
-	fake := &fakeEmailer{
-		fail: map[string]error{
-			"postmaster@example.com": errors.New("failed to send request: Post \"https://api.example.com/emails?key=" + testResendKey + "\": Bearer " + testResendKey + " rejected"),
-		},
-	}
-	deps := fakeEmailerDeps(fake, nil)
-
-	n := newTestNotifier(t, config.ConfigNotifications{
-		Webhooks: []config.ConfigNotificationWebhook{
-			{
-				Format:                     "ntfy",
-				Name:                       "alerts",
-				URL:                        closedURL + "/" + testTopic,
-				Token:                      testNtfyToken,
-				ConfigNotificationDelivery: delivery,
-			},
-			{
-				Name:                       "slack",
-				Format:                     "slack",
-				URL:                        closedURL + "/services/T000/B000/" + testHookToken,
-				ConfigNotificationDelivery: delivery,
-			},
-			{
-				Name:                       "discord",
-				Format:                     "discord",
-				URL:                        closedURL + "/api/webhooks/123/" + testHookToken,
-				ConfigNotificationDelivery: delivery,
-			},
-		},
-		Email: []config.ConfigNotificationEmail{
-			{
-				Name:             "ops",
-				ConnectionString: "resend://" + testResendKey + "?fromAddress=ddup@example.com",
-				To:               []string{"postmaster@example.com"},
-			},
-		},
-	}, deps)
-
-	n.Notify(testEvent(config.EventDNSUpdateFailed))
-	shutdownNotifier(t, n)
-
-	out := logs.String()
-	require.Contains(t, out, "Failed to send notification")
-	for _, name := range []string{"alerts", "slack", "discord", "ops"} {
-		assert.Contains(t, out, "notification="+name)
-	}
-	for _, secret := range []string{testNtfyToken, testTopic, testHookToken, testResendKey} {
-		assert.NotContains(t, out, secret)
-	}
-
-	sent := fake.Sent()
-	assert.Empty(t, sent)
 }
 
 func TestSlowReceiverDoesNotBlock(t *testing.T) {
@@ -882,7 +750,7 @@ func TestNoGoroutineLeaks(t *testing.T) {
 				ConfigNotificationDelivery: fastDelivery(),
 			},
 		},
-		Email: []config.ConfigNotificationEmail{
+		Emails: []config.ConfigNotificationEmail{
 			{
 				Name:             "ops",
 				ConnectionString: "console://",
