@@ -24,6 +24,10 @@ type domainChecker struct {
 
 	// Priority of each endpoint, by IP
 	priorities map[string]int
+
+	// True if the last update of the DNS records failed, so the next check tries again even if the published IPs did not change
+	// Only used by the health check loop
+	updatePending bool
 }
 
 func (dc *domainChecker) getState() (healthyIPs []string, failedIPs map[string]int, lastUpdated time.Time, lastError string) {
