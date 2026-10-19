@@ -84,11 +84,11 @@ type ConfigNotificationWebhook struct {
 	// For the "ntfy" format, it includes the topic name (for example "https://ntfy.example.com/ddup")
 	// Slack and Discord URLs are secrets
 	// +required
-	URL string `json:"-" yaml:"url"`
+	URL string `yaml:"url"`
 
 	// Optional token sent in the Authorization header as "Bearer <token>"
 	// Some formats may not use it
-	Token string `json:"-" yaml:"token"`
+	Token string `yaml:"token"`
 
 	// Events to send, among "dns_updated", "dns_update_failed" and "all_unhealthy"
 	// +default all events
@@ -105,7 +105,7 @@ type ConfigNotificationEmail struct {
 	// Connection string for the email provider, such as "resend://<api-key>?fromAddress=ddup@example.com" or "smtp://..."
 	// It contains secrets
 	// +required
-	ConnectionString string `json:"-" yaml:"connectionString"`
+	ConnectionString string `yaml:"connectionString"`
 
 	// Recipients of the email: one email is sent to each address
 	// +required
