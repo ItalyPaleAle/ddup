@@ -25,6 +25,9 @@ type Config struct {
 	// Provider contains shared provider configuration (shared across all domains)
 	Providers map[string]ConfigProvider `yaml:"providers"`
 
+	// Notifications configures the notifications sent when the DNS records of a domain change or when it has no healthy endpoints
+	Notifications ConfigNotifications `yaml:"notifications"`
+
 	// Logs contains configuration for logging
 	Logs ConfigLogs `yaml:"logs"`
 
@@ -339,6 +342,12 @@ func (c *Config) Validate(logger *slog.Logger) error {
 				v.Name = v.URL
 			}
 		}
+	}
+
+	// Validate the notifications
+	err := c.Notifications.validate()
+	if err != nil {
+		return err
 	}
 
 	return nil
