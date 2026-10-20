@@ -250,6 +250,10 @@ The server hosts the [dashboard and API](/docs/dashboard).
 > [!WARNING]
 > The dashboard and API have no authentication. Only make them reachable from networks you trust.
 
+### `notifications`
+
+Send a message to webhooks or by email when the DNS records of a domain change, an update fails, or no endpoint is healthy. See [Notifications](/docs/notifications) for the options.
+
 ### `logs`
 
 | Option | Type | Default | Description |

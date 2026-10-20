@@ -80,6 +80,36 @@ providers:
       apiToken: "your-cloudflare-api-token"
       zoneId: "your-zone-id"
 
+# Notifications (optional)
+notifications:
+  # Webhooks, with the format "plain" (default), "slack", "discord", or "ntfy"
+  webhooks:
+    - name: "chat"
+      format: "slack"
+      url: "https://hooks.slack.com/services/your-webhook-path"
+      events: ["dns_update_failed", "all_unhealthy"]
+    - name: "alerts"
+      format: "ntfy"
+      # For ntfy, the URL includes the topic name
+      url: "https://ntfy.example.com/ddup"
+      # Optional token, sent as "Bearer <token>"
+      token: "your-ntfy-token"
+      events: ["dns_updated", "dns_update_failed", "all_unhealthy"]
+      # Allow sending to private addresses, such as a ntfy server in your LAN or cluster (default: false)
+      allowPrivateDestinations: true
+      # Optional delivery settings. Defaults: timeout 20s, maxAttempts 3 (including the first), retryInterval 20s
+      timeout: "10s"
+      maxAttempts: 3
+      retryInterval: "20s"
+  # Email
+  emails:
+    - name: "ops"
+      # Connection string for SMTP (smtp://user:password@host:587?fromAddress=...&tls=starttls), AWS SES, SendGrid, Resend
+      connectionString: "smtp://user:password@host:587/?fromAddress=ddup@example.com&tls=starttls"
+      # One email is sent to each recipient
+      to: ["postmaster@example.com"]
+      events: ["dns_update_failed", "all_unhealthy"]
+
 # Enable the web server
 server:
   enabled: true

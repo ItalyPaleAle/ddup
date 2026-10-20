@@ -28,6 +28,12 @@ type domainChecker struct {
 	// Target published for each endpoint, by IP or CNAME hostname
 	targets map[string]dns.Target
 
+	// True if no endpoint is healthy, and the all_unhealthy notification was sent
+	allUnhealthy bool
+
+	// Error of the latest failed DNS update, and the dns_update_failed notification was sent
+	notifiedError string
+
 	// True if the last update of the DNS records failed, so the next check tries again even if the published IPs did not change
 	// Only used by the health check loop
 	updatePending bool
@@ -88,4 +94,24 @@ func (dc *domainChecker) getTargets() map[string]dns.Target {
 	defer dc.lock.Unlock()
 
 	return dc.targets
+}
+
+// swapAllUnhealthy sets whether the domain has no healthy endpoints, and returns the previous value
+func (dc *domainChecker) swapAllUnhealthy(v bool) bool {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	prev := dc.allUnhealthy
+	dc.allUnhealthy = v
+	return prev
+}
+
+// swapNotifiedError sets the error of the latest failed DNS update (empty if the update succeeded), and returns the previous value
+func (dc *domainChecker) swapNotifiedError(v string) string {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	prev := dc.notifiedError
+	dc.notifiedError = v
+	return prev
 }
