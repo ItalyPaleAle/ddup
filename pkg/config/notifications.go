@@ -27,7 +27,7 @@ func NotificationEvents() []NotificationEvent {
 }
 
 // Webhook formats
-// The list must match the formats supported by go-kit, and a test checks that
+// The list must match the formats supported by go-kit
 const (
 	WebhookFormatPlain   = "plain"
 	WebhookFormatSlack   = "slack"
@@ -46,7 +46,6 @@ type ConfigNotifications struct {
 }
 
 // ConfigNotificationDelivery are the delivery settings shared by the notifications sent with HTTP requests
-// For all of them, zero values mean using the defaults
 type ConfigNotificationDelivery struct {
 	// Timeout for each request
 	// +default 20s
@@ -81,8 +80,6 @@ type ConfigNotificationWebhook struct {
 	Format string `yaml:"format"`
 
 	// URL of the webhook
-	// For the "ntfy" format, it includes the topic name (for example "https://ntfy.example.com/ddup")
-	// Slack and Discord URLs are secrets
 	// +required
 	URL string `yaml:"url"`
 
@@ -103,7 +100,6 @@ type ConfigNotificationEmail struct {
 	Name string `yaml:"name"`
 
 	// Connection string for the email provider, such as "resend://<api-key>?fromAddress=ddup@example.com" or "smtp://..."
-	// It contains secrets
 	// +required
 	ConnectionString string `yaml:"connectionString"`
 
@@ -118,7 +114,6 @@ type ConfigNotificationEmail struct {
 
 // validate the notifications configuration and sets the defaults
 // URLs, timeouts, and connection strings are validated by go-kit when the notifications are created
-// Error messages never include URLs, tokens, or connection strings, because they are secrets
 func (c *ConfigNotifications) validate() error {
 	names := make(map[string]int, len(c.Webhooks))
 	for i := range c.Webhooks {
@@ -136,7 +131,7 @@ func (c *ConfigNotifications) validate() error {
 			w.Format = WebhookFormatPlain
 		case WebhookFormatPlain, WebhookFormatSlack, WebhookFormatDiscord, WebhookFormatNtfy:
 		default:
-			return fmt.Errorf("%s is invalid: unknown format %q (valid formats: %s, %s, %s, %s)", label, w.Format, WebhookFormatPlain, WebhookFormatSlack, WebhookFormatDiscord, WebhookFormatNtfy)
+			return fmt.Errorf("%s is invalid: unknown format %q", label, w.Format)
 		}
 
 		w.Events, err = validateNotificationEvents(w.Events)
@@ -146,6 +141,7 @@ func (c *ConfigNotifications) validate() error {
 	}
 
 	clear(names)
+
 	for i := range c.Emails {
 		e := &c.Emails[i]
 		label := notificationLabel("emails", i, e.Name)
@@ -156,14 +152,16 @@ func (c *ConfigNotifications) validate() error {
 		}
 
 		if len(e.To) == 0 {
-			return fmt.Errorf("%s is invalid: to is empty; specify at least one recipient", label)
+			return fmt.Errorf("%s is invalid: to must have at least one recipient", label)
 		}
+
 		for ti, addr := range e.To {
 			_, err = mail.ParseAddress(addr)
 			if err != nil {
 				return fmt.Errorf("%s is invalid: to[%d] is not a valid email address", label, ti)
 			}
 		}
+
 		e.Events, err = validateNotificationEvents(e.Events)
 		if err != nil {
 			return fmt.Errorf("%s is invalid: %w", label, err)
@@ -207,6 +205,7 @@ func validateNotificationEvents(events []NotificationEvent) ([]NotificationEvent
 			for i, v := range valid {
 				names[i] = string(v)
 			}
+
 			return nil, fmt.Errorf("unknown event %q (valid events: %s)", ev, strings.Join(names, ", "))
 		}
 	}

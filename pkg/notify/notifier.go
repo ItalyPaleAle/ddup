@@ -97,6 +97,7 @@ func newNotifier(ctx context.Context, cfg *config.Config, deps dependencies) (*N
 		}
 		n.senders = append(n.senders, s)
 	}
+
 	for _, c := range nc.Emails {
 		senders, err := n.newEmailSenders(ctx, c, deps)
 		if err != nil {
@@ -131,6 +132,7 @@ func (n *Notifier) newWebhookSender(c config.ConfigNotificationWebhook, deps dep
 	if c.Token != "" {
 		key = "Bearer " + c.Token
 	}
+
 	wh, err := deps.newWebhook(webhook.NewWebhookOpts{
 		URL:             c.URL,
 		Key:             key,
@@ -168,6 +170,7 @@ func (n *Notifier) newEmailSenders(ctx context.Context, c config.ConfigNotificat
 		if err != nil {
 			return nil, fmt.Errorf("notifications.emails %q has an invalid recipient", c.Name)
 		}
+
 		recipient := emailer.EmailAddress{
 			Name:    addr.Name,
 			Address: addr.Address,
@@ -239,6 +242,7 @@ func (n *Notifier) run(ctx context.Context, s *sender) {
 			n.log.ErrorContext(ctx, "Failed to send notification", "notification", s.name, "kind", s.kind, "event", ev.Type, "domain", ev.Domain, "error", err)
 			continue
 		}
+
 		n.log.DebugContext(ctx, "Notification sent", "notification", s.name, "kind", s.kind, "event", ev.Type, "domain", ev.Domain)
 	}
 }
@@ -270,6 +274,7 @@ func (n *Notifier) Shutdown(ctx context.Context) error {
 		n.cancel()
 		return nil
 	case <-ctx.Done():
+		// Fallthrough
 	}
 
 	// Out of time: abort what is in flight, and give it a moment to stop
@@ -278,7 +283,10 @@ func (n *Notifier) Shutdown(ctx context.Context) error {
 	defer grace.Stop()
 	select {
 	case <-done:
+		// Fallthrough
 	case <-grace.C:
+		// Fallthrough
 	}
+
 	return fmt.Errorf("notifications were not all delivered before shutdown: %w", ctx.Err())
 }

@@ -108,6 +108,7 @@ func writeAddresses(b *strings.Builder, label string, addrs []string) {
 	if len(addrs) == 0 {
 		return
 	}
+
 	b.WriteString(label)
 	b.WriteString(": ")
 	b.WriteString(joinSorted(addrs))

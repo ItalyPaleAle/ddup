@@ -3,53 +3,56 @@ title: "Notifications"
 weight: 65
 ---
 
-ddup can notify you when something happens to a domain. Notifications are optional: with no `notifications` section, ddup sends nothing.
+ddup can send you a message when it changes the DNS records of a domain, when an update fails, or when a domain has no healthy endpoint. It sends them to webhooks (including Slack, Discord, or ntfy) and by email.
 
-Notifications can be sent to webhooks (plain text, Slack, Discord, or [ntfy](https://ntfy.sh)), and by email.
-The messages are built by ddup and are not customizable.
+Notifications are off until you add a `notifications` section to the configuration.
 
 ## Events
 
-| Event | When it is sent |
-| :---- | :-------------- |
-| `dns_updated` | The DNS records of a domain were changed. The message has the addresses published now and the ones that were in DNS before |
-| `dns_update_failed` | Updating the DNS records of a domain failed. The message has the error. ddup retries at every check, and the same error is notified only once |
-| `all_unhealthy` | A domain has no healthy endpoint. DNS is left unchanged. It is sent once, when the domain enters this state (including at startup), and not on every check |
+| Event | Sent when |
+|-------|-----------|
+| `dns_updated` | ddup changed the DNS records of a domain. The message lists the addresses published now and the ones that were in DNS before. |
+| `dns_update_failed` | Updating the DNS records of a domain failed. The message includes the error. ddup tries again at every check, but doesn't send the event again while the error stays the same. |
+| `all_unhealthy` | A domain has no healthy endpoint, so ddup leaves its DNS records as they are. The event is sent once when the domain enters this state. |
 
-When a domain recovers after `all_unhealthy`, ddup updates DNS as usual and sends `dns_updated`. If the records in DNS are already the right ones, nothing changed and no event is sent.
+When a domain recovers, ddup updates DNS as usual and sends `dns_updated`. If the records in DNS are already the right ones, nothing changes and no event is sent.
 
-Every notification has an optional `events` list to choose the events to receive. If omitted, it receives all events.
+Each destination receives every event by default. To receive only some, list them in the destination's `events` option.
 
-## Settings
+## Webhooks
 
-- `notifications`: Notifications to send
-  - `webhooks`: List of webhooks
-    - `name`: Name of the notification, used in logs. Required, and unique among the `webhooks` entries
-    - `format`: `plain` (default, the message as plain text), `slack` (a Slack-compatible message), `discord` (Discord's Slack-compatible endpoint), or `ntfy` (a message for an [ntfy](https://ntfy.sh) topic)
-    - `url`: URL of the webhook. Required. For `ntfy`, it includes the topic name, such as `https://ntfy.example.com/ddup`
-    - `token`: Optional token, sent as `Authorization: Bearer <token>`. Some formats do not use it
-    - `events`: Events to send (default: all)
-  - `emails`: List of email notifications
-    - `name`: Name of the notification, used in logs. Required, and unique among the `emails` entries
-    - `connectionString`: Connection string for the email provider. Required. The supported providers are Resend (`resend://<api-key>?fromAddress=<address>&fromName=<name>`), SMTP (`smtp://<username>:<password>@<host>:<port>?fromAddress=<address>&fromName=<name>&tls=<auto|starttls|implicit|none>`), AWS SES (`awsses://<access-key-id>:<secret-access-key>@<region>?fromAddress=<address>&fromName=<name>`), SendGrid, and `console://` (logs the email instead of sending it, for development). See [go-kit's documentation](https://github.com/ItalyPaleAle/go-kit/tree/main/emailer) for all options
-    - `to`: List of recipients. One email is sent to each address. Required
-    - `events`: Events to send (default: all)
+Each entry in `notifications.webhooks` sends a POST request to a URL.
 
-`webhooks` entries also have these optional settings for delivering the request:
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `name` | string | **required** | Name of the destination, shown in logs. It must be unique among the webhooks. |
+| `url` | string | **required** | URL to send the request to |
+| `format` | string | `plain` | Format of the message: `plain`, `slack`, `discord`, or `ntfy` |
+| `token` | string | | Token sent in the `Authorization: Bearer <token>` header, for example to publish to a protected ntfy topic. Some webhook formats, including Slack and Discord, don't need it. |
+| `events` | list | All events | Events to send, see [Events](#events) |
+| `timeout` | duration | `20s` | Timeout of each request |
+| `maxAttempts` | number | `3` | Number of attempts to send each message, including the first. Set it to `1` to turn off retries. |
+| `retryInterval` | duration | `20s` | Time to wait between attempts |
+| `allowPrivateDestinations` | boolean | `false` | Allow sending to private addresses, see [Private destinations](#private-destinations) |
 
-- `timeout`: Timeout of each request (default: `20s`)
-- `maxAttempts`: Maximum number of attempts to send each notification, including the first (default: 3). Network errors and `408`, `429` and `5xx` responses are retried, while other errors are not. Set it to `1` to disable retries
-- `retryInterval`: Delay between attempts (default: `20s`)
-- `allowPrivateDestinations`: By default, ddup refuses to send notifications to private and non-routable addresses (such as `10.x.x.x`, `192.168.x.x`, link-local addresses, and `localhost`). This keeps a webhook URL that points to an internal service from being used to reach it. Set it to `true` when the destination is on a trusted internal network, for example an ntfy server in your LAN or cluster (default: `false`)
+The formats are:
 
-Redirects are never followed.
-Emails are sent once, without retries.
+- `plain` sends the message as plain text.
+- `slack` sends a message for a Slack incoming webhook, or for another service that accepts Slack's format.
+- `discord` sends a message for a Discord webhook.
+- `ntfy` publishes to an ntfy topic, with a title, a priority, and tags. See [Messages](#messages).
 
-The tokens of webhooks and the email connection strings are secrets, and URLs of Slack and Discord webhooks are confidential. Read them from files with `!file` (see [Secrets](/docs/configuration/#secrets)), so the configuration file does not contain them. Failures are logged with the `name` of the notification and the error, which can include the URL.
+ddup retries a request after a network error, or a `408` or `5xx` response.
 
-## Examples
+### Private destinations
 
-Send all events to an ntfy topic on a server in a private network:
+By default, ddup refuses to send webhooks to private and non-routable addresses, e.g. `10.0.0.0/8` or `192.168.0.0/16`.
+
+If the destination is on a network you trust, such as an ntfy server in your LAN or cluster, set `allowPrivateDestinations: true`.
+
+### Webhook examples
+
+Send every event to an ntfy topic on a server in your private network:
 
 ```yaml
 notifications:
@@ -61,48 +64,83 @@ notifications:
       allowPrivateDestinations: true
 ```
 
-Send the events about problems to a Slack channel, and all events to a Discord channel:
+Send failed updates and outages to a Slack channel, and every event to a Discord channel:
 
 ```yaml
 notifications:
   webhooks:
     - name: "slack-alerts"
       format: "slack"
-      url: !file /run/secrets/slack-webhook-url
+      url: "https://hooks.slack.com/services/..."
       events: ["dns_update_failed", "all_unhealthy"]
     - name: "discord"
       format: "discord"
-      url: !file /run/secrets/discord-webhook-url
+      url: "https://discord.com/api/webhooks/..."
 ```
 
-Send emails with Resend, or with an SMTP server (the file contains the whole connection string, such as `resend://<api-key>?fromAddress=ddup@example.com&fromName=ddup`):
+## Email
+
+Each entry in `notifications.emails` sends an email to one or more addresses.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `name` | string | **required** | Name of the destination, shown in logs. It must be unique among the emails. |
+| `connectionString` | string | **required** | Email provider and sender, see [Connection strings](#connection-strings) |
+| `to` | list | **required** | Addresses to send the email to |
+| `events` | list | All events | Events to send, see [Events](#events) |
+
+Emails are sent once, without retries.
+
+### Connection strings
+
+The connection string picks the email provider and sets the sender:
+
+| Provider | Connection string |
+|----------|-------------------|
+| Resend | `resend://<api-key>?fromAddress=<address>&fromName=<name>` |
+| SMTP | `smtp://<username>:<password>@<host>:<port>?fromAddress=<address>&fromName=<name>&tls=<mode>` |
+| AWS SES | `awsses://<access-key-id>:<secret-access-key>@<region>?fromAddress=<address>&fromName=<name>` |
+| SendGrid | `sendgrid://<api-key>?fromAddress=<address>&fromName=<name>` |
+
+`fromName` is optional. For SMTP, `tls` is `auto` (the default), `starttls`, `implicit`, or `none`.
+
+[go-kit's documentation](https://github.com/ItalyPaleAle/go-kit/tree/main/emailer) lists all the options.
+
+### Email example
+
+Send failed updates and outages with Resend, and every event with an SMTP server:
 
 ```yaml
 notifications:
   emails:
+    - name: "ops-smtp"
+      # The file contains smtp://ddup:<password>@smtp.example.com:587?fromAddress=ddup@example.com&tls=starttls
+      connectionString: !file /run/secrets/smtp-connection-string
+      to: ["postmaster@example.com", "oncall@example.com"]
     - name: "ops-resend"
+      # The file contains resend://<api-key>?fromAddress=ddup@example.com&fromName=ddup
       connectionString: !file /run/secrets/resend-connection-string
       to: ["postmaster@example.com"]
       events: ["dns_update_failed", "all_unhealthy"]
-    - name: "ops-smtp"
-      # smtp://ddup:<password>@smtp.example.com:587?fromAddress=ddup@example.com&tls=starttls
-      connectionString: !file /run/secrets/smtp-connection-string
-      to: ["postmaster@example.com", "oncall@example.com"]
 ```
 
 ## Delivery
 
-Notifications are sent in the background, so a slow or unavailable destination never delays a health check. Each notification has its own queue of up to 64 events: if a destination cannot keep up, the oldest events are delivered first and the newest are dropped, with a warning in the logs. When ddup stops, it waits a few seconds for queued notifications to be delivered.
-
-When ddup starts, it checks the settings of every notification (including the email connection strings), and exits with an error if one is invalid.
+Each webhook and each email recipient has its own queue of up to 64 events, sent in order. If a queue is full, ddup drops the new event for that destination and logs a warning.
 
 ## Messages
 
-Every message has a title and a body. The title is the subject of emails and the title of ntfy notifications. The body is the same for all kinds, and Slack and Discord messages are the title and the body in one text.
+Every message has a title and a body, and ddup uses them the same way for each kind of destination:
 
-The ntfy notifications also set the tags `green_circle`, `yellow_circle`, or `red_circle` for the health of the domain (all, some, or none of its endpoints are healthy), and `warning` for `dns_update_failed` and `all_unhealthy`. The priority is `urgent` (5) for `all_unhealthy` and `high` (4) for `dns_update_failed`, and the default of the ntfy server for `dns_updated`.
+- An email has the title as its subject, and the body as its text
+- An ntfy notification has the title as its title, and the body as its message
+- Plain text, Slack, and Discord messages contain the title, an empty line, and the body
 
-`dns_updated`, as an ntfy notification (title, tags, then the body):
+The `Status` line of the body is `healthy` when all endpoints of the domain are healthy, `warning` when only some are, and `unhealthy` when none are or the update failed.
+
+ntfy notifications also have tags and a priority. The first tag matches the status: `green_circle` for `healthy`, `yellow_circle` for `warning`, and `red_circle` for `unhealthy`. `dns_update_failed` and `all_unhealthy` add the `warning` tag. The priority is `urgent` (5) for `all_unhealthy`, `high` (4) for `dns_update_failed`, and the ntfy server's default for `dns_updated`.
+
+A `dns_updated` event sent to ntfy. The first two lines are the title and the tags, which ddup sends as ntfy headers, and the rest is the body:
 
 ```text
 Title: example.com now points to 192.0.2.10, 192.0.2.11
@@ -121,7 +159,7 @@ Endpoints:
   server3 (192.0.2.12): healthy
 ```
 
-`dns_update_failed`, as an email (the subject, then the text):
+A `dns_update_failed` event sent by email, with the subject first:
 
 ```text
 Subject: DNS update failed for example.com
@@ -140,7 +178,7 @@ Endpoints:
   server3 (192.0.2.12): UNHEALTHY
 ```
 
-`all_unhealthy`, as a Slack or Discord message:
+An `all_unhealthy` event sent to Slack or Discord:
 
 ```text
 No healthy endpoints for example.com

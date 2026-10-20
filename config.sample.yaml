@@ -61,11 +61,13 @@ providers:
       zoneId: "your-zone-id"
 
 # Notifications (optional)
-# URLs, tokens and connection strings are secrets: instead of writing them here, read them from files, as in `token: !file /run/secrets/ntfy-token`
-# Every notification has an optional "events" list, with any of: dns_updated, dns_update_failed, all_unhealthy (default: all of them)
 notifications:
   # Webhooks, with the format "plain" (default), "slack", "discord", or "ntfy"
   webhooks:
+    - name: "chat"
+      format: "slack"
+      url: "https://hooks.slack.com/services/your-webhook-path"
+      events: ["dns_update_failed", "all_unhealthy"]
     - name: "alerts"
       format: "ntfy"
       # For ntfy, the URL includes the topic name
@@ -79,15 +81,11 @@ notifications:
       timeout: "10s"
       maxAttempts: 3
       retryInterval: "20s"
-    - name: "chat"
-      format: "slack"
-      url: "https://hooks.slack.com/services/your-webhook-path"
-      events: ["dns_update_failed", "all_unhealthy"]
   # Email
   emails:
     - name: "ops"
-      # Connection string for Resend, SMTP (smtp://user:password@host:587?fromAddress=...&tls=starttls), AWS SES, SendGrid, or console://
-      connectionString: "resend://your-resend-api-key?fromAddress=ddup@example.com&fromName=ddup"
+      # Connection string for SMTP (smtp://user:password@host:587?fromAddress=...&tls=starttls), AWS SES, SendGrid, Resend
+      connectionString: "smtp://user:password@host:587/?fromAddress=...&tls=starttls"
       # One email is sent to each recipient
       to: ["postmaster@example.com"]
       events: ["dns_update_failed", "all_unhealthy"]

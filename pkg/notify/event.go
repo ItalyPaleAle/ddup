@@ -52,6 +52,7 @@ func (e Event) status() string {
 			healthy++
 		}
 	}
+
 	switch healthy {
 	case len(e.Endpoints):
 		return StatusHealthy
