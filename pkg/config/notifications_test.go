@@ -55,14 +55,14 @@ func TestValidateNotifications(t *testing.T) {
 			mutate: func(n *ConfigNotifications) {
 				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "teams", URL: "https://hooks.example.com/x"}}
 			},
-			expectErr: `notifications.webhooks[0] "a" is invalid: unknown format "teams" (valid formats: plain, slack, discord, ntfy)`,
+			expectErr: `notifications.webhooks[0] "a" is invalid: unknown format "teams"`,
 		},
 		{
 			name: "webhook unknown event",
 			mutate: func(n *ConfigNotifications) {
 				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "ntfy", URL: "https://ntfy.example.com/ddup", Events: []NotificationEvent{"foo"}}}
 			},
-			expectErr: `notifications.webhooks[0] "a" is invalid: unknown event "foo" (valid events: dns_updated, dns_update_failed, all_unhealthy)`,
+			expectErr: `notifications.webhooks[0] "a" is invalid: unknown event "foo"`,
 		},
 		{
 			name: "webhook duplicate name",

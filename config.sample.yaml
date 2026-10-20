@@ -85,7 +85,7 @@ notifications:
   emails:
     - name: "ops"
       # Connection string for SMTP (smtp://user:password@host:587?fromAddress=...&tls=starttls), AWS SES, SendGrid, Resend
-      connectionString: "smtp://user:password@host:587/?fromAddress=...&tls=starttls"
+      connectionString: connectionString: "smtp://user:password@host:587/?fromAddress=ddup@example.com&tls=starttls"
       # One email is sent to each recipient
       to: ["postmaster@example.com"]
       events: ["dns_update_failed", "all_unhealthy"]
