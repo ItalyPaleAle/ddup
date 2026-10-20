@@ -87,7 +87,7 @@ func TestValidateNotifications(t *testing.T) {
 			mutate: func(n *ConfigNotifications) {
 				n.Emails = []ConfigNotificationEmail{{Name: "a", ConnectionString: "console://"}}
 			},
-			expectErr: `notifications.emails[0] "a" is invalid: to is empty; specify at least one recipient`,
+			expectErr: `notifications.emails[0] "a" is invalid: to must have at least one recipient`,
 		},
 		{
 			name: "email invalid recipient",
