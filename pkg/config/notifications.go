@@ -64,6 +64,10 @@ type ConfigNotificationDelivery struct {
 	// Enable it only if the destination is on a trusted internal network
 	// +default false
 	AllowPrivateDestinations bool `yaml:"allowPrivateDestinations"`
+
+	// Optional token sent in the Authorization header as "Bearer <token>"
+	// Some formats may not use it
+	Token string `yaml:"token"`
 }
 
 // ConfigNotificationWebhook configures notifications sent to a webhook
@@ -82,10 +86,6 @@ type ConfigNotificationWebhook struct {
 	// URL of the webhook
 	// +required
 	URL string `yaml:"url"`
-
-	// Optional token sent in the Authorization header as "Bearer <token>"
-	// Some formats may not use it
-	Token string `yaml:"token"`
 
 	// Events to send, among "dns_updated", "dns_update_failed" and "all_unhealthy"
 	// +default all events

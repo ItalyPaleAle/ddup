@@ -216,14 +216,16 @@ func testEvent(typ config.NotificationEvent) Event {
 func TestNtfyDelivery(t *testing.T) {
 	ts := newTestServer(t, nil)
 
+	delivery := fastDelivery()
+	delivery.Token = testNtfyToken
+
 	n := newTestNotifier(t, config.ConfigNotifications{
 		Webhooks: []config.ConfigNotificationWebhook{
 			{
 				Format:                     "ntfy",
 				Name:                       "alerts",
 				URL:                        ts.URL + "/ddup",
-				Token:                      testNtfyToken,
-				ConfigNotificationDelivery: fastDelivery(),
+				ConfigNotificationDelivery: delivery,
 			},
 		},
 	}, realDeps())
