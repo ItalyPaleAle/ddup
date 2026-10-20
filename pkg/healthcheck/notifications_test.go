@@ -103,6 +103,25 @@ func TestNotifyDNSUpdated(t *testing.T) {
 	}, ev.Endpoints)
 }
 
+func TestNotifyEndpointStates(t *testing.T) {
+	fixed := &config.ConfigEndpoint{Name: "fixed", IP: "192.0.2.10"}
+	found := &config.ConfigEndpoint{Name: "found", IPLookupFamily: 4}
+	unresolved := &config.ConfigEndpoint{Name: "unresolved", IPLookupFamily: 4}
+
+	results := []checker.Result{
+		{Endpoint: fixed},
+		{Endpoint: found, Target: "198.51.100.7"},
+		{Endpoint: unresolved},
+	}
+	states := notifyEndpointStates(results, []string{"192.0.2.10", "198.51.100.7"})
+
+	assert.Equal(t, []notify.EndpointState{
+		{Name: "fixed", IP: "192.0.2.10", Healthy: true},
+		{Name: "found", IP: "198.51.100.7", Healthy: true},
+		{Name: "unresolved", IP: "", Healthy: false},
+	}, states)
+}
+
 func TestNotifyNothingWhenDNSIsUnchanged(t *testing.T) {
 	rec := &recordingNotifier{}
 	hc, mc, provider, endpoints := newNotifyTestChecker(rec)

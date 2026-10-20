@@ -29,13 +29,15 @@ func (hc *HealthChecker) notify(ev notify.Event) {
 
 // notifyEndpointStates returns the state of the endpoints for a notification
 // An endpoint is healthy if it's in the list of healthy IPs, which takes into account the retries and the recovery
+// Endpoints that look up their IP address report the address they found, which is empty if the lookup has never worked
 func notifyEndpointStates(results []checker.Result, healthyIPs []string) []notify.EndpointState {
 	states := make([]notify.EndpointState, len(results))
 	for i, result := range results {
+		ip := resultIP(result)
 		states[i] = notify.EndpointState{
 			Name:    result.Endpoint.Name,
-			IP:      result.Endpoint.IP,
-			Healthy: slices.Contains(healthyIPs, result.Endpoint.IP),
+			IP:      ip,
+			Healthy: slices.Contains(healthyIPs, ip),
 		}
 	}
 	return states
