@@ -17,12 +17,15 @@ import (
 	"github.com/italypaleale/ddup/pkg/healthcheck/checker"
 	"github.com/italypaleale/ddup/pkg/iplookup"
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
+	"github.com/italypaleale/ddup/pkg/notify"
 )
 
 // HealthChecker manages health checking and DNS updates
 type HealthChecker struct {
 	// Key is domain name
 	domainCheckers map[string]*domainChecker
+	// Optional, may be nil
+	notifier Notifier
 	// Requests to run a check right away; handled by Run, so checks never overlap
 	forceCh chan forceRequest
 }
@@ -198,6 +201,10 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 		publishIPs := selectLowestPriority(priorities, newHealthyIPs)
 		previousPublishIPs := selectLowestPriority(priorities, currentHealthyIPs)
 
+		// Notify when the domain has no healthy endpoints
+		endpointStates := notifyEndpointStates(results, newHealthyIPs)
+		hc.notifyOutage(dc, domainName, endpointStates, previousPublishIPs, len(newHealthyIPs) == 0)
+
 		// Check if the published IPs have changed, or if the last update failed
 		var updateErr string
 		if dc.updatePending || !utils.StringSlicesMatch(previousPublishIPs, publishIPs) {
@@ -208,13 +215,22 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 				if err != nil {
 					domainLog.ErrorContext(ctx, "Error updating DNS records", "error", err)
 					updateErr = "Error updating DNS records: " + err.Error()
+					hc.notifyUpdateFailed(dc, domainName, endpointStates, publishIPs, previousPublishIPs, err)
 
 					// Try again at the next check, even if the published IPs do not change
 					dc.updatePending = true
 				} else {
 					dc.updatePending = false
+					dc.swapNotifiedError("")
 					if res.Changed {
 						domainLog.InfoContext(ctx, "Updated DNS records", "ips", publishIPs, "previous", res.Previous)
+						hc.notify(notify.Event{
+							Type:      config.EventDNSUpdated,
+							Domain:    domainName,
+							Endpoints: endpointStates,
+							Published: publishIPs,
+							Previous:  res.Previous,
+						})
 					} else {
 						domainLog.InfoContext(ctx, "DNS records already up to date", "ips", publishIPs)
 					}

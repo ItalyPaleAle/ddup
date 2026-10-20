@@ -40,6 +40,7 @@ The documentation is at [`https://ddup.italypaleale.me`](https://ddup.italypalea
 - [Failover with priorities](https://ddup.italypaleale.me/docs/failover-priorities)
 - [Dynamic DNS](https://ddup.italypaleale.me/docs/dynamic-dns)
 - [Dashboard and API](https://ddup.italypaleale.me/docs/dashboard)
+- [Notifications](https://ddup.italypaleale.me/docs/notifications)
 - [Logs and metrics](https://ddup.italypaleale.me/docs/observability)
 - [DNS providers](https://ddup.italypaleale.me/providers)
 
