@@ -30,7 +30,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeAAAA, awsRoute53ListBody())
 		setAWSRoute53ChangeResponse(mockTransport, http.StatusOK)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1", "2.2.2.2"})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1", "2.2.2.2"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 		assert.Empty(t, res.Previous)
@@ -78,7 +78,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		))
 		setAWSRoute53ChangeResponse(mockTransport, http.StatusOK)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 		assert.Empty(t, res.Previous)
@@ -102,7 +102,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeAAAA, awsRoute53ListBody())
 		setAWSRoute53ChangeResponse(mockTransport, http.StatusOK)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4", "9.8.7.6"}, res.Previous)
@@ -127,7 +127,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeA, awsRoute53ListBody())
 		setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeAAAA, awsRoute53ListBody())
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 		assert.Len(t, mockTransport.GetRequests(), 2)
@@ -141,7 +141,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		setAWSRoute53ListResponse(mockTransport, "api.example.com.", recordTypeAAAA, awsRoute53ListBody())
 
 		// The order is reversed from the current state, and there's a duplicate
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, []string{"1.2.3.4", "9.8.7.6", "1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 300, testTargets("1.2.3.4", "9.8.7.6", "1.2.3.4"))
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4", "9.8.7.6"}, res.Previous)
@@ -158,7 +158,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		))
 		setAWSRoute53ChangeResponse(mockTransport, http.StatusOK)
 
-		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 60, []string{"5.6.7.8", "1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "api.example.com", 60, testTargets("5.6.7.8", "1.2.3.4"))
 		require.NoError(t, err)
 		assert.True(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4", "2001:db8::1"}, res.Previous)
@@ -189,7 +189,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		))
 		setAWSRoute53ListResponse(mockTransport, "*.example.com.", recordTypeAAAA, awsRoute53ListBody())
 
-		res, err := provider.UpdateRecords(t.Context(), "*.example.com", 300, []string{"1.2.3.4"})
+		res, err := provider.UpdateRecords(t.Context(), "*.example.com", 300, testTargets("1.2.3.4"))
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
 		assert.Equal(t, []string{"1.2.3.4"}, res.Previous)
@@ -219,7 +219,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 				provider, mockTransport := newAWSRoute53TestProviderWithMock()
 				setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeA, awsRoute53ListBody(tc.recordSet))
 
-				_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.2.3.4"})
+				_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.2.3.4"))
 				require.ErrorContains(t, err, "uses an alias or a routing policy other than simple")
 				assert.Len(t, mockTransport.GetRequests(), 1)
 			})
@@ -232,7 +232,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeAAAA, awsRoute53ListBody())
 		setAWSRoute53ChangeResponse(mockTransport, http.StatusBadRequest)
 
-		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "error updating records for domain www.example.com")
 		require.ErrorContains(t, err, "HTTP 400")
 		assert.False(t, res.Changed)
@@ -241,7 +241,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 	t.Run("List fails", func(t *testing.T) {
 		provider, mockTransport := newAWSRoute53TestProviderWithMock()
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "error getting existing A records")
 		require.ErrorContains(t, err, "HTTP 404")
 		assert.Len(t, mockTransport.GetRequests(), 1)
@@ -253,7 +253,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 			awsRoute53RecordSetXML("www.example.com.", recordTypeA, 300, "not-an-ip"),
 		))
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "invalid IP address in existing A record")
 	})
 
@@ -265,7 +265,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeA, awsRoute53ListBody())
 		setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeAAAA, awsRoute53ListBody())
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
 		require.NoError(t, err)
 
 		requests := mockTransport.GetRequests()
@@ -279,7 +279,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 			return aws.Credentials{}, errors.New("no credentials")
 		})
 
-		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, []string{"1.1.1.1"})
+		_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.1.1.1"))
 		require.ErrorContains(t, err, "error retrieving AWS credentials: no credentials")
 		assert.Empty(t, mockTransport.GetRequests())
 	})

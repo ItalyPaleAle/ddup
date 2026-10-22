@@ -69,7 +69,9 @@ Returns an object with one key for each domain:
 | `lastUpdated` | Time of the last check |
 | `provider` | Name of the DNS provider, from the configuration |
 | `error` | Only present when the last attempt to update DNS failed: the error message |
-| `endpoints[].ip` | IP address of the endpoint |
+| `endpoints[].ip` | IP address of the endpoint, or the hostname for an endpoint with `cname` |
+| `endpoints[].type` | Type of the DNS record of the endpoint: `A`, `AAAA` or `CNAME` |
+| `endpoints[].proxied` | `true` if the record is proxied by Cloudflare. Omitted otherwise |
 | `endpoints[].healthy` | Whether the endpoint is healthy, with the same meaning as in the dashboard |
 | `endpoints[].failureCount` | Number of failed checks in a row. Omitted when it's 0. |
 

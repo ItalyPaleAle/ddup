@@ -138,14 +138,14 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
-			{Healthy: true, IP: "1.1.1.1"},
-			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
+			{Healthy: true, IP: "1.1.1.1", Type: "A"},
+			{Healthy: false, IP: "2.2.2.2", Type: "A", FailureCount: 1},
 		}, hc.GetDomainStatus("example.com").Endpoints)
 
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
-			{Healthy: true, IP: "1.1.1.1"},
-			{Healthy: false, IP: "2.2.2.2", FailureCount: 2},
+			{Healthy: true, IP: "1.1.1.1", Type: "A"},
+			{Healthy: false, IP: "2.2.2.2", Type: "A", FailureCount: 2},
 		}, hc.GetDomainStatus("example.com").Endpoints)
 	})
 
@@ -158,23 +158,23 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		mc.Results = []checker.Result{healthy(ep1), unhealthy(ep2)}
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
-			{Healthy: true, IP: "1.1.1.1"},
-			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
+			{Healthy: true, IP: "1.1.1.1", Type: "A"},
+			{Healthy: false, IP: "2.2.2.2", Type: "A", FailureCount: 1},
 		}, hc.GetDomainStatus("example.com").Endpoints)
 
 		// First successful check: still recovering
 		mc.Results = []checker.Result{healthy(ep1), healthy(ep2)}
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
-			{Healthy: true, IP: "1.1.1.1"},
-			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
+			{Healthy: true, IP: "1.1.1.1", Type: "A"},
+			{Healthy: false, IP: "2.2.2.2", Type: "A", FailureCount: 1},
 		}, hc.GetDomainStatus("example.com").Endpoints)
 
 		// Second successful check: added back
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
-			{Healthy: true, IP: "1.1.1.1"},
-			{Healthy: true, IP: "2.2.2.2"},
+			{Healthy: true, IP: "1.1.1.1", Type: "A"},
+			{Healthy: true, IP: "2.2.2.2", Type: "A"},
 		}, hc.GetDomainStatus("example.com").Endpoints)
 	})
 
@@ -187,8 +187,8 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		hc.checkAndUpdateDNS(t.Context())
 		assert.Equal(t, []string{"1.1.1.1"}, mockProvider.LastIPs)
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
-			{Healthy: true, IP: "1.1.1.1"},
-			{Healthy: true, IP: "2.2.2.2"},
+			{Healthy: true, IP: "1.1.1.1", Type: "A"},
+			{Healthy: true, IP: "2.2.2.2", Type: "A"},
 		}, hc.GetDomainStatus("example.com").Endpoints)
 	})
 

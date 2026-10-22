@@ -25,6 +25,9 @@ type domainChecker struct {
 	// Priority of each endpoint, by IP
 	priorities map[string]int
 
+	// Target published for each endpoint, by IP or CNAME hostname
+	targets map[string]dns.Target
+
 	// True if no endpoint is healthy, and the all_unhealthy notification was sent
 	allUnhealthy bool
 
@@ -76,6 +79,21 @@ func (dc *domainChecker) setRecovering(r map[string]int) {
 	defer dc.lock.Unlock()
 
 	dc.recovering = r
+}
+
+func (dc *domainChecker) setTargets(targets map[string]dns.Target) {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	dc.targets = targets
+}
+
+// getTargets returns the target published for each endpoint, as of the last check
+func (dc *domainChecker) getTargets() map[string]dns.Target {
+	dc.lock.Lock()
+	defer dc.lock.Unlock()
+
+	return dc.targets
 }
 
 // swapAllUnhealthy sets whether the domain has no healthy endpoints, and returns the previous value
