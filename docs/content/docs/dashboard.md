@@ -72,6 +72,13 @@ Returns an object with one key for each domain:
 | `endpoints[].ip` | IP address of the endpoint |
 | `endpoints[].healthy` | Whether the endpoint is healthy, with the same meaning as in the dashboard |
 | `endpoints[].failureCount` | Number of failed checks in a row. Omitted when it's 0. |
+| `endpoints[].since` | When the endpoint last changed between healthy and unhealthy. Omitted when not known |
+| `endpoints[].sinceStart` | `true` when `since` is only the time of the first check after ddup started, because the real time is not known |
+| `endpoints[].lastFailure` | Last time a check of the endpoint failed. Kept after the endpoint recovers |
+| `endpoints[].lastError` | Error of the last failed check |
+| `endpoints[].firstFailure` | Time of the first failed check of the current run of failures. Omitted once a check passes again |
+
+These times and errors show why an endpoint is in the warning state, where some checks failed but the endpoint is still healthy. They are kept in memory, so they start again when ddup restarts.
 
 For example, to list the unhealthy endpoints with [jq](https://jqlang.org):
 

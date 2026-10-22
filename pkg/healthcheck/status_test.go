@@ -140,13 +140,13 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 2},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 	})
 
 	t.Run("recovering endpoint stays unhealthy until it is added back", func(t *testing.T) {
@@ -160,7 +160,7 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 
 		// First successful check: still recovering
 		mc.Results = []checker.Result{healthy(ep1), healthy(ep2)}
@@ -168,14 +168,14 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: false, IP: "2.2.2.2", FailureCount: 1},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 
 		// Second successful check: added back
 		hc.checkAndUpdateDNS(t.Context())
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: true, IP: "2.2.2.2"},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 	})
 
 	t.Run("standby endpoint is healthy even if not published", func(t *testing.T) {
@@ -189,7 +189,7 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.ElementsMatch(t, []DomainStatusEndpoint{
 			{Healthy: true, IP: "1.1.1.1"},
 			{Healthy: true, IP: "2.2.2.2"},
-		}, hc.GetDomainStatus("example.com").Endpoints)
+		}, withoutTimes(hc.GetDomainStatus("example.com").Endpoints))
 	})
 
 	t.Run("DNS error is reported", func(t *testing.T) {
@@ -203,6 +203,20 @@ func TestGetDomainStatus_AfterChecks(t *testing.T) {
 		assert.Contains(t, status.Error, "mock error")
 		assert.False(t, status.LastUpdated.Before(before))
 	})
+}
+
+// withoutTimes clears the fields about state changes, which since_test.go covers
+func withoutTimes(endpoints []DomainStatusEndpoint) []DomainStatusEndpoint {
+	res := make([]DomainStatusEndpoint, len(endpoints))
+	for i, e := range endpoints {
+		e.Since = nil
+		e.SinceStart = false
+		e.LastFailure = nil
+		e.LastError = ""
+		e.FirstFailure = nil
+		res[i] = e
+	}
+	return res
 }
 
 func TestGetAllDomainsStatus(t *testing.T) {
@@ -257,4 +271,45 @@ func TestDomainStatusJSON(t *testing.T) {
 	enc, err = json.Marshal(DomainStatus{Provider: "cf", Endpoints: []DomainStatusEndpoint{}})
 	require.NoError(t, err)
 	assert.JSONEq(t, `{"lastUpdated": "0001-01-01T00:00:00Z", "provider": "cf", "endpoints": []}`, string(enc))
+}
+
+func TestEndpointSince_APIFields(t *testing.T) {
+	marshal := func(e DomainStatusEndpoint) map[string]any {
+		raw, err := json.Marshal(e)
+		require.NoError(t, err)
+		m := map[string]any{}
+		require.NoError(t, json.Unmarshal(raw, &m))
+		return m
+	}
+
+	f := newSinceFixture(1)
+	f.check(t, true)
+	m := marshal(f.check(t, false))
+	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["since"])
+	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["lastFailure"])
+	assert.NotContains(t, m, "sinceStart")
+	assert.Equal(t, f.now.Format(time.RFC3339Nano), m["firstFailure"])
+	assert.Equal(t, "connection failed (check 2)", m["lastError"])
+
+	// After a passing check only the last failure is kept
+	m = marshal(f.check(t, true))
+	assert.Contains(t, m, "lastFailure")
+	assert.Contains(t, m, "lastError")
+	assert.NotContains(t, m, "firstFailure")
+
+	// A new endpoint reports that its start is not known, and has no last failure
+	g := newSinceFixture(1)
+	m = marshal(g.check(t, true))
+	assert.Contains(t, m, "since")
+	assert.Equal(t, true, m["sinceStart"])
+	assert.NotContains(t, m, "lastFailure")
+	assert.NotContains(t, m, "firstFailure")
+
+	// Without times, all three fields are omitted
+	m = marshal(DomainStatusEndpoint{IP: "1.1.1.1"})
+	assert.NotContains(t, m, "since")
+	assert.NotContains(t, m, "sinceStart")
+	assert.NotContains(t, m, "lastFailure")
+	assert.NotContains(t, m, "lastError")
+	assert.NotContains(t, m, "firstFailure")
 }

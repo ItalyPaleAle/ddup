@@ -20,11 +20,22 @@ import { apiFetch, pageBuildInfo, type BuildInfo } from '@/lib/build'
 import { setFavicon } from '@/lib/favicon'
 import type { OverallStatus } from '@/lib/favicon-shapes'
 import { StatusIcon } from '@/components/StatusIcon'
+import { EndpointHistory } from '@/components/EndpointHistory'
 
 interface DomainStatusEndpoint {
   healthy: boolean
   ip: string
   failureCount?: number
+  // When the endpoint last changed state, as an RFC 3339 time
+  since?: string
+  // True if `since` is when ddup first checked the endpoint
+  sinceStart?: boolean
+  // Last time a check of the endpoint failed
+  lastFailure?: string
+  // Error of the last failed check
+  lastError?: string
+  // First failed check of the current run of failures
+  firstFailure?: string
 }
 
 interface DomainStatus {
@@ -85,6 +96,8 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [isChecking, setIsChecking] = useState(false)
+  // The domain whose endpoint history is open; only one can be at a time
+  const [historyDomain, setHistoryDomain] = useState<string | null>(null)
 
   const fetchDomains = useCallback(async (): Promise<void> => {
     setIsLoading(true)
@@ -330,7 +343,10 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
             type="text"
             placeholder="Search domains or IP addresses..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setHistoryDomain(null)
+            }}
             className="w-full rounded-md border border-input bg-background px-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
         </div>
@@ -403,16 +419,19 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                         {status.charAt(0).toUpperCase() + status.slice(1)}
                       </Badge>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Provider: {domain.status.provider}</span>
+                    {/* The history is about the endpoints, so its button is on the line that counts them */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 text-sm text-muted-foreground">
                       <span>
-                        <Clock className="inline h-3 w-3 mr-1" />
-                        {new Date(domain.status.lastUpdated).toLocaleString()}
+                        {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
+                        endpoints healthy
                       </span>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
-                      endpoints healthy
+                      <EndpointHistory
+                        domain={domain.name}
+                        lastUpdated={domain.status.lastUpdated}
+                        endpoints={domain.status.endpoints}
+                        open={historyDomain === domain.name}
+                        onOpenChange={(open) => setHistoryDomain(open ? domain.name : null)}
+                      />
                     </div>
                   </CardHeader>
 
