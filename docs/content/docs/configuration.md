@@ -113,6 +113,7 @@ Durations are written as a number and a unit, such as `500ms`, `30s`, `1m`, or `
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `interval` | duration | `30s` | How often to check all endpoints |
+| `ipLookupURLs` | list | | Services that dynamic DNS endpoints use to look up their IP address, see [Dynamic DNS](/docs/dynamic-dns) |
 | `domains` | list | **required** | The domains to manage, see [`domains`](#domains) |
 | `providers` | map | **required** | The DNS providers, see [`providers`](#providers) |
 | `server` | object | | The dashboard and API, see [`server`](#server) |
@@ -148,8 +149,10 @@ Each endpoint is a server that can serve the domain.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `url` | string | **required** | URL that ddup requests to check the endpoint's health, starting with `http://` or `https://` |
-| `ip` | string | **required** | IP address to publish when the endpoint is healthy. IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. |
+| `url` | string | see description | URL that ddup requests to check the endpoint's health, starting with `http://` or `https://`. Required, except for endpoints that use `ipLookupFamily`, which are then not health-checked. |
+| `ip` | string | | IP address to publish when the endpoint is healthy. IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. Exactly one of `ip` and `ipLookupFamily` is required. |
+| `ipLookupFamily` | number | | `4` or `6`. Instead of a fixed `ip`, ddup looks up the public IP address of the network it runs in and publishes it: `4` creates an A record and `6` an AAAA record. See [Dynamic DNS](/docs/dynamic-dns). |
+| `ipLookupURLs` | list | | Only with `ipLookupFamily`. Services for this endpoint, which replace the top-level `ipLookupURLs` for it. See [Dynamic DNS](/docs/dynamic-dns). |
 | `name` | string | The URL | Name of the endpoint, shown in logs and metrics |
 | `priority` | number | `0` | Lower values are preferred: only the healthy endpoints with the lowest value are published. See [Failover with priorities](/docs/failover-priorities). |
 | `host` | string | | Host name to send in the request, when `url` contains an IP address or a different host name. It's also used for TLS. See [Checking a server by IP](/docs/health-checks#checking-a-server-by-ip). |

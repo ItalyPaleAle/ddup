@@ -38,6 +38,7 @@ The documentation is at [`https://ddup.italypaleale.me`](https://ddup.italypalea
 - [Configuration](https://ddup.italypaleale.me/docs/configuration)
 - [Health checks](https://ddup.italypaleale.me/docs/health-checks)
 - [Failover with priorities](https://ddup.italypaleale.me/docs/failover-priorities)
+- [Dynamic DNS](https://ddup.italypaleale.me/docs/dynamic-dns)
 - [Dashboard and API](https://ddup.italypaleale.me/docs/dashboard)
 - [Notifications](https://ddup.italypaleale.me/docs/notifications)
 - [Logs and metrics](https://ddup.italypaleale.me/docs/observability)

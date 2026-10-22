@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/italypaleale/ddup/pkg/iplookup"
 )
 
 // Config represents the application configuration
@@ -21,6 +23,11 @@ type Config struct {
 
 	// Domains allows configuring multiple domains, each with its own endpoints
 	Domains []ConfigDomain `yaml:"domains"`
+
+	// List of services used to look up the public IP address of the endpoints that set `ipLookupFamily` and don't have a list of their own
+	// There are no built-in services: ddup contacts only the services that are configured
+	// The services are called over HTTPS: those that apply to an endpoint are asked at the same time, and the first valid answer is used
+	IPLookupURLs []ConfigIPLookupURL `yaml:"ipLookupURLs"` //nolint:tagliatelle // The key keeps the URLs initialism
 
 	// Provider contains shared provider configuration (shared across all domains)
 	Providers map[string]ConfigProvider `yaml:"providers"`
@@ -115,12 +122,24 @@ type ConfigEndpoint struct {
 	Name string `yaml:"name"`
 
 	// Health check URL
-	// +required
+	// Required, unless the endpoint sets `ipLookupFamily`: then the endpoint is not health-checked, and is healthy as long as its IP address can be looked up
 	URL string `yaml:"url"`
 
 	// IP address to include in DNS records when healthy
-	// +required
+	// Exactly one of `ip` and `ipLookupFamily` is required
 	IP string `yaml:"ip"`
+
+	// IP version of the public IP address to look up and include in DNS records when healthy: 4 creates an A record, 6 an AAAA record
+	// This is for dynamic DNS: the record follows the public IP address of the network ddup runs in
+	// Exactly one of `ip` and `ipLookupFamily` is required, unless the endpoint sets `ipLookupURLs`: then `ipLookupFamily` defaults to 4
+	IPLookupFamily int `yaml:"ipLookupFamily"`
+
+	// Optional list of services used to look up the IP address of this endpoint, with one or more entries
+	// It replaces the top-level `ipLookupURLs` for this endpoint: the two lists are not merged
+	// It can only be set without `ip`: if `ipLookupFamily` is not set, it defaults to 4
+	// The `family` of its entries is optional but, if set, must match `ipLookupFamily`
+	// If not set, the entries of the top-level `ipLookupURLs` with the family of the endpoint are used
+	IPLookupURLs []ConfigIPLookupURL `yaml:"ipLookupURLs"` //nolint:tagliatelle // The key keeps the URLs initialism
 
 	// Optional priority of the endpoint
 	// Only the healthy endpoints with the lowest priority value are published: if none of them are healthy, ddup falls back to the next priority
@@ -132,6 +151,47 @@ type ConfigEndpoint struct {
 	// Hostname to include in the requests
 	// This can be used when the request is made to an IP address or to a hostname different from the desired one
 	Host string `yaml:"host"`
+}
+
+// ConfigIPLookupURL is a service that returns the public IP address of the caller
+type ConfigIPLookupURL struct {
+	// URL of the service, which must use https
+	// The response body must contain only the IP address, as plain text
+	// +required
+	URL string `yaml:"url"`
+
+	// IP version the service answers for: 4 or 6
+	// In the top-level `ipLookupURLs`, which serves both versions, it defaults to 4
+	// Optional on an endpoint, where it's the `ipLookupFamily` of the endpoint: if set, it must be equal to it
+	Family int `yaml:"family"`
+}
+
+// Dynamic returns true if the IP address of the endpoint is looked up
+func (e *ConfigEndpoint) Dynamic() bool {
+	return e.IPLookupFamily != 0
+}
+
+// IPLookupSources returns the services used to look up the IP address of an endpoint that sets `ipLookupFamily`
+// These are the services in the list of the endpoint, if it has one, or otherwise those in the top-level list with the family of the endpoint
+// The configuration must have been validated
+func (c *Config) IPLookupSources(e *ConfigEndpoint) []iplookup.Source {
+	entries := e.IPLookupURLs
+	if entries == nil {
+		for _, u := range c.IPLookupURLs {
+			if u.Family == e.IPLookupFamily {
+				entries = append(entries, u)
+			}
+		}
+	}
+
+	res := make([]iplookup.Source, len(entries))
+	for i, u := range entries {
+		res[i] = iplookup.Source{
+			URL:    u.URL,
+			Family: e.IPLookupFamily,
+		}
+	}
+	return res
 }
 
 type ConfigProvider struct {
@@ -282,6 +342,11 @@ func (c *Config) Validate(logger *slog.Logger) error {
 		return errors.New("no domains configured; specify at least one domain under 'domains'")
 	}
 
+	err := c.validateIPLookupURLs()
+	if err != nil {
+		return err
+	}
+
 	// Validate domains
 	for di := range c.Domains {
 		// Use a pointer so that defaults and sanitization are persisted
@@ -314,7 +379,7 @@ func (c *Config) Validate(logger *slog.Logger) error {
 		default:
 			return fmt.Errorf("domain %s is invalid: healthChecks.method must be GET or HEAD", d.RecordName)
 		}
-		err := validateExpectStatus(d.HealthChecks.ExpectStatus)
+		err = validateExpectStatus(d.HealthChecks.ExpectStatus)
 		if err != nil {
 			return fmt.Errorf("domain %s is invalid: healthChecks.%w", d.RecordName, err)
 		}
@@ -324,30 +389,149 @@ func (c *Config) Validate(logger *slog.Logger) error {
 
 		// Validate endpoints for this domain
 		for ei, v := range d.Endpoints {
-			if v.URL == "" {
-				return fmt.Errorf("domain %s endpoint %d is invalid: URL is empty", d.RecordName, ei)
-			}
-			if v.IP == "" {
-				return fmt.Errorf("domain %s endpoint %d is invalid: IP is empty", d.RecordName, ei)
+			err = v.validateAddress(c.ipLookupFamilies())
+			if err != nil {
+				return fmt.Errorf("domain %s endpoint %d is invalid: %w", d.RecordName, ei, err)
 			}
 			if v.Priority < 0 {
 				return fmt.Errorf("domain %s endpoint %d is invalid: priority must not be negative", d.RecordName, ei)
 			}
-			ip, err := netip.ParseAddr(v.IP)
-			if err != nil {
-				return fmt.Errorf("domain %s endpoint %d is invalid: IP %q is not a valid IPv4 or IPv6 address", d.RecordName, ei, v.IP)
-			}
-			v.IP = ip.String()
 			if v.Name == "" {
-				v.Name = v.URL
+				v.Name = v.defaultName()
 			}
 		}
 	}
 
 	// Validate the notifications
-	err := c.Notifications.validate()
+	err = c.Notifications.validate()
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// validateAddress checks how the endpoint gets the IP address to publish: a fixed `ip`, or a public address looked up for `ipLookupFamily`
+// The families are those that have at least one service in the top-level `ipLookupURLs`
+func (e *ConfigEndpoint) validateAddress(families map[int]bool) error {
+	// An endpoint with its own services and no fixed ip looks up an IPv4 address, unless it says otherwise
+	if e.IP == "" && e.IPLookupFamily == 0 && e.IPLookupURLs != nil {
+		e.IPLookupFamily = 4
+	}
+
+	var set int
+	for _, isSet := range []bool{e.IP != "", e.Dynamic()} {
+		if isSet {
+			set++
+		}
+	}
+	switch {
+	case set == 0:
+		return errors.New("one of ip, ipLookupFamily and ipLookupURLs is required")
+	case set > 1:
+		return errors.New("ip and ipLookupFamily are mutually exclusive")
+	}
+
+	// Endpoints that look up their address can skip the health check
+	if e.URL == "" && !e.Dynamic() {
+		return errors.New("URL is empty")
+	}
+
+	if e.Dynamic() {
+		return e.validateLookupServices(families)
+	}
+
+	if e.IPLookupURLs != nil {
+		return errors.New("ipLookupURLs is set, but the endpoint has no ipLookupFamily: the services are only used to look up an address, not with a fixed ip")
+	}
+
+	ip, err := netip.ParseAddr(e.IP)
+	if err != nil {
+		return fmt.Errorf("IP %q is not a valid IPv4 or IPv6 address", e.IP)
+	}
+	e.IP = ip.String()
+	return nil
+}
+
+// validateLookupServices checks that an endpoint with `ipLookupFamily` has at least one service to ask
+func (e *ConfigEndpoint) validateLookupServices(families map[int]bool) error {
+	if e.IPLookupFamily != 4 && e.IPLookupFamily != 6 {
+		return fmt.Errorf("ipLookupFamily must be 4 or 6, got %d", e.IPLookupFamily)
+	}
+
+	if e.IPLookupURLs == nil {
+		if !families[e.IPLookupFamily] {
+			return fmt.Errorf("ipLookupFamily is %[1]d, but no service is configured for it: set ipLookupURLs on the endpoint, or add an entry with family %[1]d to the top-level ipLookupURLs", e.IPLookupFamily)
+		}
+		return nil
+	}
+
+	if len(e.IPLookupURLs) == 0 {
+		return errors.New("ipLookupURLs is empty: add at least one service, or remove the key to use the top-level ipLookupURLs")
+	}
+	return validateIPLookupURLList(e.IPLookupURLs, e.IPLookupFamily)
+}
+
+// defaultName returns the name of an endpoint that doesn't set one
+func (e *ConfigEndpoint) defaultName() string {
+	if e.URL != "" {
+		return e.URL
+	}
+	return fmt.Sprintf("IPv%d lookup", e.IPLookupFamily)
+}
+
+// ipLookupFamilies returns the IP versions that have at least one service in the top-level list
+func (c *Config) ipLookupFamilies() map[int]bool {
+	res := make(map[int]bool, 2)
+	for _, u := range c.IPLookupURLs {
+		res[u.Family] = true
+	}
+	return res
+}
+
+// validateIPLookupURLs validates the top-level list of services used for IP lookups
+func (c *Config) validateIPLookupURLs() error {
+	return validateIPLookupURLList(c.IPLookupURLs, 0)
+}
+
+// validateIPLookupURLList validates a list of services
+// The family is the `ipLookupFamily` of the endpoint the list belongs to, or 0 for the top-level list, where an entry without family is set to 4
+func validateIPLookupURLList(list []ConfigIPLookupURL, family int) error {
+	type key struct {
+		url    string
+		family int
+	}
+	seen := make(map[key]struct{}, len(list))
+
+	for i := range list {
+		u := &list[i]
+		if u.URL == "" {
+			return fmt.Errorf("ipLookupURLs[%d] is invalid: url is empty", i)
+		}
+		err := iplookup.ValidateURL(u.URL)
+		if err != nil {
+			return fmt.Errorf("ipLookupURLs[%d] (%s) is invalid: url %w", i, u.URL, err)
+		}
+
+		entryFamily := u.Family
+		switch {
+		case family == 0 && u.Family == 0:
+			u.Family = 4
+			entryFamily = 4
+		case family == 0 && u.Family != 4 && u.Family != 6:
+			return fmt.Errorf("ipLookupURLs[%d] (%s) is invalid: family must be 4 or 6, got %d", i, u.URL, u.Family)
+		case family != 0 && u.Family == 0:
+			entryFamily = family
+		case family != 0 && u.Family != family:
+			return fmt.Errorf("ipLookupURLs[%d] (%s) is invalid: family is %d, but the endpoint has ipLookupFamily %d; an endpoint looks up one IP version, so IPv4 and IPv6 services can't be mixed in its list", i, u.URL, u.Family, family)
+		}
+
+		k := key{url: u.URL, family: entryFamily}
+		_, dup := seen[k]
+		if dup {
+			return fmt.Errorf("ipLookupURLs[%d] (%s) is invalid: the same url and family are already in the list", i, u.URL)
+		}
+		seen[k] = struct{}{}
 	}
 
 	return nil
