@@ -246,6 +246,38 @@ test.describe('domain list', () => {
         await expect(emptyCard).not.toContainText('Endpoints (')
     })
 
+    for (const colorScheme of ['light', 'dark'] as const) {
+        test(`the endpoint badges have the colors of the domain badges, also on hover (${colorScheme} mode)`, async ({
+            page,
+        }) => {
+            await page.emulateMedia({ colorScheme })
+            // The badges have a transition on the text color, so read the colors once it's over
+            const colors = async (badge: Locator) => {
+                await page.evaluate(() =>
+                    Promise.all(document.getAnimations().map((animation) => animation.finished.catch(() => {})))
+                )
+                return badge.evaluate((el) => {
+                    const style = getComputedStyle(el)
+                    return { background: style.backgroundColor, text: style.color }
+                })
+            }
+
+            const card = domainCard(page, 'partial.example')
+            for (const [ip, domain] of [
+                ['198.51.100.1', 'healthy.example'],
+                ['198.51.100.2', 'down.example'],
+            ]) {
+                const badge = endpointRow(card, ip).locator('[data-slot="badge"]')
+                await page.mouse.move(0, 0)
+                const atRest = await colors(badge)
+                expect(atRest).toEqual(await colors(domainBadge(page, domain)))
+
+                await badge.hover()
+                expect(await colors(badge)).toEqual(atRest)
+            }
+        })
+    }
+
     test('counts the domains by health', async ({ page }) => {
         await expectSummary(page, 2, 1, 3)
     })
@@ -577,13 +609,9 @@ test.describe('endpoint history', () => {
         await expect(button).toHaveAttribute('aria-expanded', 'false')
     })
 
-    test('the close button closes it and focus returns to the button', async ({ page }) => {
-        const button = historyButton(page, 'history.example')
-        await button.click()
-        await historyDialog(page, 'history.example').getByRole('button', { name: 'Close' }).click()
-
-        await expect(page.getByRole('dialog')).toHaveCount(0)
-        await expect(button).toBeFocused()
+    test('has no close button', async ({ page }) => {
+        await historyButton(page, 'history.example').click()
+        await expect(historyDialog(page, 'history.example').getByRole('button')).toHaveCount(0)
     })
 
     test('a click outside closes it', async ({ page }) => {
@@ -638,12 +666,7 @@ test.describe('endpoint history', () => {
         const dialog = historyDialog(page, 'history.example')
         await expect(dialog).toBeFocused()
 
-        // The next stop is the close button, which is inside the dialog
-        await page.keyboard.press('Tab')
-        await expect(dialog.getByRole('button', { name: 'Close' })).toBeFocused()
-        await expect(dialog).toBeVisible()
-
-        // The next one is outside
+        // There is nothing to focus inside the dialog, so the next stop is outside
         await page.keyboard.press('Tab')
         await expect(page.getByRole('dialog')).toHaveCount(0)
         await expect(historyButton(page, 'history.example')).toHaveAttribute('aria-expanded', 'false')
@@ -740,10 +763,17 @@ test.describe('endpoint history', () => {
         await expect(historyDialog(page, 'old.example')).toContainText('Healthy since Dec 31, 2025, 11:30:00 PM')
     })
 
-    test('the button is on the line that counts the healthy endpoints', async ({ page }) => {
+    test('the button is an icon right after the status badge', async ({ page }) => {
         const card = domainCard(page, 'history.example')
-        const line = card.getByText('5/6 endpoints healthy').locator('xpath=..')
-        await expect(line.getByRole('button', { name: 'History of history.example' })).toBeVisible()
+        const button = card.getByRole('button', { name: 'History of history.example' })
+        await expect(button).toBeVisible()
+        await expect(button).toHaveText('')
+        await expect(button).toHaveAttribute('title', 'Endpoint history')
+        await expect(button.locator('svg')).toHaveCount(1)
+        expect(await button.evaluate((el) => el.previousElementSibling?.getAttribute('data-slot'))).toBe('badge')
+
+        // The line that counts the healthy endpoints has only the count
+        await expect(card.getByText('5/6 endpoints healthy', { exact: true })).toBeVisible()
 
         // The time of the last update is only in the history dialog
         await expect(card.locator('time')).toHaveCount(0)
@@ -789,7 +819,7 @@ test.describe('endpoint history', () => {
         }
     })
 
-    test('stays next to its button when the page is scrolled or resized', async ({ page }) => {
+    test('scrolls with the page next to its button, and stays next to it when resized', async ({ page }) => {
         await page.setViewportSize({ width: 800, height: 400 })
         const button = historyButton(page, 'history.example')
         await button.click()
@@ -804,10 +834,29 @@ test.describe('endpoint history', () => {
         }
         await expect.poll(gap).toBeLessThan(10)
 
-        const scrollBefore = await page.evaluate(() => window.scrollY)
-        await page.evaluate(() => window.scrollBy(0, 60))
-        expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBefore)
-        await expect.poll(gap).toBeLessThan(10)
+        // The dialog moves together with the button while the page scrolls, without catching up later
+        // It also stays on the same side of the button, even if the other side has more room now
+        const buttonHandle = await button.elementHandle()
+        const offsets = await dialog.evaluate(async (el, buttonEl) => {
+            const offset = () => {
+                const d = el.getBoundingClientRect()
+                const b = buttonEl!.getBoundingClientRect()
+                return { x: d.left - b.left, y: d.top - b.top }
+            }
+            const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve))
+
+            const before = offset()
+            const scrollBefore = window.scrollY
+            window.scrollBy(0, 150)
+            const scrolled = window.scrollY - scrollBefore
+            const during = offset()
+            await nextFrame()
+            await nextFrame()
+            return { before, during, after: offset(), scrolled }
+        }, buttonHandle)
+        expect(offsets.scrolled).toBeGreaterThan(100)
+        expect(offsets.during).toEqual(offsets.before)
+        expect(offsets.after).toEqual(offsets.before)
 
         await page.setViewportSize({ width: 360, height: 400 })
         await expect.poll(gap).toBeLessThan(10)
@@ -819,26 +868,14 @@ test.describe('endpoint history', () => {
             .toBeLessThanOrEqual(360)
     })
 
-    test('the button and the close button are at least 24 by 24 pixels', async ({ page }) => {
-        await historyButton(page, 'history.example').click()
-        for (const button of [
-            historyButton(page, 'history.example'),
-            historyDialog(page, 'history.example').getByRole('button', { name: 'Close' }),
-        ]) {
-            const box = await button.boundingBox()
-            expect(box!.width).toBeGreaterThanOrEqual(24)
-            expect(box!.height).toBeGreaterThanOrEqual(24)
-        }
+    test('the button is at least 24 by 24 pixels', async ({ page }) => {
+        const box = await historyButton(page, 'history.example').boundingBox()
+        expect(box!.width).toBeGreaterThanOrEqual(24)
+        expect(box!.height).toBeGreaterThanOrEqual(24)
     })
 
-    test('the buttons show a pointer cursor', async ({ page }) => {
-        await historyButton(page, 'history.example').click()
-        for (const button of [
-            historyButton(page, 'history.example'),
-            historyDialog(page, 'history.example').getByRole('button', { name: 'Close' }),
-        ]) {
-            await expect(button).toHaveCSS('cursor', 'pointer')
-        }
+    test('the button shows a pointer cursor', async ({ page }) => {
+        await expect(historyButton(page, 'history.example')).toHaveCSS('cursor', 'pointer')
     })
 
     test('shows the dialog in front of the next cards', async ({ page }) => {

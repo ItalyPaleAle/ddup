@@ -52,6 +52,16 @@ type Domain = {
   status: DomainStatus
 }
 
+// Colors of the health badges of domains and endpoints, light and tinted in dark mode
+// They are the same on hover, so the badges don't look like buttons
+const healthBadgeColors = {
+  healthy:
+    'bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30',
+  warning:
+    'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/30',
+  unhealthy: 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30',
+}
+
 // One segment of the summary bar: the count of domains with a health status
 // The label is only shown from the sm breakpoint up, and stays available to screen readers
 const SummarySegment = ({
@@ -399,54 +409,37 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
               return (
                 <Card key={domain.name} className="overflow-hidden">
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">{domain.name}</CardTitle>
-                      <Badge
-                        variant={status === 'healthy' ? 'default' : status === 'warning' ? 'secondary' : 'destructive'}
-                        className={cn(
-                          'flex items-center gap-1',
-                          status === 'healthy' &&
-                            'bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30',
-                          status === 'warning' &&
-                            'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/30',
-                          status === 'unhealthy' &&
-                            'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30'
-                        )}
-                      >
-                        {status === 'healthy' && <CheckCircle className="h-3 w-3" />}
-                        {status === 'warning' && <AlertTriangle className="h-3 w-3" />}
-                        {status === 'unhealthy' && <XCircle className="h-3 w-3" />}
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </Badge>
+                    <div className="flex items-center justify-between gap-2">
+                      <CardTitle className="min-w-0 wrap-break-word text-lg">{domain.name}</CardTitle>
+                      {/* The status and the history button don't shrink, so a long name wraps instead of pushing them out of the card */}
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Badge
+                          variant={
+                            status === 'healthy' ? 'default' : status === 'warning' ? 'secondary' : 'destructive'
+                          }
+                          className={cn('flex items-center gap-1', healthBadgeColors[status])}
+                        >
+                          {status === 'healthy' && <CheckCircle className="h-3 w-3" />}
+                          {status === 'warning' && <AlertTriangle className="h-3 w-3" />}
+                          {status === 'unhealthy' && <XCircle className="h-3 w-3" />}
+                          {status.charAt(0).toUpperCase() + status.slice(1)}
+                        </Badge>
+                        <EndpointHistory
+                          domain={domain.name}
+                          lastUpdated={domain.status.lastUpdated}
+                          endpoints={domain.status.endpoints}
+                          open={historyDomain === domain.name}
+                          onOpenChange={(open) => setHistoryDomain(open ? domain.name : null)}
+                        />
+                      </div>
                     </div>
-                    {/* The history is about the endpoints, so its button is on the line that counts them */}
-                    <div className="flex flex-wrap items-center justify-between gap-x-2 text-sm text-muted-foreground">
-                      <span>
-                        {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
-                        endpoints healthy
-                      </span>
-                      <EndpointHistory
-                        domain={domain.name}
-                        lastUpdated={domain.status.lastUpdated}
-                        endpoints={domain.status.endpoints}
-                        open={historyDomain === domain.name}
-                        onOpenChange={(open) => setHistoryDomain(open ? domain.name : null)}
-                      />
+                    <div className="text-sm text-muted-foreground">
+                      {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
+                      endpoints healthy
                     </div>
                   </CardHeader>
 
                   <CardContent className="space-y-4">
-                    {domain.status.error && (
-                      <div className="rounded-lg bg-red-50 dark:bg-red-950/50 p-3 text-sm text-red-800 dark:text-red-200">
-                        <div className="flex items-center gap-2">
-                          <XCircle className="h-4 w-4" />
-                          <span className="font-medium">Domain Error</span>
-                        </div>
-                        <p className="mt-1">{domain.status.error}</p>
-                      </div>
-                    )}
-
-                    {/* Endpoints */}
                     {domain.status.endpoints.length > 0 && (
                       <div>
                         <h4 className="mb-2 text-sm font-medium">Endpoints ({domain.status.endpoints.length})</h4>
@@ -458,8 +451,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                                   variant={endpoint.healthy ? 'default' : 'destructive'}
                                   className={cn(
                                     'text-xs',
-                                    endpoint.healthy && 'bg-green-100 text-green-800 hover:bg-green-100',
-                                    !endpoint.healthy && 'bg-red-100 text-red-800 hover:bg-red-100'
+                                    healthBadgeColors[endpoint.healthy ? 'healthy' : 'unhealthy']
                                   )}
                                 >
                                   {endpoint.healthy ? (
@@ -477,6 +469,16 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {domain.status.error && (
+                      <div className="rounded-lg bg-red-50 dark:bg-red-950/50 p-3 text-sm text-red-800 dark:text-red-200">
+                        <div className="flex items-center gap-2">
+                          <XCircle className="h-4 w-4" />
+                          <span className="font-medium">Domain Error</span>
+                        </div>
+                        <p className="mt-1">{domain.status.error}</p>
                       </div>
                     )}
                   </CardContent>

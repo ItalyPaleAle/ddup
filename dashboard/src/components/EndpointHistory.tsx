@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, type ReactNode } from 'react'
-import { AlertTriangle, CheckCircle, History, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle, History, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface EndpointHistoryItem {
@@ -107,9 +107,9 @@ const EndpointStatus = ({ endpoint }: { endpoint: EndpointHistoryItem }) => {
   )
 }
 
-// A button that opens a dialog with the history of the endpoints of a domain
-// The dialog is not modal, and it is not a focus trap: focus moves into it when it opens, and closing it (Escape, the close button, a click outside, or moving focus out of it) is always possible
-// It is placed right after the button in the DOM, so the tab order is natural, and it uses fixed positioning so it's not clipped by the card
+// An icon button that opens a dialog with the history of the endpoints of a domain
+// The dialog is not modal, and it is not a focus trap: focus moves into it when it opens, and closing it (Escape, the button, a click outside, or moving focus out of it) is always possible
+// It is placed right after the button in the DOM, so the tab order is natural
 const EndpointHistory = ({
   domain,
   lastUpdated,
@@ -131,6 +131,8 @@ const EndpointHistory = ({
   const dialogRef = useRef<HTMLDivElement>(null)
   // True between a pointer press on the button and the click it causes, so the press is not mistaken for the keyboard moving focus to the button
   const pressingButton = useRef(false)
+  // Whether the dialog is above the button, chosen when it opens, so it doesn't jump to the other side afterwards
+  const placedAbove = useRef<boolean | null>(null)
 
   const close = useCallback(
     (returnFocus: boolean) => {
@@ -142,8 +144,8 @@ const EndpointHistory = ({
     [onOpenChange]
   )
 
-  // Places the dialog under the button, aligned to its right edge, or above it if there is more room there
-  // It's always inside the viewport, also on narrow screens
+  // Places the dialog under the button, aligned to its right edge, or above it if there is more room there when it opens
+  // When it opens, it's inside the viewport, also on narrow screens
   const place = useCallback(() => {
     const button = buttonRef.current
     const dialog = dialogRef.current
@@ -153,37 +155,49 @@ const EndpointHistory = ({
 
     const anchor = button.getBoundingClientRect()
     const viewportWidth = document.documentElement.clientWidth
-    const viewportHeight = window.innerHeight
 
     const width = Math.min(popoverWidth, viewportWidth - 2 * viewportMargin)
     const left = Math.max(viewportMargin, Math.min(anchor.right - width, viewportWidth - width - viewportMargin))
-
-    const roomBelow = viewportHeight - anchor.bottom - buttonGap - viewportMargin
-    const roomAbove = anchor.top - buttonGap - viewportMargin
-    const placeAbove = dialog.scrollHeight > roomBelow && roomAbove > roomBelow
-    const maxHeight = Math.max(placeAbove ? roomAbove : roomBelow, 120)
-    const height = Math.min(dialog.scrollHeight, maxHeight)
-
     dialog.style.width = `${width}px`
-    dialog.style.left = `${left}px`
-    dialog.style.maxHeight = `${maxHeight}px`
-    dialog.style.top = `${placeAbove ? anchor.top - buttonGap - height : anchor.bottom + buttonGap}px`
+
+    if (placedAbove.current === null) {
+      const roomBelow = window.innerHeight - anchor.bottom - buttonGap - viewportMargin
+      const roomAbove = anchor.top - buttonGap - viewportMargin
+      placedAbove.current = dialog.scrollHeight > roomBelow && roomAbove > roomBelow
+      dialog.style.maxHeight = `${Math.max(placedAbove.current ? roomAbove : roomBelow, 120)}px`
+    }
+    const height = dialog.offsetHeight
+
+    // The coordinates are relative to the page, so find where the page's origin is in the viewport
+    dialog.style.left = '0px'
+    dialog.style.top = '0px'
+    const origin = dialog.getBoundingClientRect()
+    dialog.style.left = `${left - origin.left}px`
+    dialog.style.top = `${(placedAbove.current ? anchor.top - buttonGap - height : anchor.bottom + buttonGap) - origin.top}px`
   }, [])
 
-  // Place the dialog before it's painted, and keep it next to the button when the page moves or changes size
+  // Place the dialog before it's painted, and again after every render, in case the layout moved the button
+  // Scrolling moves the dialog together with the page, so it doesn't need to be placed again
   useLayoutEffect(() => {
     if (!open) {
+      placedAbove.current = null
       return
     }
 
     place()
+  })
+
+  // Keep the dialog next to the button and inside the viewport when the window changes size
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+
     window.addEventListener('resize', place)
-    window.addEventListener('scroll', place, { capture: true, passive: true })
     return () => {
       window.removeEventListener('resize', place)
-      window.removeEventListener('scroll', place, { capture: true })
     }
-  }, [open, place, endpoints])
+  }, [open, place])
 
   // Move focus into the dialog when it opens
   useEffect(() => {
@@ -269,13 +283,12 @@ const EndpointHistory = ({
           onOpenChange(!open)
         }}
         className={cn(
-          'inline-flex min-h-7 min-w-7 cursor-pointer items-center justify-center gap-1 rounded-md px-1.5 text-xs font-medium text-foreground',
-          'outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50',
-          open && 'bg-accent'
+          'inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground',
+          'outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          open && 'bg-accent text-accent-foreground'
         )}
       >
         <History className="h-4 w-4" aria-hidden="true" />
-        History
       </button>
 
       {open && (
@@ -285,21 +298,11 @@ const EndpointHistory = ({
           role="dialog"
           aria-labelledby={titleId}
           tabIndex={-1}
-          className="fixed z-50 overflow-y-auto overscroll-contain rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="absolute z-50 overflow-y-auto overscroll-contain rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
         >
-          <div className="flex items-start justify-between gap-2">
-            <h2 id={titleId} className="min-w-0 break-words font-semibold">
-              Endpoint history of {domain}
-            </h2>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={() => close(true)}
-              className="-mr-1.5 -mt-1 inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            >
-              <X className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
+          <h2 id={titleId} className="wrap-break-word font-semibold">
+            Endpoint history of {domain}
+          </h2>
 
           <p className="mt-1 text-muted-foreground">
             Last updated: <Time value={lastUpdated} />
