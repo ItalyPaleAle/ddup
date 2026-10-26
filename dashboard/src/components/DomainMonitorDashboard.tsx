@@ -52,14 +52,42 @@ type Domain = {
   status: DomainStatus
 }
 
-// Colors of the health badges of domains and endpoints, light and tinted in dark mode
-// They are the same on hover, so the badges don't look like buttons
-const healthBadgeColors = {
-  healthy:
-    'bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30',
-  warning:
-    'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/30',
-  unhealthy: 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30',
+type Health = 'healthy' | 'warning' | 'unhealthy'
+
+// Look of the health badges of domains and endpoints, light and tinted in dark mode
+// The colors are the same on hover, so the badges don't look like buttons
+const healthBadges = {
+  healthy: {
+    label: 'Healthy',
+    icon: CheckCircle,
+    variant: 'default',
+    colors:
+      'bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30',
+  },
+  warning: {
+    label: 'Warning',
+    icon: AlertTriangle,
+    variant: 'secondary',
+    colors:
+      'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/30',
+  },
+  unhealthy: {
+    label: 'Unhealthy',
+    icon: XCircle,
+    variant: 'destructive',
+    colors: 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30',
+  },
+} as const
+
+// A square badge with only the icon of a health status
+// The name of the status is its accessible name, and the tooltip on hover
+const HealthBadge = ({ health, className }: { health: Health; className?: string }) => {
+  const { label, icon: Icon, variant, colors } = healthBadges[health]
+  return (
+    <Badge role="img" aria-label={label} title={label} variant={variant} className={cn('p-0', colors, className)}>
+      <Icon aria-hidden="true" />
+    </Badge>
+  )
 }
 
 // One segment of the summary bar: the count of domains with a health status
@@ -409,29 +437,19 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
               return (
                 <Card key={domain.name} className="overflow-hidden">
                   <CardHeader className="pb-2">
+                    {/* The status and the history button don't shrink, so a long name wraps instead of pushing them out of the card */}
                     <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="min-w-0 wrap-break-word text-lg">{domain.name}</CardTitle>
-                      {/* The status and the history button don't shrink, so a long name wraps instead of pushing them out of the card */}
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Badge
-                          variant={
-                            status === 'healthy' ? 'default' : status === 'warning' ? 'secondary' : 'destructive'
-                          }
-                          className={cn('flex items-center gap-1', healthBadgeColors[status])}
-                        >
-                          {status === 'healthy' && <CheckCircle className="h-3 w-3" />}
-                          {status === 'warning' && <AlertTriangle className="h-3 w-3" />}
-                          {status === 'unhealthy' && <XCircle className="h-3 w-3" />}
-                          {status.charAt(0).toUpperCase() + status.slice(1)}
-                        </Badge>
-                        <EndpointHistory
-                          domain={domain.name}
-                          lastUpdated={domain.status.lastUpdated}
-                          endpoints={domain.status.endpoints}
-                          open={historyDomain === domain.name}
-                          onOpenChange={(open) => setHistoryDomain(open ? domain.name : null)}
-                        />
+                      <div className="flex min-w-0 items-center gap-2">
+                        <HealthBadge health={status} className="size-7 [&>svg]:size-4" />
+                        <CardTitle className="min-w-0 wrap-break-word text-lg">{domain.name}</CardTitle>
                       </div>
+                      <EndpointHistory
+                        domain={domain.name}
+                        lastUpdated={domain.status.lastUpdated}
+                        endpoints={domain.status.endpoints}
+                        open={historyDomain === domain.name}
+                        onOpenChange={(open) => setHistoryDomain(open ? domain.name : null)}
+                      />
                     </div>
                     <div className="text-sm text-muted-foreground">
                       {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
@@ -447,20 +465,10 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                           {domain.status.endpoints.map((endpoint, index) => (
                             <div key={index} className="flex items-center justify-between rounded-lg border p-2">
                               <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={endpoint.healthy ? 'default' : 'destructive'}
-                                  className={cn(
-                                    'text-xs',
-                                    healthBadgeColors[endpoint.healthy ? 'healthy' : 'unhealthy']
-                                  )}
-                                >
-                                  {endpoint.healthy ? (
-                                    <CheckCircle className="h-3 w-3" />
-                                  ) : (
-                                    <XCircle className="h-3 w-3" />
-                                  )}
-                                  {endpoint.healthy ? 'Healthy' : 'Unhealthy'}
-                                </Badge>
+                                <HealthBadge
+                                  health={endpoint.healthy ? 'healthy' : 'unhealthy'}
+                                  className="size-6 [&>svg]:size-3.5"
+                                />
                                 <span className="font-mono text-sm">{endpoint.ip}</span>
                               </div>
                               <div className="text-right text-xs text-muted-foreground">

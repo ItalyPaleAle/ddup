@@ -210,15 +210,31 @@ test.describe('domain list', () => {
     })
 
     test('shows the health of each domain', async ({ page }) => {
-        await expect(domainBadge(page, 'healthy.example')).toHaveText('Healthy')
-        await expect(domainBadge(page, 'ipv6.example')).toHaveText('Healthy')
-        await expect(domainBadge(page, 'partial.example')).toHaveText('Warning')
-        await expect(domainBadge(page, 'down.example')).toHaveText('Unhealthy')
+        await expect(domainBadge(page, 'healthy.example')).toHaveAccessibleName('Healthy')
+        await expect(domainBadge(page, 'ipv6.example')).toHaveAccessibleName('Healthy')
+        await expect(domainBadge(page, 'partial.example')).toHaveAccessibleName('Warning')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Unhealthy')
         // A DNS error makes the domain unhealthy, even if its endpoints are healthy
-        await expect(domainBadge(page, 'dns-error.example')).toHaveText('Unhealthy')
-        await expect(domainBadge(page, 'no-endpoints.example')).toHaveText('Unhealthy')
+        await expect(domainBadge(page, 'dns-error.example')).toHaveAccessibleName('Unhealthy')
+        await expect(domainBadge(page, 'no-endpoints.example')).toHaveAccessibleName('Unhealthy')
 
         await expect(page.getByText('Last updated:')).toBeVisible()
+    })
+
+    test('the health of a domain is an icon before its name, named on hover', async ({ page }) => {
+        const badge = domainBadge(page, 'partial.example')
+        await expect(badge).toHaveText('')
+        await expect(badge.locator('svg')).toHaveCount(1)
+        await expect(badge).toHaveAttribute('role', 'img')
+        await expect(badge).toHaveAttribute('title', 'Warning')
+
+        // On the same line as the name, right before it
+        const title = domainCard(page, 'partial.example').locator('[data-slot="card-title"]')
+        const badgeBox = (await badge.boundingBox())!
+        const titleBox = (await title.boundingBox())!
+        expect(badgeBox.x + badgeBox.width).toBeLessThanOrEqual(titleBox.x)
+        expect(titleBox.x - (badgeBox.x + badgeBox.width)).toBeLessThan(16)
+        expect(Math.abs(badgeBox.y + badgeBox.height / 2 - (titleBox.y + titleBox.height / 2))).toBeLessThan(4)
     })
 
     test('shows the details of each domain', async ({ page }) => {
@@ -228,12 +244,19 @@ test.describe('domain list', () => {
         await expect(card).toContainText('1/2 endpoints healthy')
         await expect(card).toContainText('Endpoints (2)')
 
+        // The health of an endpoint is an icon, named on hover
         const healthyRow = endpointRow(card, '198.51.100.1')
-        await expect(healthyRow).toContainText('Healthy')
+        await expect(healthyRow.getByRole('img', { name: 'Healthy', exact: true })).toHaveAttribute('title', 'Healthy')
         await expect(healthyRow).toContainText('Failures: 0')
         const unhealthyRow = endpointRow(card, '198.51.100.2')
-        await expect(unhealthyRow).toContainText('Unhealthy')
+        await expect(unhealthyRow.getByRole('img', { name: 'Unhealthy', exact: true })).toHaveAttribute(
+            'title',
+            'Unhealthy'
+        )
         await expect(unhealthyRow).toContainText('Failures: 3')
+        for (const row of [healthyRow, unhealthyRow]) {
+            await expect(row.locator('[data-slot="badge"]')).toHaveText('')
+        }
 
         // Endpoints that are still healthy can have recent failures
         await expect(endpointRow(domainCard(page, 'healthy.example'), '192.0.2.2')).toContainText('Failures: 1')
@@ -361,7 +384,7 @@ test.describe('refreshing', () => {
         status.body = recoveredDomains
         await page.clock.fastForward('01:00')
         await expect.poll(() => status.requests).toBe(2)
-        await expect(domainBadge(page, 'down.example')).toHaveText('Healthy')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Healthy')
 
         await page.getByRole('button', { name: 'Auto-refresh ON' }).click()
         const turnOn = page.getByRole('button', { name: 'Auto-refresh OFF' })
@@ -380,13 +403,13 @@ test.describe('refreshing', () => {
     test('Refresh now reloads the status', async ({ page }) => {
         const status = await mockStatus(page, domains)
         await page.goto('/')
-        await expect(domainBadge(page, 'down.example')).toHaveText('Unhealthy')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Unhealthy')
 
         status.body = recoveredDomains
         await page.getByRole('button', { name: 'More refresh options' }).click()
         await page.getByRole('menuitem', { name: 'Refresh now' }).click()
 
-        await expect(domainBadge(page, 'down.example')).toHaveText('Healthy')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Healthy')
         expect(status.requests).toBe(2)
     })
 })
@@ -402,7 +425,7 @@ test.describe('Check now', () => {
             await route.fulfill({ json: recoveredDomains })
         })
         await page.goto('/')
-        await expect(domainBadge(page, 'down.example')).toHaveText('Unhealthy')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Unhealthy')
 
         const checkNow = page.getByRole('button', { name: 'Check now' })
         await checkNow.click()
@@ -412,7 +435,7 @@ test.describe('Check now', () => {
 
         response.release()
         await expect(checkNow).toBeEnabled()
-        await expect(domainBadge(page, 'down.example')).toHaveText('Healthy')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Healthy')
 
         // The server requires this header, which blocks cross-site requests
         expect(checkRequests).toHaveLength(1)
@@ -515,14 +538,14 @@ test.describe('status icon', () => {
     test('changes when the status changes', async ({ page }) => {
         const status = await mockStatus(page, pickDomains(domains, 'healthy.example', 'down.example'))
         await page.goto('/')
-        await expect(domainBadge(page, 'down.example')).toHaveText('Unhealthy')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Unhealthy')
         await expectStatusIcon(page, 'unhealthy')
 
         status.body = pickDomains(recoveredDomains, 'healthy.example', 'down.example')
         await page.getByRole('button', { name: 'More refresh options' }).click()
         await page.getByRole('menuitem', { name: 'Refresh now' }).click()
 
-        await expect(domainBadge(page, 'down.example')).toHaveText('Healthy')
+        await expect(domainBadge(page, 'down.example')).toHaveAccessibleName('Healthy')
         await expectStatusIcon(page, 'healthy')
     })
 
@@ -763,14 +786,21 @@ test.describe('endpoint history', () => {
         await expect(historyDialog(page, 'old.example')).toContainText('Healthy since Dec 31, 2025, 11:30:00 PM')
     })
 
-    test('the button is an icon right after the status badge', async ({ page }) => {
+    test('the button is an icon at the end of the line with the name', async ({ page }) => {
         const card = domainCard(page, 'history.example')
         const button = card.getByRole('button', { name: 'History of history.example' })
         await expect(button).toBeVisible()
         await expect(button).toHaveText('')
         await expect(button).toHaveAttribute('title', 'Endpoint history')
         await expect(button.locator('svg')).toHaveCount(1)
-        expect(await button.evaluate((el) => el.previousElementSibling?.getAttribute('data-slot'))).toBe('badge')
+
+        const buttonBox = (await button.boundingBox())!
+        const titleBox = (await card.locator('[data-slot="card-title"]').boundingBox())!
+        const headerBox = (await card.locator('[data-slot="card-header"]').boundingBox())!
+        expect(buttonBox.x).toBeGreaterThan(titleBox.x + titleBox.width)
+        // The header has a padding of 24 pixels
+        expect(headerBox.x + headerBox.width - (buttonBox.x + buttonBox.width)).toBeLessThanOrEqual(24)
+        expect(Math.abs(buttonBox.y + buttonBox.height / 2 - (titleBox.y + titleBox.height / 2))).toBeLessThan(4)
 
         // The line that counts the healthy endpoints has only the count
         await expect(card.getByText('5/6 endpoints healthy', { exact: true })).toBeVisible()
