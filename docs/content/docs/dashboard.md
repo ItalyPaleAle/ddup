@@ -36,7 +36,9 @@ The top of the page counts the domains in each state:
 | Warning | Some endpoints are unhealthy |
 | Unhealthy | No endpoint is healthy, or the last attempt to update DNS failed |
 
-Each domain has a card with its provider, the time of its last check, and its endpoints. For each endpoint, the card shows its IP, whether it's healthy, and how many checks it failed in a row. An endpoint can be healthy and have failures: it failed fewer than `attempts` checks, so it's still in DNS.
+Each domain has a card showing its state and the list of endpoints. For each endpoint, it shows whether it's healthy, its IP, and how many checks it failed in a row. An endpoint can be healthy and have failures: it failed fewer than `attempts` checks, so it's still in DNS.
+
+The history button, at the end of the line with the domain name, opens the history of the endpoints.
 
 ## API
 
