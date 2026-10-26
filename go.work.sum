@@ -19,7 +19,6 @@ github.com/envoyproxy/go-control-plane/envoy v1.37.0/go.mod h1:DReE9MMrmecPy+YvQ
 github.com/envoyproxy/go-control-plane/ratelimit v0.1.0/go.mod h1:Wk+tMFAFbCXaJPzVVHnPgRKdUdwW/KdbRt94AzgRee4=
 github.com/envoyproxy/protoc-gen-validate v1.3.3/go.mod h1:TsndJ/ngyIdQRhMcVVGDDHINPLWB7C82oDArY51KfB0=
 github.com/evanw/esbuild v0.28.1/go.mod h1:D2vIQZqV/vIf/VRHtViaUtViZmG7o+kKmlBfVQuRi48=
-github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
 github.com/fsnotify/fsnotify v1.10.1/go.mod h1:TLheqan6HD6GBK6PrDWyDPBaEV8LspOxvPSjC+bVfgo=
 github.com/fxamacker/cbor/v2 v2.9.3/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/gaissmai/bart v0.29.0/go.mod h1:GREWQfTLRWz/c5FTOsIw+KkscuFkIV5t8Rp7Nd1Td5c=
@@ -93,7 +92,6 @@ github.com/x448/float16 v0.8.4/go.mod h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcY
 github.com/xhit/go-str2duration/v2 v2.1.0/go.mod h1:ohY8p+0f07DiV6Em5LKB0s2YpLtXVyJfNt1+BlmyAsU=
 go.opentelemetry.io/contrib/detectors/gcp v1.44.0/go.mod h1:tNAsgd8avTGke1+MndXlU5Cru4PQ9Ai/cCNWQv/ZJ/s=
 go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.71.0/go.mod h1:dylvB+ZiiwMvsDij9O84Uy7SijLgHMX4mbkncds+4Sw=
-go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.72.0/go.mod h1:tOsftB4SslBwwErVEPaenU2RpThXWPIU8DoJHEC4dyw=
 go4.org/mem v0.0.0-20240501181205-ae6ca9944745/go.mod h1:reUoABIJ9ikfM5sgtSF3Wushcza7+WeD01VB9Lirh3g=
 go4.org/netipx v0.0.0-20260823151212-3075585bcbeb/go.mod h1:PLyyIXexvUFg3Owu6p/WfdlivPbZJsZdgWZlrGope/Y=
 golang.org/x/exp v0.0.0-20261011100332-faecfb24eb49/go.mod h1:DBoxwWhjaW8DJJw/YeM4zpeOKMC1FMXSblsYy+1mFSw=
@@ -109,6 +107,6 @@ gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c/go.mod h1:JHkPIbrfpd72SG/EV
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 gvisor.dev/gvisor v0.0.0-20260915211658-a6f909f08a72/go.mod h1:8aLQqUBHDH8fY5y60lzmwDpMMbQCcT3EBfoSwhfaGCY=
 honnef.co/go/tools v0.8.1/go.mod h1:XA+OnlRA9EDh/ukGvXMNSZNKGwFQJ+5dER0ioUkOxks=
-k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3/go.mod h1:M2s5JB1lIYP3jzZdorPLHXIPJzt9vv2muW5a6L9DtNM=
+k8s.io/klog/v2 v2.80.1/go.mod h1:y1WjHnz7Dj687irZUWR/WLkLc5N1YHtjLdmgWjndZn0=
 sigs.k8s.io/randfill v1.0.0/go.mod h1:XeLlZ/jmk4i1HRopwe7/aU3H5n1zNUcX6TM94b3QxOY=
 tailscale.com v1.104.1/go.mod h1:Cb1XjScRgSOeRD7NW6uCEznme782WiOU9IxqyTWoRf0=

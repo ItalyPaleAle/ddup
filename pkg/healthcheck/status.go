@@ -50,32 +50,10 @@ func (hc *HealthChecker) GetDomainStatus(domain string) *DomainStatus {
 func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 	healthy, unhealthy, lastUpdated, lastError := dc.getState()
 
-	// Endpoints in the unhealthy list could also be in the healthy one,
-	// if they failed a recent health check but still less than the max attempts
-	newEndpoint := func(ip string, isHealthy bool, failureCount int) DomainStatusEndpoint {
-		e := DomainStatusEndpoint{
-			Healthy:      isHealthy,
-			IP:           ip,
-			FailureCount: failureCount,
-		}
-		times := dc.getTimes(ip)
-		if times != nil {
-			e.Since = &times.since
-			e.SinceStart = times.sinceStart
-			if !times.lastFailure.IsZero() {
-				e.LastFailure = &times.lastFailure
-				e.LastError = times.lastError
-			}
-			if !times.firstFailure.IsZero() {
-				e.FirstFailure = &times.firstFailure
-			}
-		}
-		return e
-	}
-
+	// Endpoints in the unhealthy list could also be in the healthy one, if they failed a recent health check but still less than the max attempts
 	endpoints := make([]DomainStatusEndpoint, 0, len(healthy)+len(unhealthy))
 	for _, ip := range healthy {
-		endpoints = append(endpoints, newEndpoint(ip, true, unhealthy[ip]))
+		endpoints = append(endpoints, dc.getDomainStatusEndpoint(ip, true, unhealthy[ip]))
 	}
 	for ip, attempts := range unhealthy {
 		// Endpoints that are still in the healthy list were added above
@@ -84,7 +62,7 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 			continue
 		}
 
-		endpoints = append(endpoints, newEndpoint(ip, false, attempts))
+		endpoints = append(endpoints, dc.getDomainStatusEndpoint(ip, false, attempts))
 	}
 
 	return DomainStatus{
@@ -93,4 +71,28 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 		Error:       lastError,
 		Endpoints:   endpoints,
 	}
+}
+
+// getDomainStatusEndpoint returns the DomainStatusEndpoint object
+func (dc *domainChecker) getDomainStatusEndpoint(ip string, isHealthy bool, failureCount int) DomainStatusEndpoint {
+	e := DomainStatusEndpoint{
+		Healthy:      isHealthy,
+		IP:           ip,
+		FailureCount: failureCount,
+	}
+
+	times := dc.getTimes(ip)
+	if times != nil {
+		e.Since = &times.since
+		e.SinceStart = times.sinceStart
+		if !times.lastFailure.IsZero() {
+			e.LastFailure = &times.lastFailure
+			e.LastError = times.lastError
+		}
+		if !times.firstFailure.IsZero() {
+			e.FirstFailure = &times.firstFailure
+		}
+	}
+
+	return e
 }
