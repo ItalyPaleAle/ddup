@@ -155,7 +155,7 @@ func TestHealthChecker_CNAMETier(t *testing.T) {
 		{Healthy: true, IP: "192.0.2.10", Type: "A"},
 		{Healthy: true, IP: "192.0.2.11", Type: "A"},
 		{Healthy: true, IP: "0a1b2c3d.cfargotunnel.com", Type: "CNAME", Proxied: true},
-	}, status.Endpoints)
+	}, withoutTimes(status.Endpoints))
 }
 
 func TestHealthChecker_CNAMEFailoverWithRecoverAfter(t *testing.T) {

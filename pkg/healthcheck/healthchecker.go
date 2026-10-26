@@ -243,6 +243,9 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 			domainLog.DebugContext(ctx, "Published targets unchanged, skipping DNS update", "healthy", newHealthyIPs, "published", publishIPs)
 		}
 
+		// Record the state changes, so they match what the status reports
+		dc.recordCycle(results, newHealthyIPs)
+
 		// Update the stored state, also when the update failed, so the health of the endpoints keeps being tracked
 		dc.setState(newHealthyIPs, failedIPs)
 
