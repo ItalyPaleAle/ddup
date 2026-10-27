@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page, type Request } from '@playwright
 // Same shape as the response of the /api/status endpoint
 interface DomainStatusEndpoint {
     healthy: boolean
-    ip: string
+    target: string
     failureCount?: number
     since?: string
     sinceStart?: boolean
@@ -32,28 +32,28 @@ const domains: DomainsResponse = {
         lastUpdated,
         provider: 'cloudflare',
         endpoints: [
-            { healthy: true, ip: '192.0.2.1' },
-            { healthy: true, ip: '192.0.2.2', failureCount: 1 },
+            { healthy: true, target: '192.0.2.1' },
+            { healthy: true, target: '192.0.2.2', failureCount: 1 },
         ],
     },
     'partial.example': {
         lastUpdated,
         provider: 'ovh',
         endpoints: [
-            { healthy: true, ip: '198.51.100.1' },
-            { healthy: false, ip: '198.51.100.2', failureCount: 3 },
+            { healthy: true, target: '198.51.100.1' },
+            { healthy: false, target: '198.51.100.2', failureCount: 3 },
         ],
     },
     'down.example': {
         lastUpdated,
         provider: 'azure',
-        endpoints: [{ healthy: false, ip: '203.0.113.1', failureCount: 5 }],
+        endpoints: [{ healthy: false, target: '203.0.113.1', failureCount: 5 }],
     },
     'dns-error.example': {
         lastUpdated,
         provider: 'cloudflare',
         error: 'Error updating DNS records: boom',
-        endpoints: [{ healthy: true, ip: '203.0.113.9' }],
+        endpoints: [{ healthy: true, target: '203.0.113.9' }],
     },
     'no-endpoints.example': {
         lastUpdated,
@@ -63,7 +63,7 @@ const domains: DomainsResponse = {
     'ipv6.example': {
         lastUpdated,
         provider: 'ovh',
-        endpoints: [{ healthy: true, ip: '2001:db8::1' }],
+        endpoints: [{ healthy: true, target: '2001:db8::1' }],
     },
 }
 const domainNames = Object.keys(domains)
@@ -74,7 +74,7 @@ const recoveredDomains: DomainsResponse = {
     'down.example': {
         lastUpdated,
         provider: 'azure',
-        endpoints: [{ healthy: true, ip: '203.0.113.1' }],
+        endpoints: [{ healthy: true, target: '203.0.113.1' }],
     },
 }
 
@@ -85,11 +85,11 @@ const historyDomains: DomainsResponse = {
         provider: 'cloudflare',
         endpoints: [
             // Recovered: it failed before, and the last failure is kept
-            { healthy: true, ip: '192.0.2.10', since: '2026-10-09T08:15:00Z', lastFailure: '2026-10-09T08:10:00Z' },
+            { healthy: true, target: '192.0.2.10', since: '2026-10-09T08:15:00Z', lastFailure: '2026-10-09T08:10:00Z' },
             // Failing
             {
                 healthy: false,
-                ip: '192.0.2.11',
+                target: '192.0.2.11',
                 failureCount: 3,
                 since: '2026-10-13T09:00:00Z',
                 lastFailure: '2026-10-13T09:29:00Z',
@@ -97,13 +97,13 @@ const historyDomains: DomainsResponse = {
                 firstFailure: '2026-10-13T09:00:00Z',
             },
             // Healthy since the first check after ddup started
-            { healthy: true, ip: '192.0.2.12', since: '2026-10-13T07:45:00Z', sinceStart: true },
+            { healthy: true, target: '192.0.2.12', since: '2026-10-13T07:45:00Z', sinceStart: true },
             // From a server that does not report the times
-            { healthy: true, ip: '192.0.2.13' },
+            { healthy: true, target: '192.0.2.13' },
             // Warning: healthy, but the last checks failed
             {
                 healthy: true,
-                ip: '192.0.2.14',
+                target: '192.0.2.14',
                 failureCount: 2,
                 since: '2026-10-12T10:00:00Z',
                 firstFailure: '2026-10-13T09:27:00Z',
@@ -113,7 +113,7 @@ const historyDomains: DomainsResponse = {
             // Warning after a single failed check
             {
                 healthy: true,
-                ip: '192.0.2.15',
+                target: '192.0.2.15',
                 failureCount: 1,
                 since: '2026-10-12T10:00:00Z',
                 firstFailure: '2026-10-13T09:28:30Z',
@@ -125,7 +125,7 @@ const historyDomains: DomainsResponse = {
     'other.example': {
         lastUpdated: '2026-10-13T09:31:00Z',
         provider: 'ovh',
-        endpoints: [{ healthy: true, ip: '198.51.100.7', since: '2026-10-12T22:00:00Z' }],
+        endpoints: [{ healthy: true, target: '198.51.100.7', since: '2026-10-12T22:00:00Z' }],
     },
 }
 
@@ -775,7 +775,7 @@ test.describe('endpoint history', () => {
             'old.example': {
                 lastUpdated: '2026-10-13T09:30:00Z',
                 provider: 'ovh',
-                endpoints: [{ healthy: true, ip: '198.51.100.8', since: '2025-12-31T23:30:00Z' }],
+                endpoints: [{ healthy: true, target: '198.51.100.8', since: '2025-12-31T23:30:00Z' }],
             },
         })
         await page.getByRole('button', { name: 'More refresh options' }).click()

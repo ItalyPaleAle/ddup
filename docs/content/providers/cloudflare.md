@@ -77,6 +77,6 @@ The response has `"success": true` if both are right.
 
 ## Things to know
 
-- The records that ddup creates are DNS-only (the grey cloud in the dashboard), so clients connect to your servers' IPs directly, without going through Cloudflare's proxy.
+- By default, ddup creates DNS-only records (with a "gray cloud" in the dashboard). Set [`providerOptions.cloudflare.proxied`](/docs/configuration/#cname-records-and-cloudflare-proxying) to have Cloudflare proxy the endpoint ("orange cloud").
 - Cloudflare doesn't accept a `ttl` lower than 60 seconds, or 30 seconds on Enterprise plans.
 - A and AAAA records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).

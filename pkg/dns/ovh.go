@@ -87,8 +87,18 @@ func (o *OVHProvider) Name() string {
 	return o.name
 }
 
+// Capabilities returns what the provider can publish
+func (o *OVHProvider) Capabilities() Capabilities {
+	return ovhCapabilities
+}
+
 // UpdateRecords updates DNS records for the given domain with the provided IPs
-func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
+func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error) {
+	ips, err := plainIPsFromTargets(o.name, targets)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	canonicalIPs, err := canonicalizeIPs(ips)
 	if err != nil {
 		return UpdateResult{}, err
@@ -393,4 +403,9 @@ func (o *OVHProvider) calculateSignature(method, url, body, timestamp string) st
 	// #nosec G401
 	hash := sha1.Sum([]byte(data))
 	return "$1$" + hex.EncodeToString(hash[:])
+}
+
+// ovhCapabilities declares that the provider only publishes A and AAAA records that are not proxied
+var ovhCapabilities = Capabilities{
+	Type: "ovh",
 }

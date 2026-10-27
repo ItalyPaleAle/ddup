@@ -24,7 +24,7 @@ import { EndpointHistory } from '@/components/EndpointHistory'
 
 interface DomainStatusEndpoint {
   healthy: boolean
-  ip: string
+  target: string
   failureCount?: number
   // When the endpoint last changed state, as an RFC 3339 time
   since?: string
@@ -280,7 +280,9 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const filteredDomains = domains.filter((domain) => {
     const searchLower = searchTerm.toLowerCase()
     const domainMatches = domain.name.toLowerCase().includes(searchLower)
-    const endpointMatches = domain.status.endpoints.some((endpoint) => endpoint.ip.toLowerCase().includes(searchLower))
+    const endpointMatches = domain.status.endpoints.some((endpoint) =>
+      endpoint.target.toLowerCase().includes(searchLower)
+    )
     return domainMatches || endpointMatches
   })
 
@@ -469,7 +471,7 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                                   health={endpoint.healthy ? 'healthy' : 'unhealthy'}
                                   className="size-6 [&>svg]:size-3.5"
                                 />
-                                <span className="font-mono text-sm">{endpoint.ip}</span>
+                                <span className="font-mono text-sm">{endpoint.target}</span>
                               </div>
                               <div className="text-right text-xs text-muted-foreground">
                                 <div>Failures: {endpoint.failureCount || '0'}</div>

@@ -58,9 +58,9 @@ Returns an object with one key for each domain:
     "lastUpdated": "2026-10-13T08:15:30.123456789Z",
     "provider": "my-dns",
     "endpoints": [
-      { "healthy": true, "ip": "192.0.2.10" },
-      { "healthy": true, "ip": "192.0.2.11", "failureCount": 1 },
-      { "healthy": false, "ip": "192.0.2.12", "failureCount": 4 }
+      { "healthy": true, "target": "192.0.2.10" },
+      { "healthy": true, "target": "192.0.2.11", "failureCount": 1 },
+      { "healthy": false, "target": "192.0.2.12", "failureCount": 4 }
     ]
   }
 }
@@ -71,7 +71,9 @@ Returns an object with one key for each domain:
 | `lastUpdated` | Time of the last check |
 | `provider` | Name of the DNS provider, from the configuration |
 | `error` | Only present when the last attempt to update DNS failed: the error message |
-| `endpoints[].ip` | IP address of the endpoint |
+| `endpoints[].target` | IP address of the endpoint, or the hostname for an endpoint with `cname` |
+| `endpoints[].type` | Type of the DNS record of the endpoint: `A`, `AAAA` or `CNAME` |
+| `endpoints[].proxied` | `true` if the record is proxied by Cloudflare. Omitted otherwise |
 | `endpoints[].healthy` | Whether the endpoint is healthy, with the same meaning as in the dashboard |
 | `endpoints[].failureCount` | Number of failed checks in a row. Omitted when it's 0. |
 | `endpoints[].since` | When the endpoint last changed between healthy and unhealthy. Omitted when not known |
@@ -86,7 +88,7 @@ For example, to list the unhealthy endpoints with [jq](https://jqlang.org):
 
 ```sh
 curl -s http://127.0.0.1:7401/api/status \
-  | jq -r 'to_entries[] | .key as $d | .value.endpoints[] | select(.healthy | not) | "\($d) \(.ip)"'
+  | jq -r 'to_entries[] | .key as $d | .value.endpoints[] | select(.healthy | not) | "\($d) \(.target)"'
 ```
 
 ### Get the status of one domain
