@@ -53,9 +53,9 @@ func TestValidateNotifications(t *testing.T) {
 		{
 			name: "webhook unknown format",
 			mutate: func(n *ConfigNotifications) {
-				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "teams", URL: "https://hooks.example.com/x"}}
+				n.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "notreal", URL: "https://hooks.example.com/x"}}
 			},
-			expectErr: `notifications.webhooks[0] "a" is invalid: unknown format "teams"`,
+			expectErr: `notifications.webhooks[0] "a" is invalid: unknown format "notreal"`,
 		},
 		{
 			name: "webhook unknown event",
@@ -136,7 +136,7 @@ func TestValidateNotifications(t *testing.T) {
 
 	t.Run("errors never include secrets", func(t *testing.T) {
 		cfg := newNotificationsConfig()
-		cfg.Notifications.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "teams", URL: "https://hooks.example.com/secret-token-value"}}
+		cfg.Notifications.Webhooks = []ConfigNotificationWebhook{{Name: "a", Format: "notreal", URL: "https://hooks.example.com/secret-token-value"}}
 		err := cfg.Validate(slog.Default())
 		require.Error(t, err)
 		assert.NotContains(t, err.Error(), "secret-token-value")
