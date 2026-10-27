@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 
 export interface EndpointHistoryItem {
   healthy: boolean
-  ip: string
+  target: string
   since?: string
   sinceStart?: boolean
   failureCount?: number
@@ -313,8 +313,8 @@ const EndpointHistory = ({
           ) : (
             <ul className="mt-3 space-y-3">
               {endpoints.map((endpoint) => (
-                <li key={endpoint.ip} className="space-y-0.5 border-t pt-3">
-                  <div className="break-all font-mono">{endpoint.ip}</div>
+                <li key={endpoint.target} className="space-y-0.5 border-t pt-3">
+                  <div className="break-all font-mono">{endpoint.target}</div>
                   <EndpointStatus endpoint={endpoint} />
                 </li>
               ))}

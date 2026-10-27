@@ -183,6 +183,7 @@ func (e *ConfigEndpoint) Target() string {
 	if e.CNAME != "" {
 		return e.CNAME
 	}
+
 	return e.IP
 }
 

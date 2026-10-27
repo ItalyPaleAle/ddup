@@ -148,13 +148,12 @@ func TestHealthChecker_CNAMETier(t *testing.T) {
 	assert.ElementsMatch(t, []dns.Target{vpsUS, vpsEU}, provider.LastTargets)
 	assert.Equal(t, 4, provider.CallCount)
 
-	// The status keeps the target in the "ip" field, and has the type and proxied flag
 	status := hc.GetDomainStatus("example.com")
 	require.NotNil(t, status)
 	assert.ElementsMatch(t, []DomainStatusEndpoint{
-		{Healthy: true, IP: "192.0.2.10", Type: "A"},
-		{Healthy: true, IP: "192.0.2.11", Type: "A"},
-		{Healthy: true, IP: "0a1b2c3d.cfargotunnel.com", Type: "CNAME", Proxied: true},
+		{Healthy: true, Target: "192.0.2.10", Type: "A"},
+		{Healthy: true, Target: "192.0.2.11", Type: "A"},
+		{Healthy: true, Target: "0a1b2c3d.cfargotunnel.com", Type: "CNAME", Proxied: true},
 	}, withoutTimes(status.Endpoints))
 }
 
@@ -227,9 +226,9 @@ func TestDomainStatusEndpointJSON(t *testing.T) {
 		LastUpdated: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		Provider:    "cf",
 		Endpoints: []DomainStatusEndpoint{
-			{Healthy: true, IP: "192.0.2.1", Type: "A"},
-			{Healthy: true, IP: "2001:db8::1", Type: "AAAA", Proxied: true},
-			{Healthy: false, IP: "tunnel.example.net", Type: "CNAME", Proxied: true, FailureCount: 2},
+			{Healthy: true, Target: "192.0.2.1", Type: "A"},
+			{Healthy: true, Target: "2001:db8::1", Type: "AAAA", Proxied: true},
+			{Healthy: false, Target: "tunnel.example.net", Type: "CNAME", Proxied: true, FailureCount: 2},
 		},
 	})
 	require.NoError(t, err)
@@ -237,9 +236,9 @@ func TestDomainStatusEndpointJSON(t *testing.T) {
 		"lastUpdated": "2026-01-02T03:04:05Z",
 		"provider": "cf",
 		"endpoints": [
-			{"healthy": true, "ip": "192.0.2.1", "type": "A"},
-			{"healthy": true, "ip": "2001:db8::1", "type": "AAAA", "proxied": true},
-			{"healthy": false, "ip": "tunnel.example.net", "type": "CNAME", "proxied": true, "failureCount": 2}
+			{"healthy": true, "target": "192.0.2.1", "type": "A"},
+			{"healthy": true, "target": "2001:db8::1", "type": "AAAA", "proxied": true},
+			{"healthy": false, "target": "tunnel.example.net", "type": "CNAME", "proxied": true, "failureCount": 2}
 		]
 	}`, string(enc))
 }

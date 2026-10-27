@@ -22,8 +22,8 @@ func (p *providerWithEndpoints) GetAllDomainsStatus() map[string]healthcheck.Dom
 		"a.example.com": {
 			Provider: "p",
 			Endpoints: []healthcheck.DomainStatusEndpoint{
-				{Healthy: true, IP: "192.0.2.10", Type: "A"},
-				{Healthy: true, IP: "tunnel.example.net", Type: "CNAME", Proxied: true},
+				{Healthy: true, Target: "192.0.2.10", Type: "A"},
+				{Healthy: true, Target: "tunnel.example.net", Type: "CNAME", Proxied: true},
 			},
 		},
 	}
@@ -53,6 +53,6 @@ func TestStatusEndpointTypeAndProxied(t *testing.T) {
 
 	endpoints := res["a.example.com"].Endpoints
 	require.Len(t, endpoints, 2)
-	assert.Equal(t, map[string]any{"healthy": true, "ip": "192.0.2.10", "type": "A"}, endpoints[0])
-	assert.Equal(t, map[string]any{"healthy": true, "ip": "tunnel.example.net", "type": "CNAME", "proxied": true}, endpoints[1])
+	assert.Equal(t, map[string]any{"healthy": true, "target": "192.0.2.10", "type": "A"}, endpoints[0])
+	assert.Equal(t, map[string]any{"healthy": true, "target": "tunnel.example.net", "type": "CNAME", "proxied": true}, endpoints[1])
 }

@@ -191,8 +191,8 @@ func (dc *domainChecker) setTargets(targets map[string]dns.Target) {
 
 // getTargets returns the target published for each endpoint, as of the last check
 func (dc *domainChecker) getTargets() map[string]dns.Target {
-	dc.lock.Lock()
-	defer dc.lock.Unlock()
+	dc.lock.RLock()
+	defer dc.lock.RUnlock()
 
 	return dc.targets
 }

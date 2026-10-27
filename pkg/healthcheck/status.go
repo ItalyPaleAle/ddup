@@ -17,7 +17,7 @@ type DomainStatus struct {
 type DomainStatusEndpoint struct {
 	Healthy bool `json:"healthy"`
 	// What the endpoint publishes: its IP address, or its CNAME hostname
-	IP string `json:"ip"`
+	Target string `json:"target"`
 	// Type of the DNS record for the endpoint: "A", "AAAA" or "CNAME"
 	Type string `json:"type,omitempty"`
 	// True if the record is proxied by the DNS provider
@@ -85,7 +85,7 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 func (dc *domainChecker) getDomainStatusEndpoint(ip string, isHealthy bool, failureCount int, target dns.Target) DomainStatusEndpoint {
 	e := DomainStatusEndpoint{
 		Healthy:      isHealthy,
-		IP:           ip,
+		Target:       ip,
 		Type:         target.Type,
 		Proxied:      target.Proxied,
 		FailureCount: failureCount,
