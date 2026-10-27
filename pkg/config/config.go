@@ -407,36 +407,29 @@ func (c *Config) Validate(logger *slog.Logger) error {
 	return nil
 }
 
-// Options that set what an endpoint publishes, of which exactly one is required
-var endpointTargetOptions = []string{"ip", "cname"}
-
 // validateTarget checks what the endpoint publishes, and sanitizes it
 func (e *ConfigEndpoint) validateTarget(recordName string) error {
-	var count int
-	for _, set := range []bool{e.IP != "", e.CNAME != ""} {
-		if set {
-			count++
-		}
-	}
-	if count != 1 {
-		return fmt.Errorf("exactly one of %s must be set", strings.Join(endpointTargetOptions, " or "))
-	}
-
 	switch {
+	case (e.IP != "" && e.CNAME != "") ||
+		(e.IP == "" && e.CNAME == ""):
+		return errors.New("exactly one of 'ip' or 'cname' must be set")
 	case e.IP != "":
 		ip, err := netip.ParseAddr(e.IP)
 		if err != nil {
 			return fmt.Errorf("IP %q is not a valid IPv4 or IPv6 address", e.IP)
 		}
+
 		e.IP = ip.String()
 	case e.CNAME != "":
 		cname, err := normalizeHostname(e.CNAME)
 		if err != nil {
 			return fmt.Errorf("cname %w", err)
 		}
+
 		if cname == normalizeRecordName(recordName) {
 			return fmt.Errorf("cname %q is the domain's own record name", cname)
 		}
+
 		e.CNAME = cname
 	}
 
@@ -463,7 +456,9 @@ func validateDomainEndpoints(d *ConfigDomain) error {
 
 		g := groups[e.Priority]
 		if g == nil {
-			g = &priorityGroup{proxied: e.Proxied()}
+			g = &priorityGroup{
+				proxied: e.Proxied(),
+			}
 			groups[e.Priority] = g
 		}
 		g.count++
@@ -498,15 +493,18 @@ func normalizeHostname(name string) (string, error) {
 	if name == "" || len(name) > 253 {
 		return "", fmt.Errorf("%q is not a valid hostname", name)
 	}
+
 	_, err := netip.ParseAddr(name)
 	if err == nil {
 		return "", fmt.Errorf("%q is an IP address; use ip instead", name)
 	}
+
 	for label := range strings.SplitSeq(name, ".") {
 		if !hostnameLabelRegexp.MatchString(label) {
 			return "", fmt.Errorf("%q is not a valid hostname", name)
 		}
 	}
+
 	return name, nil
 }
 
