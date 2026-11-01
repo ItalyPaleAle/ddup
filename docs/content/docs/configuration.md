@@ -186,16 +186,19 @@ The rules, which ddup checks when it starts:
 - A CNAME record can't coexist with other records at the same name, so an endpoint with `cname` must be the only one with its `priority`. Use a different `priority` from the other endpoints, as in the example
 - `cname` must be a hostname and can't be the `recordName` of the domain
 - Two endpoints of the same domain can't publish the same IP address or hostname
+- With Azure DNS, the `recordName` of a domain with a `cname` endpoint can't be the apex of the zone, such as `example.com`
 
-Currently, only these providers can publish CNAME records:
+These providers can publish CNAME records:
 
 | Provider | Supports `cname` |
 |----------|------------------|
-| AWS Route53 | No |
-| Azure DNS | No |
+| AWS Route53 | Yes |
+| Azure DNS | Yes |
 | Cloudflare DNS | Yes |
 | Google Cloud DNS | No |
 | OVH | No |
+
+With AWS Route53 and Cloudflare, the name keeps resolving while ddup switches between A and AAAA records and a CNAME record. Azure DNS can't change records of different types at once, so the name has no records for a moment during the switch: see the [Azure DNS page](/providers/azure-dns#things-to-know).
 
 
 ### `providers`
