@@ -48,16 +48,41 @@ func (c *CloudflareProvider) Name() string {
 	return c.name
 }
 
-// Capabilities returns what the provider can publish
-func (c *CloudflareProvider) Capabilities() Capabilities {
-	return cloudflareCapabilities
+// cloudflareProviderType is the key of the provider in the configuration
+const cloudflareProviderType = "cloudflare"
+
+// ProviderType returns the key of the provider in the configuration
+func (c *CloudflareProvider) ProviderType() string {
+	return cloudflareProviderType
 }
 
-// cloudflareCapabilities declares that Cloudflare publishes CNAME records, and that the proxied flag is set with the "cloudflare" provider options
-var cloudflareCapabilities = Capabilities{
-	Type:            "cloudflare",
-	CNAME:           true,
-	ProviderOptions: []string{"cloudflare"},
+// HasCNAME returns true because Cloudflare can publish CNAME records
+func (c *CloudflareProvider) HasCNAME() bool {
+	return true
+}
+
+// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// All endpoints with the same priority must use the same value for `proxied`, because the records published together are either all proxied or all DNS-only
+func (c *CloudflareProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	proxiedByPriority := make(map[int]bool, len(d.Endpoints))
+	for ei, e := range d.Endpoints {
+		proxied := cloudflareProxied(e)
+		prev, ok := proxiedByPriority[e.Priority]
+		if !ok {
+			proxiedByPriority[e.Priority] = proxied
+			continue
+		}
+		if prev != proxied {
+			return fmt.Errorf("domain %s endpoint %d is invalid: endpoints with priority %d must all use the same value for providerOptions.cloudflare.proxied", d.RecordName, ei, e.Priority)
+		}
+	}
+
+	return nil
+}
+
+// cloudflareProxied returns true if the endpoint asks for its record to be proxied by Cloudflare
+func cloudflareProxied(e *config.ConfigEndpoint) bool {
+	return e.ProviderOptions.Cloudflare != nil && e.ProviderOptions.Cloudflare.Proxied
 }
 
 // UpdateRecords updates DNS records for the given domain so they point to the targets

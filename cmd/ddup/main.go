@@ -72,14 +72,6 @@ func main() {
 		return
 	}
 
-	// Check that the DNS providers can publish what the endpoints ask for
-	err = dns.ValidateConfig(cfg)
-	if err != nil {
-		shutdowns.Run(log)
-		slogkit.FatalError(log, "Invalid configuration", err)
-		return
-	}
-
 	log.Info("Starting ddup", "build", buildinfo.BuildDescription)
 
 	// Get a context that is canceled when the application receives a termination signal
@@ -106,6 +98,14 @@ func main() {
 			return
 		}
 		dnsProviders[name] = provider
+	}
+
+	// Check that the DNS providers can publish what the endpoints ask for
+	err = dns.ValidateConfig(cfg, dnsProviders)
+	if err != nil {
+		shutdowns.Run(log)
+		slogkit.FatalError(log, "Invalid configuration", err)
+		return
 	}
 
 	// List of services to run

@@ -84,9 +84,20 @@ func (r *AWSRoute53Provider) Name() string {
 	return r.name
 }
 
-// Capabilities returns what the provider can publish
-func (r *AWSRoute53Provider) Capabilities() Capabilities {
-	return awsRoute53Capabilities
+// ProviderType returns the key of the provider in the configuration
+func (r *AWSRoute53Provider) ProviderType() string {
+	return "awsRoute53"
+}
+
+// HasCNAME returns false because the provider only publishes A and AAAA records
+func (r *AWSRoute53Provider) HasCNAME() bool {
+	return false
+}
+
+// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// The provider has no options, so it rejects all of them
+func (r *AWSRoute53Provider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	return rejectProviderOptions(d, r.ProviderType())
 }
 
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs
@@ -356,9 +367,4 @@ func awsRoute53UnescapeName(name string) string {
 		b.WriteByte(name[i])
 	}
 	return b.String()
-}
-
-// awsRoute53Capabilities declares that the provider only publishes A and AAAA records that are not proxied
-var awsRoute53Capabilities = Capabilities{
-	Type: "awsRoute53",
 }

@@ -105,9 +105,20 @@ func (a *AzureProvider) Name() string {
 	return a.name
 }
 
-// Capabilities returns what the provider can publish
-func (a *AzureProvider) Capabilities() Capabilities {
-	return azureCapabilities
+// ProviderType returns the key of the provider in the configuration
+func (a *AzureProvider) ProviderType() string {
+	return "azure"
+}
+
+// HasCNAME returns false because the provider only publishes A and AAAA records
+func (a *AzureProvider) HasCNAME() bool {
+	return false
+}
+
+// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// The provider has no options, so it rejects all of them
+func (a *AzureProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	return rejectProviderOptions(d, a.ProviderType())
 }
 
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs.
@@ -524,9 +535,4 @@ func (a *AzureProvider) deleteRecord(ctx context.Context, recordName string, rec
 
 	success = true
 	return nil
-}
-
-// azureCapabilities declares that the provider only publishes A and AAAA records that are not proxied
-var azureCapabilities = Capabilities{
-	Type: "azure",
 }

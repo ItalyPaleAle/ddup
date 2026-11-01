@@ -313,3 +313,25 @@ func TestEndpointSince_APIFields(t *testing.T) {
 	assert.NotContains(t, m, "lastError")
 	assert.NotContains(t, m, "firstFailure")
 }
+
+func TestDomainStatusEndpointJSON(t *testing.T) {
+	enc, err := json.Marshal(DomainStatus{
+		LastUpdated: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+		Provider:    "cf",
+		Endpoints: []DomainStatusEndpoint{
+			{Healthy: true, Target: "192.0.2.1", Type: "A"},
+			{Healthy: true, Target: "2001:db8::1", Type: "AAAA", Proxied: true},
+			{Healthy: false, Target: "tunnel.example.net", Type: "CNAME", Proxied: true, FailureCount: 2},
+		},
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"lastUpdated": "2026-01-02T03:04:05Z",
+		"provider": "cf",
+		"endpoints": [
+			{"healthy": true, "target": "192.0.2.1", "type": "A"},
+			{"healthy": true, "target": "2001:db8::1", "type": "AAAA", "proxied": true},
+			{"healthy": false, "target": "tunnel.example.net", "type": "CNAME", "proxied": true, "failureCount": 2}
+		]
+	}`, string(enc))
+}

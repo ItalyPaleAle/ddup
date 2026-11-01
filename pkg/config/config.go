@@ -172,11 +172,6 @@ func (o ConfigEndpointProviderOptions) Keys() []string {
 	return keys
 }
 
-// Proxied returns true if the records for this endpoint should be proxied by the DNS provider
-func (e *ConfigEndpoint) Proxied() bool {
-	return e.ProviderOptions.Cloudflare != nil && e.ProviderOptions.Cloudflare.Proxied
-}
-
 // Target returns what the endpoint publishes in DNS, which is its IP address or its CNAME hostname
 // It is unique among the endpoints of a domain
 func (e *ConfigEndpoint) Target() string {
@@ -440,9 +435,8 @@ func (e *ConfigEndpoint) validateTarget(recordName string) error {
 // It must be called after each endpoint has been validated
 func validateDomainEndpoints(d *ConfigDomain) error {
 	type priorityGroup struct {
-		count   int
-		cname   bool
-		proxied bool
+		count int
+		cname bool
 	}
 	groups := make(map[int]*priorityGroup, len(d.Endpoints))
 	targets := make(map[string]int, len(d.Endpoints))
@@ -456,18 +450,11 @@ func validateDomainEndpoints(d *ConfigDomain) error {
 
 		g := groups[e.Priority]
 		if g == nil {
-			g = &priorityGroup{
-				proxied: e.Proxied(),
-			}
+			g = &priorityGroup{}
 			groups[e.Priority] = g
 		}
 		g.count++
 		g.cname = g.cname || e.CNAME != ""
-
-		// A set of records is either all proxied or all DNS-only
-		if g.proxied != e.Proxied() {
-			return fmt.Errorf("domain %s endpoint %d is invalid: endpoints with priority %d must all use the same value for providerOptions.cloudflare.proxied", d.RecordName, ei, e.Priority)
-		}
 	}
 
 	for _, priority := range slices.Sorted(maps.Keys(groups)) {

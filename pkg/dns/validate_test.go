@@ -12,12 +12,12 @@ import (
 )
 
 func TestValidateConfig(t *testing.T) {
-	providers := map[string]config.ConfigProvider{
-		"cf":     {Cloudflare: &config.CloudflareConfig{}},
-		"ovh":    {OVH: &config.OVHConfig{}},
-		"azure":  {Azure: &config.AzureConfig{}},
-		"aws":    {AWSRoute53: &config.AWSRoute53Config{}},
-		"google": {GoogleCloudDNS: &config.GoogleCloudDNSConfig{}},
+	providers := map[string]Provider{
+		"cf":     &CloudflareProvider{},
+		"ovh":    &OVHProvider{},
+		"azure":  &AzureProvider{},
+		"aws":    &AWSRoute53Provider{},
+		"google": &GoogleCloudDNSProvider{},
 	}
 	cnameEndpoint := &config.ConfigEndpoint{
 		Name:  "tunnel",
@@ -46,6 +46,40 @@ func TestValidateConfig(t *testing.T) {
 	}{
 		{name: "cname on Cloudflare", provider: "cf", endpoints: []*config.ConfigEndpoint{cnameEndpoint}},
 		{name: "proxied on Cloudflare", provider: "cf", endpoints: []*config.ConfigEndpoint{proxiedEndpoint}},
+		{
+			name:     "proxied and not proxied in the same priority",
+			provider: "cf",
+			endpoints: []*config.ConfigEndpoint{
+				proxiedEndpoint,
+				plainEndpoint,
+			},
+			expectErr: "domain app.example.com endpoint 1 is invalid: endpoints with priority 0 must all use the same value for providerOptions.cloudflare.proxied",
+		},
+		{
+			name:     "not proxied and proxied in the same priority",
+			provider: "cf",
+			endpoints: []*config.ConfigEndpoint{
+				{Name: "a", URL: "https://a.example.com", IP: "192.0.2.20", Priority: 2},
+				{Name: "b", URL: "https://b.example.com", IP: "192.0.2.21", Priority: 2, ProviderOptions: proxiedEndpoint.ProviderOptions},
+			},
+			expectErr: "endpoint 1 is invalid: endpoints with priority 2 must all use the same value",
+		},
+		{
+			name:     "different values in different priorities",
+			provider: "cf",
+			endpoints: []*config.ConfigEndpoint{
+				plainEndpoint,
+				{Name: "tunnel", URL: "https://t.example.com", CNAME: "tunnel.example.net", Priority: 1, ProviderOptions: proxiedEndpoint.ProviderOptions},
+			},
+		},
+		{
+			name:     "explicit proxied false next to no options",
+			provider: "cf",
+			endpoints: []*config.ConfigEndpoint{
+				plainEndpoint,
+				{Name: "b", URL: "https://b.example.com", IP: "192.0.2.21", ProviderOptions: config.ConfigEndpointProviderOptions{Cloudflare: &config.ConfigEndpointCloudflareOptions{}}},
+			},
+		},
 		{name: "plain endpoints on every provider", provider: "ovh", endpoints: []*config.ConfigEndpoint{plainEndpoint}},
 		{
 			name:      "cname on OVH",
@@ -100,7 +134,6 @@ func TestValidateConfig(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := &config.Config{
-				Providers: providers,
 				Domains: []config.ConfigDomain{{
 					RecordName: "app.example.com",
 					Provider:   tc.provider,
@@ -108,7 +141,7 @@ func TestValidateConfig(t *testing.T) {
 				}},
 			}
 
-			err := ValidateConfig(cfg)
+			err := ValidateConfig(cfg, providers)
 			if tc.expectErr != "" {
 				require.ErrorContains(t, err, tc.expectErr)
 				return
@@ -119,10 +152,9 @@ func TestValidateConfig(t *testing.T) {
 
 	t.Run("provider that does not exist", func(t *testing.T) {
 		cfg := &config.Config{
-			Providers: providers,
-			Domains:   []config.ConfigDomain{{RecordName: "app.example.com", Provider: "missing"}},
+			Domains: []config.ConfigDomain{{RecordName: "app.example.com", Provider: "missing"}},
 		}
-		require.ErrorContains(t, ValidateConfig(cfg), "domain app.example.com references provider 'missing' that does not exist")
+		require.ErrorContains(t, ValidateConfig(cfg, providers), "domain app.example.com references provider 'missing' that does not exist")
 	})
 }
 
@@ -139,5 +171,11 @@ func TestValidateConfig_SampleConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, cfg.Validate(slog.Default()))
 
-	require.NoError(t, ValidateConfig(cfg))
+	providers := make(map[string]Provider, len(cfg.Providers))
+	for name, pc := range cfg.Providers {
+		providers[name], err = NewProvider(name, &pc, nil)
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, ValidateConfig(cfg, providers))
 }

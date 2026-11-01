@@ -87,9 +87,20 @@ func (o *OVHProvider) Name() string {
 	return o.name
 }
 
-// Capabilities returns what the provider can publish
-func (o *OVHProvider) Capabilities() Capabilities {
-	return ovhCapabilities
+// ProviderType returns the key of the provider in the configuration
+func (o *OVHProvider) ProviderType() string {
+	return "ovh"
+}
+
+// HasCNAME returns false because the provider only publishes A and AAAA records
+func (o *OVHProvider) HasCNAME() bool {
+	return false
+}
+
+// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// The provider has no options, so it rejects all of them
+func (o *OVHProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	return rejectProviderOptions(d, o.ProviderType())
 }
 
 // UpdateRecords updates DNS records for the given domain with the provided IPs
@@ -403,9 +414,4 @@ func (o *OVHProvider) calculateSignature(method, url, body, timestamp string) st
 	// #nosec G401
 	hash := sha1.Sum([]byte(data))
 	return "$1$" + hex.EncodeToString(hash[:])
-}
-
-// ovhCapabilities declares that the provider only publishes A and AAAA records that are not proxied
-var ovhCapabilities = Capabilities{
-	Type: "ovh",
 }

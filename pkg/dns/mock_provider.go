@@ -5,6 +5,8 @@ package dns
 import (
 	"context"
 	"errors"
+
+	"github.com/italypaleale/ddup/pkg/config"
 )
 
 // MockProvider is a mock implementation of the Provider interface for testing.
@@ -20,8 +22,8 @@ type MockProvider struct {
 	LastIPs []string
 	// Targets passed to the last call of UpdateRecords
 	LastTargets []Target
-	// Capabilities reported by the provider
-	ProviderCapabilities Capabilities
+	// If true, the provider reports that it can publish CNAME records
+	CNAME bool
 }
 
 // NewMockProvider creates a new MockProvider.
@@ -34,9 +36,19 @@ func (m *MockProvider) Name() string {
 	return "mock"
 }
 
-// Capabilities implements the Provider interface.
-func (m *MockProvider) Capabilities() Capabilities {
-	return m.ProviderCapabilities
+// ProviderType implements the Provider interface.
+func (m *MockProvider) ProviderType() string {
+	return "mock"
+}
+
+// HasCNAME implements the Provider interface.
+func (m *MockProvider) HasCNAME() bool {
+	return m.CNAME
+}
+
+// ValidateProviderOptions implements the Provider interface.
+func (m *MockProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	return nil
 }
 
 // UpdateRecords implements the Provider interface.

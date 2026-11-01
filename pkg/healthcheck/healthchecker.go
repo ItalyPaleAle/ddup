@@ -257,14 +257,10 @@ func (hc *HealthChecker) checkAndUpdateDNS(ctx context.Context) {
 }
 
 // endpointTarget returns the target that DNS records should point to for an endpoint
-// The type of the record depends on which key the endpoint uses: an IP address is an A or AAAA record, depending on its family, and cname is a CNAME record
 func endpointTarget(ep *config.ConfigEndpoint) (dns.Target, error) {
-	if ep.CNAME != "" {
-		return dns.CNAMETarget(ep.CNAME, ep.Proxied()), nil
-	}
-	target, err := dns.IPTarget(ep.IP, ep.Proxied())
+	target, err := dns.NewTarget(ep)
 	if err != nil {
-		return dns.Target{}, fmt.Errorf("invalid IP for endpoint %s: %w", ep.Name, err)
+		return dns.Target{}, fmt.Errorf("invalid target for endpoint %s: %w", ep.Name, err)
 	}
 	return target, nil
 }

@@ -18,8 +18,18 @@ type Target struct {
 	// IP address (for A and AAAA records) or hostname (for CNAME records)
 	Value string
 	// If true, the record is proxied by the provider
-	// Only providers that declare support for the option in Capabilities.ProviderOptions can publish proxied records
+	// Only some providers can publish proxied records
 	Proxied bool
+}
+
+// NewTarget returns the target that an endpoint publishes
+// The type of the record depends on which key the endpoint uses: an IP address is an A or AAAA record, depending on its family, and cname is a CNAME record
+func NewTarget(e *config.ConfigEndpoint) (Target, error) {
+	proxied := cloudflareProxied(e)
+	if e.CNAME != "" {
+		return CNAMETarget(e.CNAME, proxied), nil
+	}
+	return IPTarget(e.IP, proxied)
 }
 
 // IPTarget returns the target for an IP address, which is an A record for IPv4 addresses and an AAAA record for IPv6 addresses
@@ -45,16 +55,6 @@ func (t Target) String() string {
 	return t.Type + " " + t.Value
 }
 
-// Capabilities describes what a DNS provider can publish, beyond plain A and AAAA records
-type Capabilities struct {
-	// Key of the provider in the configuration, such as "cloudflare"
-	Type string
-	// If true, the provider can publish CNAME records
-	CNAME bool
-	// Keys of the endpoint's `providerOptions` that the provider accepts, such as "cloudflare"
-	ProviderOptions []string
-}
-
 // ErrUnsupportedTarget is returned by providers that can't publish a target
 // The configuration check normally rejects these before the application starts
 var ErrUnsupportedTarget = errors.New("target is not supported by this DNS provider")
@@ -72,9 +72,13 @@ type UpdateResult struct {
 type Provider interface {
 	// Name returns the provider's name
 	Name() string
-	// Capabilities returns what the provider can publish
-	// It does not depend on the provider's credentials or on the state of the zone
-	Capabilities() Capabilities
+	// ProviderType returns the key of the provider in the configuration, such as "cloudflare"
+	ProviderType() string
+	// HasCNAME returns true if the provider can publish CNAME records
+	HasCNAME() bool
+	// ValidateProviderOptions checks the `providerOptions` of the endpoints of a domain that uses this provider
+	// It rejects the options meant for other providers, and applies the rules that are specific to this provider
+	ValidateProviderOptions(d *config.ConfigDomain) error
 	// UpdateRecords updates DNS records for the given domain so they point to the targets
 	// Providers only write the difference with the existing records, and report whether there was any
 	UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error)
@@ -114,27 +118,6 @@ func NewProvider(name string, cfg *config.ConfigProvider, metrics *appmetrics.Ap
 			return nil, fmt.Errorf("error initializing Google Cloud DNS provider: %w", err)
 		}
 		return provider, nil
-	default:
-		// Indicates a development-time error
-		panic("invalid provider")
-	}
-}
-
-// CapabilitiesFor returns the capabilities of the provider that the configuration selects
-// It is used to check the configuration before any provider is created
-func CapabilitiesFor(cfg *config.ConfigProvider) Capabilities {
-	// We know that only one provider will be non-nil
-	switch {
-	case cfg.Cloudflare != nil:
-		return cloudflareCapabilities
-	case cfg.OVH != nil:
-		return ovhCapabilities
-	case cfg.Azure != nil:
-		return azureCapabilities
-	case cfg.AWSRoute53 != nil:
-		return awsRoute53Capabilities
-	case cfg.GoogleCloudDNS != nil:
-		return googleCloudDNSCapabilities
 	default:
 		// Indicates a development-time error
 		panic("invalid provider")

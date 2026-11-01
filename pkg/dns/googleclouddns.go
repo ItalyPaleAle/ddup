@@ -86,9 +86,20 @@ func (g *GoogleCloudDNSProvider) Name() string {
 	return g.name
 }
 
-// Capabilities returns what the provider can publish
-func (g *GoogleCloudDNSProvider) Capabilities() Capabilities {
-	return googleCloudDNSCapabilities
+// ProviderType returns the key of the provider in the configuration
+func (g *GoogleCloudDNSProvider) ProviderType() string {
+	return "googleCloudDns"
+}
+
+// HasCNAME returns false because the provider only publishes A and AAAA records
+func (g *GoogleCloudDNSProvider) HasCNAME() bool {
+	return false
+}
+
+// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// The provider has no options, so it rejects all of them
+func (g *GoogleCloudDNSProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	return rejectProviderOptions(d, g.ProviderType())
 }
 
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs
@@ -303,9 +314,4 @@ func (g *GoogleCloudDNSProvider) performRequest(ctx context.Context, method stri
 	}
 
 	return nil
-}
-
-// googleCloudDNSCapabilities declares that the provider only publishes A and AAAA records that are not proxied
-var googleCloudDNSCapabilities = Capabilities{
-	Type: "googleCloudDns",
 }
