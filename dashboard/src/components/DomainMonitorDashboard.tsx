@@ -20,11 +20,22 @@ import { apiFetch, pageBuildInfo, type BuildInfo } from '@/lib/build'
 import { setFavicon } from '@/lib/favicon'
 import type { OverallStatus } from '@/lib/favicon-shapes'
 import { StatusIcon } from '@/components/StatusIcon'
+import { EndpointHistory } from '@/components/EndpointHistory'
 
 interface DomainStatusEndpoint {
   healthy: boolean
   ip: string
   failureCount?: number
+  // When the endpoint last changed state, as an RFC 3339 time
+  since?: string
+  // True if `since` is when ddup first checked the endpoint
+  sinceStart?: boolean
+  // Last time a check of the endpoint failed
+  lastFailure?: string
+  // Error of the last failed check
+  lastError?: string
+  // First failed check of the current run of failures
+  firstFailure?: string
 }
 
 interface DomainStatus {
@@ -39,6 +50,44 @@ type DomainsResponse = Record<string, DomainStatus>
 type Domain = {
   name: string
   status: DomainStatus
+}
+
+type Health = 'healthy' | 'warning' | 'unhealthy'
+
+// Look of the health badges of domains and endpoints, light and tinted in dark mode
+// The colors are the same on hover, so the badges don't look like buttons
+const healthBadges = {
+  healthy: {
+    label: 'Healthy',
+    icon: CheckCircle,
+    variant: 'default',
+    colors:
+      'bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30',
+  },
+  warning: {
+    label: 'Warning',
+    icon: AlertTriangle,
+    variant: 'secondary',
+    colors:
+      'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/30',
+  },
+  unhealthy: {
+    label: 'Unhealthy',
+    icon: XCircle,
+    variant: 'destructive',
+    colors: 'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30',
+  },
+} as const
+
+// A square badge with only the icon of a health status
+// The name of the status is its accessible name, and the tooltip on hover
+const HealthBadge = ({ health, className }: { health: Health; className?: string }) => {
+  const { label, icon: Icon, variant, colors } = healthBadges[health]
+  return (
+    <Badge role="img" aria-label={label} title={label} variant={variant} className={cn('p-0', colors, className)}>
+      <Icon aria-hidden="true" />
+    </Badge>
+  )
 }
 
 // One segment of the summary bar: the count of domains with a health status
@@ -85,6 +134,8 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
   const [autoRefresh, setAutoRefresh] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [isChecking, setIsChecking] = useState(false)
+  // The domain whose endpoint history is open; only one can be at a time
+  const [historyDomain, setHistoryDomain] = useState<string | null>(null)
 
   const fetchDomains = useCallback(async (): Promise<void> => {
     setIsLoading(true)
@@ -330,7 +381,10 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
             type="text"
             placeholder="Search domains or IP addresses..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setHistoryDomain(null)
+            }}
             className="w-full rounded-md border border-input bg-background px-10 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           />
         </div>
@@ -383,32 +437,19 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
               return (
                 <Card key={domain.name} className="overflow-hidden">
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">{domain.name}</CardTitle>
-                      <Badge
-                        variant={status === 'healthy' ? 'default' : status === 'warning' ? 'secondary' : 'destructive'}
-                        className={cn(
-                          'flex items-center gap-1',
-                          status === 'healthy' &&
-                            'bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30',
-                          status === 'warning' &&
-                            'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-900/30',
-                          status === 'unhealthy' &&
-                            'bg-red-100 text-red-800 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30'
-                        )}
-                      >
-                        {status === 'healthy' && <CheckCircle className="h-3 w-3" />}
-                        {status === 'warning' && <AlertTriangle className="h-3 w-3" />}
-                        {status === 'unhealthy' && <XCircle className="h-3 w-3" />}
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Provider: {domain.status.provider}</span>
-                      <span>
-                        <Clock className="inline h-3 w-3 mr-1" />
-                        {new Date(domain.status.lastUpdated).toLocaleString()}
-                      </span>
+                    {/* The status and the history button don't shrink, so a long name wraps instead of pushing them out of the card */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <HealthBadge health={status} className="size-7 [&>svg]:size-4" />
+                        <CardTitle className="min-w-0 wrap-break-word text-lg">{domain.name}</CardTitle>
+                      </div>
+                      <EndpointHistory
+                        domain={domain.name}
+                        lastUpdated={domain.status.lastUpdated}
+                        endpoints={domain.status.endpoints}
+                        open={historyDomain === domain.name}
+                        onOpenChange={(open) => setHistoryDomain(open ? domain.name : null)}
+                      />
                     </div>
                     <div className="text-sm text-muted-foreground">
                       {domain.status.endpoints.filter((e) => e.healthy).length}/{domain.status.endpoints.length}{' '}
@@ -417,17 +458,6 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                   </CardHeader>
 
                   <CardContent className="space-y-4">
-                    {domain.status.error && (
-                      <div className="rounded-lg bg-red-50 dark:bg-red-950/50 p-3 text-sm text-red-800 dark:text-red-200">
-                        <div className="flex items-center gap-2">
-                          <XCircle className="h-4 w-4" />
-                          <span className="font-medium">Domain Error</span>
-                        </div>
-                        <p className="mt-1">{domain.status.error}</p>
-                      </div>
-                    )}
-
-                    {/* Endpoints */}
                     {domain.status.endpoints.length > 0 && (
                       <div>
                         <h4 className="mb-2 text-sm font-medium">Endpoints ({domain.status.endpoints.length})</h4>
@@ -435,21 +465,10 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                           {domain.status.endpoints.map((endpoint, index) => (
                             <div key={index} className="flex items-center justify-between rounded-lg border p-2">
                               <div className="flex items-center gap-2">
-                                <Badge
-                                  variant={endpoint.healthy ? 'default' : 'destructive'}
-                                  className={cn(
-                                    'text-xs',
-                                    endpoint.healthy && 'bg-green-100 text-green-800 hover:bg-green-100',
-                                    !endpoint.healthy && 'bg-red-100 text-red-800 hover:bg-red-100'
-                                  )}
-                                >
-                                  {endpoint.healthy ? (
-                                    <CheckCircle className="h-3 w-3" />
-                                  ) : (
-                                    <XCircle className="h-3 w-3" />
-                                  )}
-                                  {endpoint.healthy ? 'Healthy' : 'Unhealthy'}
-                                </Badge>
+                                <HealthBadge
+                                  health={endpoint.healthy ? 'healthy' : 'unhealthy'}
+                                  className="size-6 [&>svg]:size-3.5"
+                                />
                                 <span className="font-mono text-sm">{endpoint.ip}</span>
                               </div>
                               <div className="text-right text-xs text-muted-foreground">
@@ -458,6 +477,16 @@ const DomainMonitorDashboard = ({ endpoint }: { endpoint: string }) => {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {domain.status.error && (
+                      <div className="rounded-lg bg-red-50 dark:bg-red-950/50 p-3 text-sm text-red-800 dark:text-red-200">
+                        <div className="flex items-center gap-2">
+                          <XCircle className="h-4 w-4" />
+                          <span className="font-medium">Domain Error</span>
+                        </div>
+                        <p className="mt-1">{domain.status.error}</p>
                       </div>
                     )}
                   </CardContent>

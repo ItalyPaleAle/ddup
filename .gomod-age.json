@@ -6,29 +6,16 @@
   ],
   "allow": [
     {
-      "module": "github.com/Azure/azure-sdk-for-go/sdk/azcore",
-      "version": "v1.23.1",
-      "reason": ""
+      "module": "github.com/aws/aws-sdk-go-v2",
+      "version": "v1.47.4"
     },
     {
-      "module": "github.com/Azure/azure-sdk-for-go/sdk/azidentity",
-      "version": "v1.14.1",
-      "reason": ""
+      "module": "github.com/aws/aws-sdk-go-v2/config",
+      "version": "v1.33.10"
     },
     {
-      "module": "go.opentelemetry.io/otel",
-      "version": "v1.46.0",
-      "reason": ""
-    },
-    {
-      "module": "go.opentelemetry.io/otel/metric",
-      "version": "v1.46.0",
-      "reason": ""
-    },
-    {
-      "module": "go.opentelemetry.io/otel/sdk",
-      "version": "v1.46.0",
-      "reason": ""
+      "module": "github.com/aws/aws-sdk-go-v2/credentials",
+      "version": "v1.20.10"
     }
   ]
 }

@@ -29,10 +29,13 @@ func NotificationEvents() []NotificationEvent {
 // Webhook formats
 // The list must match the formats supported by go-kit
 const (
-	WebhookFormatPlain   = "plain"
-	WebhookFormatSlack   = "slack"
-	WebhookFormatDiscord = "discord"
-	WebhookFormatNtfy    = "ntfy"
+	WebhookFormatPlain      = "plain"
+	WebhookFormatDiscord    = "discord"
+	WebhookFormatGoogleChat = "googlechat"
+	WebhookFormatNtfy       = "ntfy"
+	WebhookFormatSlack      = "slack"
+	WebhookFormatTeams      = "teams"
+	WebhookFormatTelegram   = "telegram"
 )
 
 // ConfigNotifications configures the notifications sent when something happens to a domain
@@ -129,7 +132,13 @@ func (c *ConfigNotifications) validate() error {
 		switch w.Format {
 		case "":
 			w.Format = WebhookFormatPlain
-		case WebhookFormatPlain, WebhookFormatSlack, WebhookFormatDiscord, WebhookFormatNtfy:
+		case WebhookFormatPlain,
+			WebhookFormatDiscord,
+			WebhookFormatGoogleChat,
+			WebhookFormatNtfy,
+			WebhookFormatSlack,
+			WebhookFormatTeams,
+			WebhookFormatTelegram:
 		default:
 			return fmt.Errorf("%s is invalid: unknown format %q", label, w.Format)
 		}

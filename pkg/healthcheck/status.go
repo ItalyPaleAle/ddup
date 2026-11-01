@@ -16,6 +16,17 @@ type DomainStatusEndpoint struct {
 	Healthy      bool   `json:"healthy"`
 	IP           string `json:"ip"`
 	FailureCount int    `json:"failureCount,omitempty"`
+	// When the endpoint last changed state, from healthy to failing or the other way around
+	Since *time.Time `json:"since,omitempty"`
+	// True if `since` is when ddup first checked the endpoint, not a state change, so the real start is unknown
+	SinceStart bool `json:"sinceStart,omitempty"`
+	// Last time a check of the endpoint failed
+	LastFailure *time.Time `json:"lastFailure,omitempty"`
+	// Error of the last failed check
+	LastError string `json:"lastError,omitempty"`
+	// First failed check of the current run of failures
+	// Left out when the last check passed, so it is set for an endpoint in the warning state
+	FirstFailure *time.Time `json:"firstFailure,omitempty"`
 }
 
 func (hc *HealthChecker) GetAllDomainsStatus() map[string]DomainStatus {
@@ -39,15 +50,10 @@ func (hc *HealthChecker) GetDomainStatus(domain string) *DomainStatus {
 func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 	healthy, unhealthy, lastUpdated, lastError := dc.getState()
 
-	// Endpoints in the unhealthy list could also be in the healthy one,
-	// if they failed a recent health check but still less than the max attempts
+	// Endpoints in the unhealthy list could also be in the healthy one, if they failed a recent health check but still less than the max attempts
 	endpoints := make([]DomainStatusEndpoint, 0, len(healthy)+len(unhealthy))
 	for _, ip := range healthy {
-		endpoints = append(endpoints, DomainStatusEndpoint{
-			Healthy:      true,
-			IP:           ip,
-			FailureCount: unhealthy[ip],
-		})
+		endpoints = append(endpoints, dc.getDomainStatusEndpoint(ip, true, unhealthy[ip]))
 	}
 	for ip, attempts := range unhealthy {
 		// Endpoints that are still in the healthy list were added above
@@ -56,11 +62,7 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 			continue
 		}
 
-		endpoints = append(endpoints, DomainStatusEndpoint{
-			Healthy:      false,
-			IP:           ip,
-			FailureCount: attempts,
-		})
+		endpoints = append(endpoints, dc.getDomainStatusEndpoint(ip, false, attempts))
 	}
 
 	return DomainStatus{
@@ -69,4 +71,28 @@ func (hc *HealthChecker) getStatusObject(dc *domainChecker) DomainStatus {
 		Error:       lastError,
 		Endpoints:   endpoints,
 	}
+}
+
+// getDomainStatusEndpoint returns the DomainStatusEndpoint object
+func (dc *domainChecker) getDomainStatusEndpoint(ip string, isHealthy bool, failureCount int) DomainStatusEndpoint {
+	e := DomainStatusEndpoint{
+		Healthy:      isHealthy,
+		IP:           ip,
+		FailureCount: failureCount,
+	}
+
+	times := dc.getTimes(ip)
+	if times != nil {
+		e.Since = &times.since
+		e.SinceStart = times.sinceStart
+		if !times.lastFailure.IsZero() {
+			e.LastFailure = &times.lastFailure
+			e.LastError = times.lastError
+		}
+		if !times.firstFailure.IsZero() {
+			e.FirstFailure = &times.firstFailure
+		}
+	}
+
+	return e
 }
