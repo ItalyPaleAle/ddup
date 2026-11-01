@@ -150,25 +150,21 @@ Each endpoint is a server that can serve the domain.
 |--------|------|---------|-------------|
 | `url` | string | **required** | URL that ddup requests to check the endpoint's health, starting with `http://` or `https://` |
 | `ip` | string | | IP address to publish when the endpoint is healthy. IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. Each endpoint sets exactly one of `ip` and `cname`. |
-| `cname` | string | | Hostname to publish in a CNAME record when the endpoint is healthy, as an alternative to `ip`. See [CNAME records and Cloudflare proxying](#cname-records-and-cloudflare-proxying). |
+| `cname` | string | | Hostname to publish in a CNAME record when the endpoint is healthy, as an alternative to `ip`. See [CNAME records](#cname-records). |
 | `name` | string | The URL | Name of the endpoint, shown in logs and metrics |
 | `priority` | number | `0` | Lower values are preferred: only the healthy endpoints with the lowest value are published. See [Failover with priorities](/docs/failover-priorities). |
 | `host` | string | | Host name to send in the request, when `url` contains an IP address or a different host name. It's also used for TLS. See [Checking a server by IP](/docs/health-checks#checking-a-server-by-ip). |
-| `providerOptions` | object | | Settings that apply only with a specific DNS provider, under a key named after the provider. Using one with a domain whose provider is different is a configuration error. The only one is `cloudflare`, with `proxied`. |
+| `providerOptions` | object | | Settings that apply only with a specific DNS provider, under a key named after the provider. Using one with a domain whose provider is different is a configuration error. The only one is `cloudflare`, with `proxied`. See [Cloudflare proxying](#cloudflare-proxying). |
 
 An endpoint with `cname` is health-checked through its own `url`, like any other endpoint, so `url` is required.
-Two endpoints of the same domain can't publish the same IP address or hostname.
 
-#### CNAME records and Cloudflare proxying
+#### CNAME records
 
 By default, ddup publishes A and AAAA records that point to the `ip` of each healthy endpoint.
 An endpoint can set `cname` instead, to publish a CNAME record pointing to a hostname.
-This is useful for a target that is only reachable by hostname, such as a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (`<tunnel-id>.cfargotunnel.com`), which can only be reached through Cloudflare's proxy.
+This is useful for a target that is only reachable by hostname, such as a [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (`<tunnel-id>.cfargotunnel.com`).
 
-Cloudflare can also proxy a record, so traffic goes through Cloudflare instead of directly to your server.
-This is set per endpoint with `providerOptions.cloudflare.proxied` (default `false`), and works with both `ip` and `cname`.
-
-The example below publishes the VPS endpoints as plain A records, and falls back to a proxied CNAME for a Cloudflare Tunnel only when all of them are unhealthy:
+The example below publishes the VPS endpoints as A records, and falls back to a CNAME record only when all of them are unhealthy:
 
 ```yaml
 domains:
@@ -181,6 +177,49 @@ domains:
       - name: "vps-eu"
         url: "https://vps-eu.example.com/health"
         ip: "198.51.100.10"
+      - name: "fallback"
+        url: "https://fallback-health.example.com/health"
+        cname: "fallback.example.net"
+        priority: 1
+```
+
+The rules, which ddup checks when it starts:
+
+- A CNAME record can't coexist with other records at the same name, so an endpoint with `cname` must be the only one with its `priority`. Use a different `priority` from the other endpoints, as in the example
+- `cname` must be a hostname, not an IP address, and it can't be the `recordName` of the domain
+- Two endpoints of the same domain can't publish the same IP address or hostname
+
+When ddup switches between a CNAME record and A or AAAA records, it overwrites an existing record in place, so the name never ends up with no records.
+
+Only some providers can publish CNAME records. ddup refuses to start if an endpoint uses `cname` with a provider that can't:
+
+| Provider | Supports `cname` |
+|----------|------------------|
+| AWS Route53 | No |
+| Azure DNS | No |
+| Cloudflare DNS | Yes |
+| Google Cloud DNS | No |
+| OVH | No |
+
+CNAME records are not specific to Cloudflare, but each provider has its own API for them, and the other providers have not been implemented yet.
+Support for another provider needs a change to that provider only.
+
+#### Cloudflare proxying
+
+Cloudflare can proxy a record, so traffic goes through Cloudflare instead of directly to your server.
+This is set per endpoint with `providerOptions.cloudflare.proxied` (default `false`), and works with both `ip` and `cname`.
+Using `providerOptions.cloudflare` with a domain whose provider is not Cloudflare is a configuration error.
+
+A [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) can only be reached through the proxy, so it needs both `cname` and `proxied`:
+
+```yaml
+domains:
+  - recordName: "app.example.com"
+    provider: "my-cloudflare"
+    endpoints:
+      - name: "vps-us"
+        url: "https://vps-us.example.com/health"
+        ip: "192.0.2.10"
       - name: "tunnel"
         url: "https://tunnel-health.example.com/health"
         cname: "0a1b2c3d.cfargotunnel.com"
@@ -192,21 +231,8 @@ domains:
 
 The rules, which ddup checks when it starts:
 
-- A CNAME record can't coexist with other records at the same name, so an endpoint with `cname` must be the only one with its `priority`. Use a different `priority` from the other endpoints, as in the example
 - A set of records is either all proxied or all DNS-only, so all endpoints with the same `priority` must use the same value for `proxied`. Endpoints with different priorities can differ, as in the example, because only one priority is published at a time
 - Proxied records use Cloudflare's automatic TTL, so the domain's `ttl` is ignored for them
-
-Providers declare what they support, and ddup refuses to start if the configuration asks for more:
-
-| Provider         | `cname` | `providerOptions.cloudflare` |
-| ---------------- | ------- | ---------------------------- |
-| AWS Route53      | No      | No                           |
-| Azure DNS        | No      | No                           |
-| Cloudflare DNS   | Yes     | Yes                          |
-| Google Cloud DNS | No      | No                           |
-| OVH              | No      | No                           |
-
-When ddup switches between a CNAME record and A or AAAA records, it overwrites an existing record in place, so the name never ends up with no records.
 
 
 ### `providers`
