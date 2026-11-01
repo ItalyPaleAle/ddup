@@ -68,6 +68,22 @@ if (foo) {
 // Validate the input
 ```
 
+## Markdown
+
+Write tables in compact form: do not pad cells with spaces to align the columns, because aligned tables are unreadable in editors with word-wrapping on.
+
+```md
+<!-- Wrong -->
+| Provider         | Supports `cname` |
+| ---------------- | ---------------- |
+| Cloudflare DNS   | Yes              |
+
+<!-- Right -->
+| Provider | Supports `cname` |
+|----------|------------------|
+| Cloudflare DNS | Yes |
+```
+
 ## UI
 
 All clickable `<button>` elements must expose `cursor: pointer` when enabled.
