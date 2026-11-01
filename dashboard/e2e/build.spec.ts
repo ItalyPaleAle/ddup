@@ -115,7 +115,7 @@ test.describe('footer position', () => {
                     'a.example': {
                         lastUpdated: '2026-10-13T09:30:00Z',
                         provider: 'cloudflare',
-                        endpoints: [{ healthy: true, ip: '192.0.2.1' }],
+                        endpoints: [{ healthy: true, target: '192.0.2.1' }],
                     },
                 },
                 headers: { [buildHeader]: pageBuild.build },

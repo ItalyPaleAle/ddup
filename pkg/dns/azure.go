@@ -105,8 +105,29 @@ func (a *AzureProvider) Name() string {
 	return a.name
 }
 
+// ProviderType returns the key of the provider in the configuration
+func (a *AzureProvider) ProviderType() string {
+	return "azure"
+}
+
+// HasCNAME returns false because the provider only publishes A and AAAA records
+func (a *AzureProvider) HasCNAME() bool {
+	return false
+}
+
+// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// The provider has no options, so it rejects all of them
+func (a *AzureProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	return rejectProviderOptions(d, a.ProviderType())
+}
+
 // UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs.
-func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (result UpdateResult, err error) {
+func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
+	ips, err := plainIPsFromTargets(a.name, targets)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	ipv4, ipv6, err := splitIPs(ips)
 	if err != nil {
 		return UpdateResult{}, err

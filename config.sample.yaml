@@ -52,6 +52,26 @@ domains:
         url: "http://203.0.113.10:8080/health"
         ip: "203.0.113.10"
         priority: 1
+  - recordName: "tunnel.example.com"
+    provider: "example-provider-1"
+    ttl: 120
+    endpoints:
+      - name: "vps"
+        url: "http://192.0.2.10:8080/health"
+        ip: "192.0.2.10"
+      # Last resort when "vps" is unhealthy, published as a CNAME record
+      # A CNAME record can't coexist with other records, so this endpoint is alone in its priority
+      # The health check goes through its own url
+      - name: "tunnel"
+        url: "https://tunnel-health.example.com/health"
+        cname: "0a1b2c3d.cfargotunnel.com"
+        priority: 1
+        # Options for a specific provider, which must be the one used by the domain
+        # All endpoints with the same priority must use the same value for proxied
+        providerOptions:
+          cloudflare:
+            # Cloudflare proxies the record (default false)
+            proxied: true
 
 # Provider Configuration
 providers:

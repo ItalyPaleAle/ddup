@@ -100,6 +100,14 @@ func main() {
 		dnsProviders[name] = provider
 	}
 
+	// Check that the DNS providers can publish what the endpoints ask for
+	err = dns.ValidateConfig(cfg, dnsProviders)
+	if err != nil {
+		shutdowns.Run(log)
+		slogkit.FatalError(log, "Invalid configuration", err)
+		return
+	}
+
 	// List of services to run
 	services := make([]servicerunner.Service, 0, 2)
 

@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,12 +10,61 @@ import (
 	appmetrics "github.com/italypaleale/ddup/pkg/metrics"
 )
 
+// Target is a record that should be published for a domain
+// The type of the record is explicit: it is never guessed from the value
+type Target struct {
+	// Type of the DNS record: "A", "AAAA" or "CNAME"
+	Type string
+	// IP address (for A and AAAA records) or hostname (for CNAME records)
+	Value string
+	// If true, the record is proxied by the provider
+	// Only some providers can publish proxied records
+	Proxied bool
+}
+
+// NewTarget returns the target that an endpoint publishes
+// The type of the record depends on which key the endpoint uses: an IP address is an A or AAAA record, depending on its family, and cname is a CNAME record
+func NewTarget(e *config.ConfigEndpoint) (Target, error) {
+	proxied := e.ProviderOptions.Cloudflare.IsProxied()
+	if e.CNAME != "" {
+		return CNAMETarget(e.CNAME, proxied), nil
+	}
+	return IPTarget(e.IP, proxied)
+}
+
+// IPTarget returns the target for an IP address, which is an A record for IPv4 addresses and an AAAA record for IPv6 addresses
+func IPTarget(ip string, proxied bool) (Target, error) {
+	recordType, err := recordTypeForIP(ip)
+	if err != nil {
+		return Target{}, err
+	}
+	canonical, err := canonicalizeIP(ip)
+	if err != nil {
+		return Target{}, err
+	}
+	return Target{Type: recordType, Value: canonical, Proxied: proxied}, nil
+}
+
+// CNAMETarget returns the target for a hostname, which is a CNAME record
+func CNAMETarget(hostname string, proxied bool) Target {
+	return Target{Type: recordTypeCNAME, Value: canonicalizeHostname(hostname), Proxied: proxied}
+}
+
+// String implements fmt.Stringer
+func (t Target) String() string {
+	return t.Type + " " + t.Value
+}
+
+// ErrUnsupportedTarget is returned by providers that can't publish a target
+// The configuration check normally rejects these before the application starts
+var ErrUnsupportedTarget = errors.New("target is not supported by this DNS provider")
+
 // UpdateResult describes the outcome of a successful UpdateRecords call
 type UpdateResult struct {
 	// True if any record was created, changed or deleted
 	// False if the records already matched the desired IPs
 	Changed bool
-	// Sorted, canonical IPs that were in DNS before the update
+	// Sorted, canonical IPs and hostnames that were in DNS before the update
 	Previous []string
 }
 
@@ -22,9 +72,16 @@ type UpdateResult struct {
 type Provider interface {
 	// Name returns the provider's name
 	Name() string
-	// UpdateRecords updates DNS records for the given domain with the provided IPs
+	// ProviderType returns the key of the provider in the configuration, such as "cloudflare"
+	ProviderType() string
+	// HasCNAME returns true if the provider can publish CNAME records
+	HasCNAME() bool
+	// ValidateProviderOptions checks the `providerOptions` of the endpoints of a domain that uses this provider
+	// It rejects the options meant for other providers, and applies the rules that are specific to this provider
+	ValidateProviderOptions(d *config.ConfigDomain) error
+	// UpdateRecords updates DNS records for the given domain so they point to the targets
 	// Providers only write the difference with the existing records, and report whether there was any
-	UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error)
+	UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error)
 }
 
 // NewProvider creates a new DNS provider based on the configuration
@@ -65,6 +122,23 @@ func NewProvider(name string, cfg *config.ConfigProvider, metrics *appmetrics.Ap
 		// Indicates a development-time error
 		panic("invalid provider")
 	}
+}
+
+// plainIPsFromTargets returns the IP addresses for providers that can only publish A and AAAA records that are not proxied
+func plainIPsFromTargets(provider string, targets []Target) ([]string, error) {
+	ips := make([]string, len(targets))
+	for i, t := range targets {
+		if t.Type != recordTypeA && t.Type != recordTypeAAAA {
+			return nil, fmt.Errorf("%w: provider %s can only publish A and AAAA records, got %s record %q", ErrUnsupportedTarget, provider, t.Type, t.Value)
+		}
+		if t.Proxied {
+			return nil, fmt.Errorf("%w: provider %s can only publish records that are not proxied", ErrUnsupportedTarget, provider)
+		}
+
+		ips[i] = t.Value
+	}
+
+	return ips, nil
 }
 
 // toFQDN returns the domain as a fully-qualified name, with a trailing dot

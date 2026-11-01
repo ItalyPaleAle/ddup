@@ -87,8 +87,29 @@ func (o *OVHProvider) Name() string {
 	return o.name
 }
 
+// ProviderType returns the key of the provider in the configuration
+func (o *OVHProvider) ProviderType() string {
+	return "ovh"
+}
+
+// HasCNAME returns false because the provider only publishes A and AAAA records
+func (o *OVHProvider) HasCNAME() bool {
+	return false
+}
+
+// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// The provider has no options, so it rejects all of them
+func (o *OVHProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
+	return rejectProviderOptions(d, o.ProviderType())
+}
+
 // UpdateRecords updates DNS records for the given domain with the provided IPs
-func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, ips []string) (UpdateResult, error) {
+func (o *OVHProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error) {
+	ips, err := plainIPsFromTargets(o.name, targets)
+	if err != nil {
+		return UpdateResult{}, err
+	}
+
 	canonicalIPs, err := canonicalizeIPs(ips)
 	if err != nil {
 		return UpdateResult{}, err
