@@ -450,3 +450,24 @@ func awsRoute53Values(rs awsRoute53ResourceRecordSet) []string {
 	}
 	return values
 }
+
+func TestAWSRoute53ProviderIPv6(t *testing.T) {
+	provider, mockTransport := newAWSRoute53TestProviderWithMock()
+	setAWSRoute53ListResponse(mockTransport, "ipv6.example.com.", recordTypeA, awsRoute53ListBody())
+	setAWSRoute53ListResponse(mockTransport, "ipv6.example.com.", recordTypeAAAA, awsRoute53ListBody())
+	setAWSRoute53ChangeResponse(mockTransport, http.StatusOK)
+
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::40"))
+	require.NoError(t, err)
+
+	requests := mockTransport.GetRequests()
+	require.Len(t, requests, 3)
+
+	body, err := io.ReadAll(requests[2].Body)
+	require.NoError(t, err)
+
+	changes := parseAWSRoute53Changes(t, body)
+	require.Len(t, changes, 1)
+	assert.Equal(t, recordTypeAAAA, changes[0].ResourceRecordSet.Type)
+	assert.Equal(t, []string{"2001:db8::40"}, awsRoute53Values(changes[0].ResourceRecordSet))
+}

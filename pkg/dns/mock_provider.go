@@ -56,11 +56,14 @@ func (m *MockProvider) UpdateRecords(ctx context.Context, domain string, ttl int
 	m.CallCount++
 	m.LastTargets = targets
 	m.LastIPs = make([]string, len(targets))
+
 	for i, t := range targets {
 		m.LastIPs[i] = t.Value
 	}
+
 	if m.ShouldError {
 		return UpdateResult{}, errors.New("mock error")
 	}
+
 	return UpdateResult{Changed: !m.NoChange, Previous: m.Previous}, nil
 }

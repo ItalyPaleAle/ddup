@@ -70,7 +70,7 @@ if (foo) {
 
 ## Markdown
 
-Write tables in compact form: do not pad cells with spaces to align the columns, because aligned tables are unreadable in editors with word-wrapping on.
+Write tables in compact form, do not pad cells with spaces to align the columns.
 
 ```md
 <!-- Wrong -->

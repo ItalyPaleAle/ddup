@@ -483,3 +483,59 @@ func setOVHEmptyAAAAResponse(mockTransport *MockHTTPTransport, subDomain string)
 		},
 	)
 }
+
+func TestOVHProviderIPv6(t *testing.T) {
+	provider, mockTransport := newOVHTestProviderWithMock()
+
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/1.0/domain/zone/example.com/record?fieldType=A&subDomain=ipv6",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `[]`,
+			Headers: map[string]string{
+				"Content-Type": "application/json",
+			},
+		},
+	)
+
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/1.0/domain/zone/example.com/record?fieldType=AAAA&subDomain=ipv6",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `[]`,
+			Headers: map[string]string{
+				"Content-Type": "application/json",
+			},
+		},
+	)
+
+	mockTransport.SetResponse(
+		http.MethodPost,
+		"/1.0/domain/zone/example.com/record",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `{}`,
+			Headers: map[string]string{
+				"Content-Type": "application/json",
+			},
+		},
+	)
+
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::20"))
+	require.NoError(t, err)
+
+	requests := mockTransport.GetRequests()
+	require.Len(t, requests, 3)
+
+	body, err := io.ReadAll(requests[2].Body)
+	require.NoError(t, err)
+
+	var req OVHCreateRecordRequest
+	err = json.Unmarshal(body, &req)
+	require.NoError(t, err)
+
+	assert.Equal(t, recordTypeAAAA, req.FieldType)
+	assert.Equal(t, "2001:db8::20", req.Target)
+}

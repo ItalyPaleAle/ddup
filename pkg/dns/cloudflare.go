@@ -66,7 +66,7 @@ func (c *CloudflareProvider) HasCNAME() bool {
 func (c *CloudflareProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
 	proxiedByPriority := make(map[int]bool, len(d.Endpoints))
 	for ei, e := range d.Endpoints {
-		proxied := cloudflareProxied(e)
+		proxied := e.ProviderOptions.Cloudflare.IsProxied()
 		prev, ok := proxiedByPriority[e.Priority]
 		if !ok {
 			proxiedByPriority[e.Priority] = proxied
@@ -80,14 +80,9 @@ func (c *CloudflareProvider) ValidateProviderOptions(d *config.ConfigDomain) err
 	return nil
 }
 
-// cloudflareProxied returns true if the endpoint asks for its record to be proxied by Cloudflare
-func cloudflareProxied(e *config.ConfigEndpoint) bool {
-	return e.ProviderOptions.Cloudflare != nil && e.ProviderOptions.Cloudflare.Proxied
-}
-
 // UpdateRecords updates DNS records for the given domain so they point to the targets
 //
-// Targets are either A and AAAA records or a single CNAME record, because a CNAME can't coexist with other records.
+// Targets are either A and AAAA records or a single CNAME record.
 // When the kind of records changes, an existing record is overwritten in place so the name is never left without records.
 func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (UpdateResult, error) {
 	desired, err := canonicalizeTargets(targets)
@@ -134,6 +129,7 @@ func (c *CloudflareProvider) UpdateRecords(ctx context.Context, domain string, t
 		if err != nil {
 			return UpdateResult{}, fmt.Errorf("error updating record %s for %s: %w", rec.ID, d.Value, err)
 		}
+
 		result.Changed = true
 	}
 
@@ -229,6 +225,7 @@ func (c *CloudflareProvider) overwriteInPlace(ctx context.Context, domain string
 	if err != nil {
 		return changed, missing, stale, fmt.Errorf("error deleting record %s for %s %s: %w", rec.ID, rec.Type, rec.Content, err)
 	}
+
 	return true, missing, slices.Delete(stale, idx, idx+1), nil
 }
 
@@ -260,6 +257,7 @@ func canonicalizeTargets(targets []Target) ([]Target, error) {
 		if dup {
 			continue
 		}
+
 		seen[key] = struct{}{}
 		desired = append(desired, t)
 	}
@@ -267,6 +265,7 @@ func canonicalizeTargets(targets []Target) ([]Target, error) {
 	if hasCNAME && len(desired) > 1 {
 		return nil, errors.New("a CNAME target can't be published together with other targets")
 	}
+
 	return desired, nil
 }
 
@@ -275,11 +274,13 @@ func canonicalRecordContent(r CloudflareRecord) string {
 	if r.Type == recordTypeCNAME {
 		return canonicalizeHostname(r.Content)
 	}
+
 	ip, err := canonicalizeIP(r.Content)
 	if err != nil {
 		// Leave as-is: it won't match any target and the record will be removed
 		return r.Content
 	}
+
 	return ip
 }
 

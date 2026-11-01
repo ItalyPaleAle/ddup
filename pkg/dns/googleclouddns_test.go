@@ -338,3 +338,20 @@ func writeGoogleCredentialsFile(t *testing.T, credType string) string {
 	require.NoError(t, err)
 	return path
 }
+
+func TestGoogleCloudDNSProviderIPv6(t *testing.T) {
+	provider, mockTransport := newGoogleCloudDNSTestProviderWithMock()
+	setGoogleCloudDNSListResponse(mockTransport, "ipv6.example.com.", `{"rrsets":[]}`)
+	setGoogleCloudDNSChangeResponse(mockTransport, http.StatusOK)
+
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::50"))
+	require.NoError(t, err)
+
+	requests := mockTransport.GetRequests()
+	require.Len(t, requests, 2)
+
+	change := parseGoogleCloudDNSChange(t, requests[1])
+	require.Len(t, change.Additions, 1)
+	assert.Equal(t, recordTypeAAAA, change.Additions[0].Type)
+	assert.Equal(t, []string{"2001:db8::50"}, change.Additions[0].Rrdatas)
+}

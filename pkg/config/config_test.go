@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	configkit "github.com/italypaleale/go-kit/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	configkit "github.com/italypaleale/go-kit/config"
 )
 
 func TestValidateEndpointIP(t *testing.T) {
@@ -198,8 +198,10 @@ func TestValidate(t *testing.T) {
 			expectErr: "provider 'test' is invalid: exactly one provider must be configured",
 		},
 		{
-			name:      "provider with two backends",
-			mutate:    func(c *Config) { c.Providers["test"] = ConfigProvider{Cloudflare: &CloudflareConfig{}, OVH: &OVHConfig{}} },
+			name: "provider with two backends",
+			mutate: func(c *Config) {
+				c.Providers["test"] = ConfigProvider{Cloudflare: &CloudflareConfig{}, OVH: &OVHConfig{}}
+			},
 			expectErr: "provider 'test' is invalid: exactly one provider must be configured",
 		},
 		{
@@ -378,12 +380,12 @@ func TestValidateEndpointTarget(t *testing.T) {
 		{
 			name:      "cname that is an IPv4 address",
 			endpoint:  ConfigEndpoint{CNAME: "192.0.2.10"},
-			expectErr: `domain test.example.com endpoint 0 is invalid: cname "192.0.2.10" is an IP address; use ip instead`,
+			expectErr: `domain test.example.com endpoint 0 is invalid: cname "192.0.2.10" is an IP address, use ip instead`,
 		},
 		{
 			name:      "cname that is an IPv6 address",
 			endpoint:  ConfigEndpoint{CNAME: "2001:db8::10"},
-			expectErr: `cname "2001:db8::10" is an IP address; use ip instead`,
+			expectErr: `cname "2001:db8::10" is an IP address, use ip instead`,
 		},
 		{
 			name:      "cname with a scheme",
@@ -537,7 +539,7 @@ func TestValidateCNAMEAloneInPriority(t *testing.T) {
 				{IP: "192.0.2.10", Priority: 1},
 				{CNAME: "tunnel.example.net", Priority: 1},
 			},
-			expectErr: "domain test.example.com is invalid: priority 1 has an endpoint with cname and other endpoints, but a CNAME record can't coexist with other records; give the endpoint with cname its own priority",
+			expectErr: "domain test.example.com is invalid: priority 1 has an endpoint with cname and other endpoints, but a CNAME record can't coexist with other records: give the endpoint with cname its own priority",
 		},
 		{
 			name: "cname with an IP in the default priority",

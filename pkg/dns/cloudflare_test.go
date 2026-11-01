@@ -830,3 +830,59 @@ func TestCloudflareProviderInvalidTargets(t *testing.T) {
 		require.ErrorContains(t, err, `unknown record type "TXT"`)
 	})
 }
+
+func TestCloudflareProviderIPv6(t *testing.T) {
+	provider, mockTransport := newCloudflareTestProviderWithMock()
+
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/client/v4/zones/test-zone-id/dns_records?name=ipv6.example.com&type=A",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `{"success":true,"errors":[],"result":[]}`,
+		},
+	)
+
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/client/v4/zones/test-zone-id/dns_records?name=ipv6.example.com&type=AAAA",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `{"success":true,"errors":[],"result":[]}`,
+		},
+	)
+
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/client/v4/zones/test-zone-id/dns_records?name=ipv6.example.com&type=CNAME",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `{"success":true,"errors":[],"result":[]}`,
+		},
+	)
+
+	mockTransport.SetResponse(
+		http.MethodPost,
+		"/client/v4/zones/test-zone-id/dns_records",
+		&MockResponse{
+			StatusCode: 200,
+			Body:       `{"success":true,"errors":[],"result":{}}`,
+		},
+	)
+
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::10"))
+	require.NoError(t, err)
+
+	requests := mockTransport.GetRequests()
+	require.Len(t, requests, 4)
+
+	body, err := io.ReadAll(requests[3].Body)
+	require.NoError(t, err)
+
+	var req map[string]any
+	err = json.Unmarshal(body, &req)
+	require.NoError(t, err)
+
+	assert.Equal(t, recordTypeAAAA, req["type"])
+	assert.Equal(t, "2001:db8::10", req["content"])
+}

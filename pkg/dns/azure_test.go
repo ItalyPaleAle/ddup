@@ -517,3 +517,42 @@ func setAzureEmptyAAAAResponse(mockTransport *MockHTTPTransport, recordName stri
 		},
 	)
 }
+
+func TestAzureProviderIPv6(t *testing.T) {
+	provider, mockTransport := newAzureTestProviderWithMock("example.com")
+
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=ipv6&api-version=2018-05-01",
+		&MockResponse{StatusCode: 200, Body: `{"value":[]}`},
+	)
+
+	mockTransport.SetResponse(
+		http.MethodGet,
+		"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/AAAA?%24recordsetnamesuffix=ipv6&api-version=2018-05-01",
+		&MockResponse{StatusCode: 200, Body: `{"value":[]}`},
+	)
+
+	mockTransport.SetResponse(
+		http.MethodPut,
+		"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/AAAA/ipv6?api-version=2018-05-01",
+		&MockResponse{StatusCode: 200, Body: `{}`},
+	)
+
+	_, err := provider.UpdateRecords(t.Context(), "ipv6.example.com", 60, testTargets("2001:db8::30"))
+	require.NoError(t, err)
+
+	requests := mockTransport.GetRequests()
+	require.Len(t, requests, 3)
+	assert.Contains(t, requests[2].URL.Path, "/AAAA/ipv6")
+
+	body, err := io.ReadAll(requests[2].Body)
+	require.NoError(t, err)
+
+	var recordSet azureRecordSet
+	err = json.Unmarshal(body, &recordSet)
+	require.NoError(t, err)
+
+	require.Len(t, recordSet.Properties.AAAARecords, 1)
+	assert.Equal(t, "2001:db8::30", recordSet.Properties.AAAARecords[0].IPv6Address)
+}

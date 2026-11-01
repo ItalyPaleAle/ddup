@@ -403,6 +403,7 @@ func (p *providerWithEndpoints) GetDomainStatus(domain string) *healthcheck.Doma
 	if !ok {
 		return nil
 	}
+
 	return &status
 }
 

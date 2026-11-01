@@ -13,7 +13,7 @@ const (
 	recordTypeCNAME = "CNAME"
 )
 
-// canonicalizeHostname returns the hostname in lowercase and without the trailing dot, so hostnames can be compared
+// canonicalizeHostname returns the hostname in lowercase and without the trailing dot
 func canonicalizeHostname(hostname string) string {
 	return strings.TrimSuffix(strings.ToLower(hostname), ".")
 }

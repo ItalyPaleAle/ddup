@@ -75,8 +75,39 @@ curl -s "https://api.cloudflare.com/client/v4/zones/<zone-id>/dns_records?name=a
 
 The response has `"success": true` if both are right.
 
+## CDN Proxying and Cloudflare Tunnel
+
+Records in Cloudflare can be configured in one of two modes:
+
+- DNS only ("gray cloud"): the default option. Cloudflare responds to DNS queries with the IP of your server.
+- Proxying ("orange cloud"): in this mode, traffic gets proxied through Cloudflare and visitors never hit your server directly.
+
+Proxying can be enabled per endpoint with `providerOptions.cloudflare.proxied` (default `false`), and works with both `ip` and `cname`.
+
+A [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) can only be reached through the proxy, so it needs both `cname` and `proxied`:
+
+```yaml
+domains:
+  - recordName: "app.example.com"
+    provider: "my-cloudflare"
+    endpoints:
+      - name: "vps-us"
+        url: "https://vps-us.example.com/health"
+        ip: "192.0.2.10"
+      - name: "tunnel"
+        url: "https://tunnel-health.example.com/health"
+        cname: "0a1b2c3d.cfargotunnel.com"
+        priority: 1
+        providerOptions:
+          cloudflare:
+            proxied: true
+```
+
+A set of records is either all proxied or all DNS-only, so all endpoints with the same `priority` must use the same value for `proxied`. Endpoints with different priorities can differ, as in the example, because only one priority is published at a time
+
+> Proxied records use Cloudflare's automatic TTL, so the domain's `ttl` is ignored for them
+
 ## Things to know
 
-- By default, ddup creates DNS-only records (with a "gray cloud" in the dashboard). Set [`providerOptions.cloudflare.proxied`](/docs/configuration/#cloudflare-proxying) to have Cloudflare proxy the endpoint ("orange cloud").
 - Cloudflare doesn't accept a `ttl` lower than 60 seconds, or 30 seconds on Enterprise plans.
 - A and AAAA records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).

@@ -163,6 +163,15 @@ type ConfigEndpointCloudflareOptions struct {
 	Proxied bool `yaml:"proxied"`
 }
 
+// IsProxied returns true if the endpoint is proxied using Cloudflare
+func (cf *ConfigEndpointCloudflareOptions) IsProxied() bool {
+	if cf == nil {
+		return false
+	}
+
+	return cf.Proxied
+}
+
 // Keys returns the keys of the options that are set, which are named after the DNS providers they are for
 func (o ConfigEndpointProviderOptions) Keys() []string {
 	var keys []string
@@ -327,7 +336,7 @@ func (c *Config) Validate(logger *slog.Logger) error {
 
 	// Require at least one domain to be configured
 	if len(c.Domains) == 0 {
-		return errors.New("no domains configured; specify at least one domain under 'domains'")
+		return errors.New("no domains configured, specify at least one domain under 'domains'")
 	}
 
 	// Validate domains
@@ -387,7 +396,7 @@ func (c *Config) Validate(logger *slog.Logger) error {
 			}
 		}
 
-		err = validateDomainEndpoints(d)
+		err = d.validateDomainEndpoints()
 		if err != nil {
 			return err
 		}
@@ -433,7 +442,7 @@ func (e *ConfigEndpoint) validateTarget(recordName string) error {
 
 // validateDomainEndpoints checks the rules that involve all the endpoints of a domain
 // It must be called after each endpoint has been validated
-func validateDomainEndpoints(d *ConfigDomain) error {
+func (d *ConfigDomain) validateDomainEndpoints() error {
 	type priorityGroup struct {
 		count int
 		cname bool
@@ -460,7 +469,7 @@ func validateDomainEndpoints(d *ConfigDomain) error {
 	for _, priority := range slices.Sorted(maps.Keys(groups)) {
 		g := groups[priority]
 		if g.cname && g.count > 1 {
-			return fmt.Errorf("domain %s is invalid: priority %d has an endpoint with cname and other endpoints, but a CNAME record can't coexist with other records; give the endpoint with cname its own priority", d.RecordName, priority)
+			return fmt.Errorf("domain %s is invalid: priority %d has an endpoint with cname and other endpoints, but a CNAME record can't coexist with other records: give the endpoint with cname its own priority", d.RecordName, priority)
 		}
 	}
 
@@ -483,7 +492,7 @@ func normalizeHostname(name string) (string, error) {
 
 	_, err := netip.ParseAddr(name)
 	if err == nil {
-		return "", fmt.Errorf("%q is an IP address; use ip instead", name)
+		return "", fmt.Errorf("%q is an IP address, use ip instead", name)
 	}
 
 	for label := range strings.SplitSeq(name, ".") {

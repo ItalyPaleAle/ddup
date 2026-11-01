@@ -124,7 +124,7 @@ func TestPlainIPsFromTargets(t *testing.T) {
 	t.Run("CNAME record", func(t *testing.T) {
 		_, err := plainIPsFromTargets("test", []Target{CNAMETarget("tunnel.example.com", false)})
 		require.ErrorIs(t, err, ErrUnsupportedTarget)
-		require.ErrorContains(t, err, `provider test can only publish A and AAAA records that are not proxied, got CNAME record "tunnel.example.com"`)
+		require.ErrorContains(t, err, `provider test can only publish A and AAAA records, got CNAME record "tunnel.example.com"`)
 	})
 
 	t.Run("proxied record", func(t *testing.T) {
