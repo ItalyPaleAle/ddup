@@ -781,7 +781,7 @@ func TestHealthChecker_DynamicIP(t *testing.T) {
 	assert.Equal(t, 2, mockProvider.CallCount)
 	assert.Equal(t, []string{"203.0.113.2"}, mockProvider.LastIPs)
 	assert.Equal(t, []string{"203.0.113.2"}, dc.healthyIPs)
-	assert.Equal(t, []DomainStatusEndpoint{{Healthy: true, IP: "203.0.113.2"}}, hc.GetDomainStatus("home.example.com").Endpoints, "the status shows the looked-up address")
+	assert.Equal(t, []DomainStatusEndpoint{{Healthy: true, IP: "203.0.113.2"}}, withoutTimes(hc.GetDomainStatus("home.example.com").Endpoints), "the status shows the looked-up address")
 
 	// A failed lookup is reported against the last address, and DNS is left alone while there are retries left
 	run("203.0.113.2", false)
@@ -793,7 +793,7 @@ func TestHealthChecker_DynamicIP(t *testing.T) {
 	run("203.0.113.2", false)
 	assert.Empty(t, dc.healthyIPs)
 	assert.Equal(t, 2, mockProvider.CallCount)
-	assert.Equal(t, []DomainStatusEndpoint{{Healthy: false, IP: "203.0.113.2", FailureCount: 2}}, hc.GetDomainStatus("home.example.com").Endpoints)
+	assert.Equal(t, []DomainStatusEndpoint{{Healthy: false, IP: "203.0.113.2", FailureCount: 2}}, withoutTimes(hc.GetDomainStatus("home.example.com").Endpoints))
 
 	// The lookup works again, with a new address: it's published, and the failures of the old one are forgotten
 	run("203.0.113.3", true)
@@ -912,7 +912,7 @@ func TestHealthChecker_DynamicIP_EndToEnd(t *testing.T) {
 	hc.checkAndUpdateDNS(t.Context())
 	assert.Equal(t, 2, mockProvider.CallCount)
 	assert.Equal(t, []string{"203.0.113.2"}, mockProvider.LastIPs)
-	assert.Equal(t, []DomainStatusEndpoint{{Healthy: true, IP: "203.0.113.2"}}, hc.GetDomainStatus("home.example.com").Endpoints)
+	assert.Equal(t, []DomainStatusEndpoint{{Healthy: true, IP: "203.0.113.2"}}, withoutTimes(hc.GetDomainStatus("home.example.com").Endpoints))
 }
 
 func TestNewHealthChecker_IPLookup(t *testing.T) {

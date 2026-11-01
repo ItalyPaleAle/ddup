@@ -86,7 +86,12 @@ func (dc *domainChecker) recordCycle(results []checker.Result, healthyIPs []stri
 	}
 
 	for _, r := range results {
-		ip := r.Endpoint.IP
+		ip := resultIP(r)
+		if ip == "" {
+			// An endpoint that looks up its IP address and has not found one yet has nothing to track
+			continue
+		}
+
 		t := dc.times[ip]
 		healthy := slices.Contains(healthyIPs, ip)
 		if t == nil {

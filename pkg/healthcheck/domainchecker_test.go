@@ -85,6 +85,44 @@ func TestEndpointSince_FirstCheckHealthy(t *testing.T) {
 	assert.Nil(t, e.LastFailure)
 }
 
+// An endpoint that looks up its IP address has no fixed IP, so its times are tracked under the address it found
+func TestEndpointSince_DynamicEndpoint(t *testing.T) {
+	f := newSinceFixture(1)
+	f.ep = &config.ConfigEndpoint{Name: "home", IPLookupFamily: 4}
+
+	checkWithTarget := func(target string) DomainStatusEndpoint {
+		t.Helper()
+
+		f.now = f.now.Add(time.Minute)
+		f.mock.Results = []checker.Result{{Endpoint: f.ep, Target: target, Healthy: true}}
+		f.hc.checkAndUpdateDNS(t.Context())
+
+		status := f.hc.GetDomainStatus("example.com")
+		require.NotNil(t, status)
+		require.Len(t, status.Endpoints, 1)
+		return status.Endpoints[0]
+	}
+
+	e := checkWithTarget("203.0.113.1")
+	assert.True(t, e.Healthy)
+	require.NotNil(t, e.Since)
+	assert.Equal(t, f.now, *e.Since)
+	assert.True(t, e.SinceStart)
+	first := f.now
+
+	// Same address: nothing changes
+	e = checkWithTarget("203.0.113.1")
+	require.NotNil(t, e.Since)
+	assert.Equal(t, first, *e.Since)
+
+	// A new address is a new entry, tracked from its first check
+	e = checkWithTarget("203.0.113.2")
+	assert.True(t, e.Healthy)
+	require.NotNil(t, e.Since)
+	assert.Equal(t, f.now, *e.Since)
+	assert.True(t, e.SinceStart)
+}
+
 func TestEndpointSince_FirstCheckFailing(t *testing.T) {
 	f := newSinceFixture(1)
 
