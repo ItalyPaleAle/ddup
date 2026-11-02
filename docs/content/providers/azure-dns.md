@@ -178,8 +178,6 @@ Microsoft.Network/dnsZones/CNAME/write
 Microsoft.Network/dnsZones/CNAME/delete
 ```
 
-The CNAME actions are needed only for domains with [`cname` endpoints](/docs/configuration#cname-records). Without them, ddup can still manage A and AAAA records, but it can't replace a CNAME record with the domain's name.
-
 ## Things to know
 
 - The A, AAAA, and CNAME record sets with the domain's name are replaced, including records you created in the Azure portal. See [How ddup manages records](/providers#how-ddup-manages-records).

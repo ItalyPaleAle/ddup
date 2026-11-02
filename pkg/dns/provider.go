@@ -137,9 +137,11 @@ func canonicalizeTargets(targets []Target) ([]Target, error) {
 			if err != nil {
 				return nil, err
 			}
+
 			if ip.Type != t.Type {
 				return nil, fmt.Errorf("target %q is not valid for a %s record", t.Value, t.Type)
 			}
+
 			t = ip
 		case recordTypeCNAME:
 			hasCNAME = true

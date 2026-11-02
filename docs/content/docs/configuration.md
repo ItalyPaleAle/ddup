@@ -198,9 +198,6 @@ These providers can publish CNAME records:
 | Google Cloud DNS | No |
 | OVH | No |
 
-With AWS Route53 and Cloudflare, the name keeps resolving while ddup switches between A and AAAA records and a CNAME record. Azure DNS can't change records of different types at once, so the name has no records for a moment during the switch: see the [Azure DNS page](/providers/azure-dns#things-to-know).
-
-
 ### `providers`
 
 A map of DNS providers. Each key is a name of your choice, which domains use in their `provider` option. Each value contains the settings for exactly one provider:

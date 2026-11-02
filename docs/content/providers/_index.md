@@ -83,4 +83,3 @@ ddup writes to DNS when it starts, and when the set of endpoints to publish chan
 
 - `recordName` is the full name, such as `app.example.com`, and must be in the provider's zone. For the zone `example.com`, use names like `app.example.com` or `api.eu.example.com`.
 - To manage the records at the apex of the zone, use the zone name itself, such as `example.com`.
-- With Google Cloud DNS and OVHcloud, the name can't have a CNAME record: DNS doesn't allow a CNAME record next to other records with the same name, and ddup doesn't manage CNAME records with these providers.
