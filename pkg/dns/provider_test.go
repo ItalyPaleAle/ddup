@@ -133,6 +133,45 @@ func TestPlainIPsFromTargets(t *testing.T) {
 	})
 }
 
+func TestRecordSetsFromTargets(t *testing.T) {
+	t.Run("A and AAAA records are sorted and without duplicates", func(t *testing.T) {
+		sets, err := recordSetsFromTargets("test", testTargets("192.0.2.11", "2001:db8::10", "192.0.2.10", "192.0.2.11"))
+		require.NoError(t, err)
+		assert.Equal(t, []recordSet{
+			{Type: "A", Values: []string{"192.0.2.10", "192.0.2.11"}},
+			{Type: "AAAA", Values: []string{"2001:db8::10"}},
+			{Type: "CNAME"},
+		}, sets)
+	})
+
+	t.Run("CNAME record in canonical form", func(t *testing.T) {
+		sets, err := recordSetsFromTargets("test", []Target{{Type: "CNAME", Value: "Tunnel.Example.NET."}})
+		require.NoError(t, err)
+		assert.Equal(t, []recordSet{
+			{Type: "A"},
+			{Type: "AAAA"},
+			{Type: "CNAME", Values: []string{"tunnel.example.net"}},
+		}, sets)
+	})
+
+	t.Run("no targets", func(t *testing.T) {
+		sets, err := recordSetsFromTargets("test", nil)
+		require.NoError(t, err)
+		assert.Equal(t, []recordSet{{Type: "A"}, {Type: "AAAA"}, {Type: "CNAME"}}, sets)
+	})
+
+	t.Run("proxied record", func(t *testing.T) {
+		_, err := recordSetsFromTargets("test", []Target{CNAMETarget("tunnel.example.net", true)})
+		require.ErrorIs(t, err, ErrUnsupportedTarget)
+		require.ErrorContains(t, err, "provider test can only publish records that are not proxied")
+	})
+
+	t.Run("CNAME with other targets", func(t *testing.T) {
+		_, err := recordSetsFromTargets("test", []Target{CNAMETarget("tunnel.example.net", false), {Type: "A", Value: "192.0.2.10"}})
+		require.ErrorContains(t, err, "a CNAME target can't be published together with other targets")
+	})
+}
+
 func TestProviderTypeAndCNAME(t *testing.T) {
 	tests := []struct {
 		provider     Provider
@@ -141,8 +180,8 @@ func TestProviderTypeAndCNAME(t *testing.T) {
 	}{
 		{&CloudflareProvider{}, "cloudflare", true},
 		{&OVHProvider{}, "ovh", false},
-		{&AzureProvider{}, "azure", false},
-		{&AWSRoute53Provider{}, "awsRoute53", false},
+		{&AzureProvider{}, "azure", true},
+		{&AWSRoute53Provider{}, "awsRoute53", true},
 		{&GoogleCloudDNSProvider{}, "googleCloudDns", false},
 	}
 	for _, tc := range tests {

@@ -164,7 +164,7 @@ az role assignment create \
   --scope "/subscriptions/<subscription-id>/resourceGroups/<resource-group>/providers/Microsoft.Network/dnsZones/<zone-name>"
 ```
 
-The DNS Zone Contributor role allows changing every record in the zone. To allow only what ddup needs, create a [custom role](https://learn.microsoft.com/azure/role-based-access-control/custom-roles) with these actions, which cover A and AAAA records:
+The DNS Zone Contributor role allows changing every record in the zone. To allow only what ddup needs, create a [custom role](https://learn.microsoft.com/azure/role-based-access-control/custom-roles) with these actions, which cover A, AAAA, and CNAME records:
 
 ```text
 Microsoft.Network/dnsZones/A/read
@@ -173,9 +173,14 @@ Microsoft.Network/dnsZones/A/delete
 Microsoft.Network/dnsZones/AAAA/read
 Microsoft.Network/dnsZones/AAAA/write
 Microsoft.Network/dnsZones/AAAA/delete
+Microsoft.Network/dnsZones/CNAME/read
+Microsoft.Network/dnsZones/CNAME/write
+Microsoft.Network/dnsZones/CNAME/delete
 ```
 
 ## Things to know
 
-- The A and AAAA record sets with the domain's name are replaced, including records you created in the Azure portal. See [How ddup manages records](/providers#how-ddup-manages-records).
+- The A, AAAA, and CNAME record sets with the domain's name are replaced, including records you created in the Azure portal. See [How ddup manages records](/providers#how-ddup-manages-records).
+- Endpoints can publish [CNAME records](/docs/configuration#cname-records), but not at the apex of the zone: Azure DNS doesn't allow a CNAME record there, and ddup refuses to start with such a configuration.
+- Azure DNS can't change records of different types at once, and doesn't allow a CNAME record next to other records with the same name. When the published records switch between A and AAAA records and a CNAME record, ddup deletes the old records before creating the new ones, so for a moment the name has no records. Resolvers that query the name in that moment can cache the empty answer, for up to the negative caching TTL set in the zone's SOA record. Other changes, such as adding or removing IP addresses, never leave the name without records.
 - Only the global Azure cloud is supported. ddup connects to its Azure Resource Manager endpoint (`management.azure.com`), so zones in national clouds such as Azure Government or Azure China won't work.

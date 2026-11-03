@@ -110,4 +110,4 @@ A set of records is either all proxied or all DNS-only, so all endpoints with th
 ## Things to know
 
 - Cloudflare doesn't accept a `ttl` lower than 60 seconds, or 30 seconds on Enterprise plans.
-- A and AAAA records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).
+- A, AAAA, and CNAME records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).

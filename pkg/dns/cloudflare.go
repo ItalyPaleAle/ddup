@@ -229,46 +229,6 @@ func (c *CloudflareProvider) overwriteInPlace(ctx context.Context, domain string
 	return true, missing, slices.Delete(stale, idx, idx+1), nil
 }
 
-// canonicalizeTargets validates the targets, canonicalizes their values and removes duplicates
-func canonicalizeTargets(targets []Target) ([]Target, error) {
-	desired := make([]Target, 0, len(targets))
-	seen := make(map[string]struct{}, len(targets))
-	var hasCNAME bool
-	for _, t := range targets {
-		switch t.Type {
-		case recordTypeA, recordTypeAAAA:
-			ip, err := IPTarget(t.Value, t.Proxied)
-			if err != nil {
-				return nil, err
-			}
-			if ip.Type != t.Type {
-				return nil, fmt.Errorf("target %q is not valid for a %s record", t.Value, t.Type)
-			}
-			t = ip
-		case recordTypeCNAME:
-			hasCNAME = true
-			t.Value = canonicalizeHostname(t.Value)
-		default:
-			return nil, fmt.Errorf("%w: unknown record type %q", ErrUnsupportedTarget, t.Type)
-		}
-
-		key := t.String()
-		_, dup := seen[key]
-		if dup {
-			continue
-		}
-
-		seen[key] = struct{}{}
-		desired = append(desired, t)
-	}
-
-	if hasCNAME && len(desired) > 1 {
-		return nil, errors.New("a CNAME target can't be published together with other targets")
-	}
-
-	return desired, nil
-}
-
 // canonicalRecordContent returns the content of an existing record in canonical form, so it can be compared with the targets
 func canonicalRecordContent(r CloudflareRecord) string {
 	if r.Type == recordTypeCNAME {

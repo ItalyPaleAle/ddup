@@ -15,7 +15,7 @@ func TestValidateConfig(t *testing.T) {
 	providers := map[string]Provider{
 		"cf":     &CloudflareProvider{},
 		"ovh":    &OVHProvider{},
-		"azure":  &AzureProvider{},
+		"azure":  &AzureProvider{zoneName: "example.com"},
 		"aws":    &AWSRoute53Provider{},
 		"google": &GoogleCloudDNSProvider{},
 	}
@@ -87,18 +87,8 @@ func TestValidateConfig(t *testing.T) {
 			endpoints: []*config.ConfigEndpoint{plainEndpoint, cnameEndpoint},
 			expectErr: "domain app.example.com endpoint 1 (tunnel) is invalid: cname is not supported by provider 'ovh' (ovh)",
 		},
-		{
-			name:      "cname on Azure",
-			provider:  "azure",
-			endpoints: []*config.ConfigEndpoint{cnameEndpoint},
-			expectErr: "domain app.example.com endpoint 0 (tunnel) is invalid: cname is not supported by provider 'azure' (azure)",
-		},
-		{
-			name:      "cname on AWS Route53",
-			provider:  "aws",
-			endpoints: []*config.ConfigEndpoint{cnameEndpoint},
-			expectErr: "cname is not supported by provider 'aws' (awsRoute53)",
-		},
+		{name: "cname on Azure", provider: "azure", endpoints: []*config.ConfigEndpoint{plainEndpoint, cnameEndpoint}},
+		{name: "cname on AWS Route53", provider: "aws", endpoints: []*config.ConfigEndpoint{plainEndpoint, cnameEndpoint}},
 		{
 			name:      "cname on Google Cloud DNS",
 			provider:  "google",
@@ -149,6 +139,17 @@ func TestValidateConfig(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+
+	t.Run("cname at the apex of an Azure zone", func(t *testing.T) {
+		cfg := &config.Config{
+			Domains: []config.ConfigDomain{{
+				RecordName: "example.com",
+				Provider:   "azure",
+				Endpoints:  []*config.ConfigEndpoint{plainEndpoint, cnameEndpoint},
+			}},
+		}
+		require.ErrorContains(t, ValidateConfig(cfg, providers), "domain example.com endpoint 1 (tunnel) is invalid: cname can't be used at the apex of the zone with provider 'azure' (azure)")
+	})
 
 	t.Run("provider that does not exist", func(t *testing.T) {
 		cfg := &config.Config{

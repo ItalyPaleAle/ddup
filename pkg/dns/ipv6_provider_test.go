@@ -88,10 +88,15 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 					`"AAAARecords":[{"ipv6Address":"` + canonicalIP + `"}]}}]}`,
 			},
 		)
+		mockTransport.SetResponse(
+			http.MethodGet,
+			azureListURL+"CNAME?%24recordsetnamesuffix=canonical&api-version=2018-05-01",
+			&MockResponse{StatusCode: http.StatusOK, Body: `{"value":[]}`},
+		)
 
 		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
-		assert.Len(t, mockTransport.GetRequests(), 2)
+		assert.Len(t, mockTransport.GetRequests(), 3)
 	})
 
 	t.Run("AWS Route53", func(t *testing.T) {
@@ -100,10 +105,11 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 		setAWSRoute53ListResponse(mockTransport, domain+".", recordTypeAAAA, awsRoute53ListBody(
 			awsRoute53RecordSetXML(domain+".", recordTypeAAAA, 60, canonicalIP),
 		))
+		setAWSRoute53ListResponse(mockTransport, domain+".", recordTypeCNAME, awsRoute53ListBody())
 
 		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
 		require.NoError(t, err)
-		assert.Len(t, mockTransport.GetRequests(), 2)
+		assert.Len(t, mockTransport.GetRequests(), 3)
 	})
 
 	t.Run("Google Cloud DNS", func(t *testing.T) {
@@ -198,6 +204,11 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 			&MockResponse{StatusCode: http.StatusOK, Body: `{"value":[]}`},
 		)
 		mockTransport.SetResponse(
+			http.MethodGet,
+			baseURL+"CNAME?%24recordsetnamesuffix=migration&api-version=2018-05-01",
+			&MockResponse{StatusCode: http.StatusOK, Body: `{"value":[]}`},
+		)
+		mockTransport.SetResponse(
 			http.MethodPut,
 			baseURL+"AAAA/migration?api-version=2018-05-01",
 			&MockResponse{StatusCode: http.StatusInternalServerError, Body: `{}`},
@@ -208,7 +219,7 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 		assert.Contains(t, err.Error(), "creating/updating AAAA record")
 
 		requests := mockTransport.GetRequests()
-		require.Len(t, requests, 3)
-		assert.Equal(t, http.MethodPut, requests[2].Method)
+		require.Len(t, requests, 4)
+		assert.Equal(t, http.MethodPut, requests[3].Method)
 	})
 }

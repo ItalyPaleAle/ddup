@@ -89,9 +89,9 @@ func (r *AWSRoute53Provider) ProviderType() string {
 	return "awsRoute53"
 }
 
-// HasCNAME returns false because the provider only publishes A and AAAA records
+// HasCNAME shows support for CNAME records
 func (r *AWSRoute53Provider) HasCNAME() bool {
-	return false
+	return true
 }
 
 // ValidateProviderOptions checks the provider options of the endpoints of a domain
@@ -100,63 +100,52 @@ func (r *AWSRoute53Provider) ValidateProviderOptions(d *config.ConfigDomain) err
 	return rejectProviderOptions(d, r.ProviderType())
 }
 
-// UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs
-// All changes are sent in a single change batch, which AWS Route53 applies atomically
+// UpdateRecords updates the A, AAAA and CNAME record sets for the given domain so they point to the targets
+//
+// All changes are sent in a single change batch, which AWS Route53 applies atomically, so the name is never left without records, even when going to or from a CNAME.
+// Deletions go first in the batch, because a CNAME record set can't coexist with other record sets: the ones it replaces, or that replace it, must be deleted before.
 func (r *AWSRoute53Provider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
-	ips, err := plainIPsFromTargets(r.name, targets)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-
-	ipv4, ipv6, err := splitIPs(ips)
+	desired, err := recordSetsFromTargets(r.name, targets)
 	if err != nil {
 		return UpdateResult{}, err
 	}
 
 	recordName := toFQDN(domain)
-	recordSets := []struct {
-		recordType string
-		ips        []string
-	}{
-		{recordType: recordTypeA, ips: ipv4},
-		{recordType: recordTypeAAAA, ips: ipv6},
-	}
-
-	var changes []awsRoute53Change
-	for _, rs := range recordSets {
-		existing, err := r.getExistingRecordSet(ctx, recordName, rs.recordType)
+	var deletes, upserts []awsRoute53Change
+	for _, rs := range desired {
+		existing, err := r.getExistingRecordSet(ctx, recordName, rs.Type)
 		if err != nil {
-			return UpdateResult{}, fmt.Errorf("error getting existing %s records: %w", rs.recordType, err)
+			return UpdateResult{}, fmt.Errorf("error getting existing %s records: %w", rs.Type, err)
 		}
 
-		currentIPs, err := existing.ips()
+		current, err := existing.values()
 		if err != nil {
-			return UpdateResult{}, fmt.Errorf("invalid IP address in existing %s record: %w", rs.recordType, err)
+			return UpdateResult{}, fmt.Errorf("invalid IP address in existing %s record: %w", rs.Type, err)
 		}
-		result.Previous = append(result.Previous, currentIPs...)
+		result.Previous = append(result.Previous, current...)
 
-		desired := sortedUniqueIPs(rs.ips)
 		switch {
-		case len(desired) == 0 && len(currentIPs) == 0:
+		case len(rs.Values) == 0 && len(current) == 0:
 			// Nothing to do
-		case len(desired) == 0:
+		case len(rs.Values) == 0:
 			// Deletions must match the existing record set exactly, so we send it back as-is
-			slog.DebugContext(ctx, "No healthy IPs, deleting record", slog.String("recordName", recordName), slog.String("recordType", rs.recordType))
-			changes = append(changes, awsRoute53Change{
+			slog.DebugContext(ctx, "Deleting record set", slog.String("recordName", recordName), slog.String("recordType", rs.Type))
+			deletes = append(deletes, awsRoute53Change{
 				Action:            "DELETE",
 				ResourceRecordSet: existing,
 			})
-		case !slices.Equal(desired, sortedUniqueIPs(currentIPs)):
-			slog.DebugContext(ctx, "Creating/updating record with healthy IPs", slog.String("recordName", recordName), slog.String("recordType", rs.recordType), slog.Any("ips", desired))
-			changes = append(changes, awsRoute53Change{
+		case !slices.Equal(rs.Values, sortedUniqueIPs(current)):
+			slog.DebugContext(ctx, "Creating/updating record set", slog.String("recordName", recordName), slog.String("recordType", rs.Type), slog.Any("values", rs.Values))
+			upserts = append(upserts, awsRoute53Change{
 				Action:            "UPSERT",
-				ResourceRecordSet: newAWSRoute53ResourceRecordSet(recordName, rs.recordType, ttl, desired),
+				ResourceRecordSet: newAWSRoute53ResourceRecordSet(recordName, rs.Type, ttl, rs.Values),
 			})
 		}
 	}
 
 	slices.Sort(result.Previous)
 
+	changes := slices.Concat(deletes, upserts)
 	if len(changes) == 0 {
 		return result, nil
 	}
@@ -187,10 +176,10 @@ type awsRoute53ResourceRecordSet struct {
 	Type            string                     `xml:"Type"`
 }
 
-func newAWSRoute53ResourceRecordSet(recordName string, recordType string, ttl int, ips []string) awsRoute53ResourceRecordSet {
-	records := make([]awsRoute53ResourceRecord, len(ips))
-	for i, ip := range ips {
-		records[i] = awsRoute53ResourceRecord{Value: ip}
+func newAWSRoute53ResourceRecordSet(recordName string, recordType string, ttl int, values []string) awsRoute53ResourceRecordSet {
+	records := make([]awsRoute53ResourceRecord, len(values))
+	for i, v := range values {
+		records[i] = awsRoute53ResourceRecord{Value: v}
 	}
 
 	return awsRoute53ResourceRecordSet{
@@ -201,13 +190,21 @@ func newAWSRoute53ResourceRecordSet(recordName string, recordType string, ttl in
 	}
 }
 
-// ips returns the canonical IPs in the record set
-func (rs awsRoute53ResourceRecordSet) ips() ([]string, error) {
-	ips := make([]string, len(rs.ResourceRecords))
+// values returns the canonical values in the record set: IP addresses for A and AAAA records, and the hostname for CNAME records
+func (rs awsRoute53ResourceRecordSet) values() ([]string, error) {
+	values := make([]string, len(rs.ResourceRecords))
 	for i, record := range rs.ResourceRecords {
-		ips[i] = record.Value
+		values[i] = record.Value
 	}
-	return canonicalizeIPs(ips)
+
+	if rs.Type == recordTypeCNAME {
+		for i, v := range values {
+			values[i] = canonicalizeHostname(awsRoute53UnescapeName(v))
+		}
+		return values, nil
+	}
+
+	return canonicalizeIPs(values)
 }
 
 // awsRoute53ListResponse represents the response from listing record sets

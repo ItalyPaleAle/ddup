@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/italypaleale/ddup/pkg/config"
@@ -122,6 +123,91 @@ func NewProvider(name string, cfg *config.ConfigProvider, metrics *appmetrics.Ap
 		// Indicates a development-time error
 		panic("invalid provider")
 	}
+}
+
+// canonicalizeTargets validates the targets, canonicalizes their values and removes duplicates
+func canonicalizeTargets(targets []Target) ([]Target, error) {
+	desired := make([]Target, 0, len(targets))
+	seen := make(map[string]struct{}, len(targets))
+	var hasCNAME bool
+	for _, t := range targets {
+		switch t.Type {
+		case recordTypeA, recordTypeAAAA:
+			ip, err := IPTarget(t.Value, t.Proxied)
+			if err != nil {
+				return nil, err
+			}
+
+			if ip.Type != t.Type {
+				return nil, fmt.Errorf("target %q is not valid for a %s record", t.Value, t.Type)
+			}
+
+			t = ip
+		case recordTypeCNAME:
+			hasCNAME = true
+			t.Value = canonicalizeHostname(t.Value)
+		default:
+			return nil, fmt.Errorf("%w: unknown record type %q", ErrUnsupportedTarget, t.Type)
+		}
+
+		key := t.String()
+		_, dup := seen[key]
+		if dup {
+			continue
+		}
+
+		seen[key] = struct{}{}
+		desired = append(desired, t)
+	}
+
+	if hasCNAME && len(desired) > 1 {
+		return nil, errors.New("a CNAME target can't be published together with other targets")
+	}
+
+	return desired, nil
+}
+
+// recordSet contains the values of the records with the same name and type
+type recordSet struct {
+	// Type of the records: "A", "AAAA" or "CNAME"
+	Type string
+	// Canonical values of the records, sorted and without duplicates
+	// A CNAME record set has at most one value
+	Values []string
+}
+
+// recordSetTypes are the types of the record sets that providers manage, in the order they handle them
+var recordSetTypes = []string{recordTypeA, recordTypeAAAA, recordTypeCNAME}
+
+// recordSetsFromTargets groups the targets into a record set for each of the A, AAAA and CNAME types, in this order
+// It's used by the providers that manage the records with the same name and type together, and that can't publish proxied records
+// The record sets of the types that have no targets are empty, so the existing records of those types are deleted
+func recordSetsFromTargets(provider string, targets []Target) ([]recordSet, error) {
+	desired, err := canonicalizeTargets(targets)
+	if err != nil {
+		return nil, err
+	}
+
+	sets := make([]recordSet, len(recordSetTypes))
+	for i, recordType := range recordSetTypes {
+		sets[i].Type = recordType
+	}
+
+	for _, t := range desired {
+		if t.Proxied {
+			return nil, fmt.Errorf("%w: provider %s can only publish records that are not proxied", ErrUnsupportedTarget, provider)
+		}
+
+		// canonicalizeTargets returns an error for the other types, so the index is always valid
+		i := slices.Index(recordSetTypes, t.Type)
+		sets[i].Values = append(sets[i].Values, t.Value)
+	}
+
+	for i := range sets {
+		slices.Sort(sets[i].Values)
+	}
+
+	return sets, nil
 }
 
 // plainIPsFromTargets returns the IP addresses for providers that can only publish A and AAAA records that are not proxied

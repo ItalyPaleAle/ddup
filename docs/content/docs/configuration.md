@@ -187,16 +187,15 @@ The rules, which ddup checks when it starts:
 - `cname` must be a hostname and can't be the `recordName` of the domain
 - Two endpoints of the same domain can't publish the same IP address or hostname
 
-Currently, only these providers can publish CNAME records:
+These providers can publish CNAME records:
 
 | Provider | Supports `cname` |
 |----------|------------------|
-| AWS Route53 | No |
-| Azure DNS | No |
+| AWS Route53 | Yes |
+| Azure DNS | Yes |
 | Cloudflare DNS | Yes |
 | Google Cloud DNS | No |
 | OVH | No |
-
 
 ### `providers`
 

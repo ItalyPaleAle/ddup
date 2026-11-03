@@ -160,7 +160,8 @@ This policy allows changing every record in the zone. To allow only the names an
           ],
           "route53:ChangeResourceRecordSetsRecordTypes": [
             "A",
-            "AAAA"
+            "AAAA",
+            "CNAME"
           ]
         }
       }
@@ -172,4 +173,6 @@ This policy allows changing every record in the zone. To allow only the names an
 ## Things to know
 
 - Only record sets with simple routing are supported. If the name already has an alias record, or a record set with another routing policy such as weighted, latency, or failover, the update fails with an error.
-- The A and AAAA record sets with the domain's name are replaced, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).
+- The A, AAAA, and CNAME record sets with the domain's name are replaced, including records you created in the console. See [How ddup manages records](/providers#how-ddup-manages-records).
+- Endpoints can publish [CNAME records](/docs/configuration#cname-records). ddup sends all the changes for a domain in a single change batch, which Route 53 applies atomically, so the name always has records, even when they switch between A and AAAA records and a CNAME record.
+- Route 53 doesn't allow a CNAME record at the apex of the zone, such as `example.com`. If ddup tries to publish one there, Route 53 rejects the change and the records stay as they were.

@@ -110,55 +110,79 @@ func (a *AzureProvider) ProviderType() string {
 	return "azure"
 }
 
-// HasCNAME returns false because the provider only publishes A and AAAA records
+// HasCNAME returns true for Azure DNS
 func (a *AzureProvider) HasCNAME() bool {
-	return false
+	return true
 }
 
 // ValidateProviderOptions checks the provider options of the endpoints of a domain
 // The provider has no options, so it rejects all of them
+// It also rejects endpoints with cname at the apex of the zone, where Azure DNS doesn't allow CNAME records
 func (a *AzureProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
-	return rejectProviderOptions(d, a.ProviderType())
+	err := rejectProviderOptions(d, a.ProviderType())
+	if err != nil {
+		return err
+	}
+
+	// CNAME records cannot be set for the apex domain
+	// UpdateRecords deletes the other record sets before creating a CNAME, so this must be caught before the records are changed
+	if a.getRecordName(d.RecordName) != "@" {
+		return nil
+	}
+	for ei, e := range d.Endpoints {
+		if e.CNAME != "" {
+			return fmt.Errorf("domain %s endpoint %d (%s) is invalid: cname can't be used at the apex of the zone with provider '%s' (%s)", d.RecordName, ei, e.Name, d.Provider, a.ProviderType())
+		}
+	}
+
+	return nil
 }
 
-// UpdateRecords updates DNS A and AAAA records for the given domain with the provided IPs.
+// UpdateRecords updates the A, AAAA and CNAME record sets for the given domain so they point to the targets
+//
+// Azure DNS can't change more than one record set at a time, and doesn't allow a CNAME record set next to other record sets with the same name
+// Normally, record sets are created or updated before the others are deleted, so the name is never left without records
+// When there's a CNAME record set before or after the update, the record sets that are not desired anymore are deleted first, which leaves the name without records for a moment
 func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
-	ips, err := plainIPsFromTargets(a.name, targets)
+	desired, err := recordSetsFromTargets(a.name, targets)
 	if err != nil {
 		return UpdateResult{}, err
 	}
 
-	ipv4, ipv6, err := splitIPs(ips)
-	if err != nil {
-		return UpdateResult{}, err
-	}
-
-	recordSets := []struct {
-		recordType string
-		ips        []string
-		currentIPs []string
-	}{
-		{recordType: recordTypeA, ips: ipv4},
-		{recordType: recordTypeAAAA, ips: ipv6},
-	}
-
-	// Read both record types before making changes, then apply additions before removals.
-	for i := range recordSets {
-		recordSets[i].currentIPs, err = a.getExistingIPs(ctx, domain, recordSets[i].recordType)
-		if err != nil {
-			return UpdateResult{}, fmt.Errorf("error getting existing %s records: %w", recordSets[i].recordType, err)
+	// Read all record types before making changes
+	current := make([][]string, len(desired))
+	var hasCNAME bool
+	for i, rs := range desired {
+		current[i], err = a.getExistingValues(ctx, domain, rs.Type)
+		switch {
+		case err != nil && rs.Type == recordTypeCNAME && len(rs.Values) == 0 && isAzureForbidden(err):
+			// Identities with a custom role that only allows managing A and AAAA records, as documented before ddup supported CNAME records with Azure DNS, can't read them
+			// When no CNAME is desired, we assume there's none: if there is one, creating the other records fails
+			slog.DebugContext(ctx, "Not allowed to read CNAME records, assuming there are none", slog.String("domain", domain))
+			current[i] = nil
+		case err != nil:
+			return UpdateResult{}, fmt.Errorf("error getting existing %s records: %w", rs.Type, err)
 		}
-		result.Previous = append(result.Previous, recordSets[i].currentIPs...)
+		result.Previous = append(result.Previous, current[i]...)
+
+		if rs.Type == recordTypeCNAME && (len(rs.Values) > 0 || len(current[i]) > 0) {
+			hasCNAME = true
+		}
 	}
 	slices.Sort(result.Previous)
 
-	// Additions first (record types with desired IPs), then removals (record types with none)
-	for _, wantIPs := range []bool{true, false} {
-		for _, recordSet := range recordSets {
-			if (len(recordSet.ips) > 0) != wantIPs {
+	// Additions first (record types with desired values), then removals (record types with none)
+	// A CNAME record set can't coexist with other record sets, so in that case removals go first
+	order := []bool{true, false}
+	if hasCNAME {
+		order = []bool{false, true}
+	}
+	for _, wantValues := range order {
+		for i, rs := range desired {
+			if (len(rs.Values) > 0) != wantValues {
 				continue
 			}
-			changed, err := a.updateRecordType(ctx, domain, recordSet.recordType, ttl, recordSet.ips, recordSet.currentIPs)
+			changed, err := a.updateRecordType(ctx, domain, rs.Type, ttl, rs.Values, current[i])
 			if err != nil {
 				return UpdateResult{}, err
 			}
@@ -169,18 +193,18 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 	return result, nil
 }
 
-// updateRecordType makes the record set for the type match the IPs, and returns true if it had to write anything
-func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, ips []string, currentIPs []string) (bool, error) {
+// updateRecordType makes the record set for the type match the values, and returns true if it had to write anything
+func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, values []string, currentValues []string) (bool, error) {
 	recordName := a.getRecordName(domain)
 
-	if len(ips) == 0 {
-		if len(currentIPs) == 0 {
+	if len(values) == 0 {
+		if len(currentValues) == 0 {
 			return false, nil
 		}
 
 		slog.DebugContext(
 			ctx,
-			"No healthy IPs, deleting record",
+			"Deleting record set",
 			slog.String("recordName", recordName),
 			slog.String("recordType", recordType),
 		)
@@ -197,29 +221,27 @@ func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, rec
 		return true, nil
 	}
 
-	desired := append([]string(nil), ips...)
-	current := append([]string(nil), currentIPs...)
-
-	slices.Sort(desired)
+	current := append([]string(nil), currentValues...)
 	slices.Sort(current)
 
-	if slices.Equal(desired, current) {
+	// values is already sorted
+	if slices.Equal(values, current) {
 		return false, nil
 	}
 
 	slog.DebugContext(
 		ctx,
-		"Creating/updating record with healthy IPs",
+		"Creating/updating record set",
 		slog.String("recordName", recordName),
 		slog.String("recordType", recordType),
-		slog.Any("ips", ips),
+		slog.Any("values", values),
 	)
 
 	err := a.createOrUpdateRecord(
 		ctx,
 		recordName,
 		recordType,
-		ips,
+		values,
 		ttl,
 	)
 	if err != nil {
@@ -234,9 +256,14 @@ type azureARecord struct {
 	IPv4Address string `json:"ipv4Address"`
 }
 
-// azureAAAARecord represents an AAAA record from the Azure DNS API.
+// azureAAAARecord represents an AAAA record from the Azure DNS API
 type azureAAAARecord struct {
 	IPv6Address string `json:"ipv6Address"`
+}
+
+// azureCNAMERecord represents a CNAME record from the Azure DNS API
+type azureCNAMERecord struct {
+	CNAME string `json:"cname"`
 }
 
 // azureRecordProperties represents a record's properties from the Azure DNS API
@@ -246,6 +273,7 @@ type azureRecordProperties struct {
 	TTL         int               `json:"TTL"`
 	ARecords    []azureARecord    `json:"ARecords,omitempty"`
 	AAAARecords []azureAAAARecord `json:"AAAARecords,omitempty"`
+	CNAMERecord *azureCNAMERecord `json:"CNAMERecord,omitempty"`
 }
 
 // azureRecord represents a DNS record from Azure DNS API
@@ -262,6 +290,23 @@ type azureRecordSet struct {
 // azureRecordsResponse represents the response from listing records
 type azureRecordsResponse struct {
 	Value []azureRecord `json:"value"`
+}
+
+// azureHTTPError is returned when the Azure API responds with a status code that is not successful
+type azureHTTPError struct {
+	StatusCode int
+	Body       string
+}
+
+// Error implements the error interface
+func (e azureHTTPError) Error() string {
+	return fmt.Sprintf("invalid response status code HTTP %d; response: %s", e.StatusCode, e.Body)
+}
+
+// isAzureForbidden returns true if the error is a response from the Azure API saying that the identity is not allowed to perform the request
+func isAzureForbidden(err error) bool {
+	var httpErr azureHTTPError
+	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusForbidden
 }
 
 func (a *AzureProvider) getRecordName(domain string) string {
@@ -297,7 +342,8 @@ func (a *AzureProvider) getAccessToken(parentCtx context.Context) (string, error
 	return token.Token, nil
 }
 
-func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string, recordType string) ([]string, error) {
+// getExistingValues returns the canonical values of the record set with the domain's name and the type: IP addresses for A and AAAA records, and the hostname for CNAME records
+func (a *AzureProvider) getExistingValues(ctx context.Context, domain string, recordType string) ([]string, error) {
 	start := time.Now()
 	var success bool
 	if a.metrics != nil {
@@ -349,7 +395,7 @@ func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string, recor
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		body, _ := io.ReadAll(res.Body)
-		return nil, fmt.Errorf("invalid response status code HTTP %d; response: %s", res.StatusCode, string(body))
+		return nil, azureHTTPError{StatusCode: res.StatusCode, Body: string(body)}
 	}
 
 	var response azureRecordsResponse
@@ -358,25 +404,36 @@ func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string, recor
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
-	// Get the list of A IPs
-	var ips []string
+	// Get the values of the record set
+	var values []string
 	for _, record := range response.Value {
 		if record.Name != recordName {
 			continue
 		}
 
-		if recordType == recordTypeA {
+		switch recordType {
+		case recordTypeA:
 			for _, item := range record.Properties.ARecords {
-				ips = append(ips, item.IPv4Address)
+				values = append(values, item.IPv4Address)
 			}
-		} else {
+		case recordTypeAAAA:
 			for _, item := range record.Properties.AAAARecords {
-				ips = append(ips, item.IPv6Address)
+				values = append(values, item.IPv6Address)
+			}
+		case recordTypeCNAME:
+			// A CNAME record set can exist without a value
+			if record.Properties.CNAMERecord != nil && record.Properties.CNAMERecord.CNAME != "" {
+				values = append(values, canonicalizeHostname(record.Properties.CNAMERecord.CNAME))
 			}
 		}
 	}
 
-	canonicalIPs, err := canonicalizeIPs(ips)
+	if recordType == recordTypeCNAME {
+		success = true
+		return values, nil
+	}
+
+	canonicalIPs, err := canonicalizeIPs(values)
 	if err != nil {
 		return nil, fmt.Errorf("invalid IP address in existing %s record: %w", recordType, err)
 	}
@@ -385,7 +442,9 @@ func (a *AzureProvider) getExistingIPs(ctx context.Context, domain string, recor
 	return canonicalIPs, nil
 }
 
-func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName string, recordType string, ips []string, ttl int) error {
+// createOrUpdateRecord creates or replaces the record set with the values
+// A CNAME record set must have exactly one value
+func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName string, recordType string, values []string, ttl int) error {
 	start := time.Now()
 	var success bool
 	if a.metrics != nil {
@@ -424,22 +483,34 @@ func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName str
 		TTL: ttl,
 	}
 
-	if recordType == recordTypeA {
-		properties.ARecords = make([]azureARecord, len(ips))
+	switch recordType {
+	case recordTypeA:
+		properties.ARecords = make([]azureARecord, len(values))
 
-		for i, ip := range ips {
+		for i, ip := range values {
 			properties.ARecords[i] = azureARecord{
 				IPv4Address: ip,
 			}
 		}
-	} else {
-		properties.AAAARecords = make([]azureAAAARecord, len(ips))
+	case recordTypeAAAA:
+		properties.AAAARecords = make([]azureAAAARecord, len(values))
 
-		for i, ip := range ips {
+		for i, ip := range values {
 			properties.AAAARecords[i] = azureAAAARecord{
 				IPv6Address: ip,
 			}
 		}
+	case recordTypeCNAME:
+		if len(values) != 1 {
+			// Indicates a development-time error, since a CNAME target can't be published with other targets
+			return fmt.Errorf("a CNAME record set must have exactly one value, got %d", len(values))
+		}
+
+		properties.CNAMERecord = &azureCNAMERecord{
+			CNAME: values[0],
+		}
+	default:
+		return fmt.Errorf("%w: unknown record type %q", ErrUnsupportedTarget, recordType)
 	}
 
 	recordSet := azureRecordSet{
