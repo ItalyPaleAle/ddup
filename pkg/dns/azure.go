@@ -110,7 +110,7 @@ func (a *AzureProvider) ProviderType() string {
 	return "azure"
 }
 
-// HasCNAME returns true because Azure DNS can publish CNAME records
+// HasCNAME returns true for Azure DNS
 func (a *AzureProvider) HasCNAME() bool {
 	return true
 }
@@ -124,7 +124,7 @@ func (a *AzureProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
 		return err
 	}
 
-	// The apex of the zone has the SOA and NS records, which a CNAME record can't coexist with
+	// CNAME records cannot be set for the apex domain
 	// UpdateRecords deletes the other record sets before creating a CNAME, so this must be caught before the records are changed
 	if a.getRecordName(d.RecordName) != "@" {
 		return nil
@@ -140,9 +140,9 @@ func (a *AzureProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
 
 // UpdateRecords updates the A, AAAA and CNAME record sets for the given domain so they point to the targets
 //
-// Azure DNS can't change more than one record set at a time, and doesn't allow a CNAME record set next to other record sets with the same name.
-// Normally, record sets are created or updated before the others are deleted, so the name is never left without records.
-// When there's a CNAME record set before or after the update, the record sets that are not desired anymore are deleted first, which leaves the name without records for a moment.
+// Azure DNS can't change more than one record set at a time, and doesn't allow a CNAME record set next to other record sets with the same name
+// Normally, record sets are created or updated before the others are deleted, so the name is never left without records
+// When there's a CNAME record set before or after the update, the record sets that are not desired anymore are deleted first, which leaves the name without records for a moment
 func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
 	desired, err := recordSetsFromTargets(a.name, targets)
 	if err != nil {

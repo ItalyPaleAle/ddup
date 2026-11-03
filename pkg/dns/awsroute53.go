@@ -89,7 +89,7 @@ func (r *AWSRoute53Provider) ProviderType() string {
 	return "awsRoute53"
 }
 
-// HasCNAME returns true because AWS Route53 can publish CNAME records
+// HasCNAME shows support for CNAME records
 func (r *AWSRoute53Provider) HasCNAME() bool {
 	return true
 }

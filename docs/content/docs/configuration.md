@@ -186,7 +186,6 @@ The rules, which ddup checks when it starts:
 - A CNAME record can't coexist with other records at the same name, so an endpoint with `cname` must be the only one with its `priority`. Use a different `priority` from the other endpoints, as in the example
 - `cname` must be a hostname and can't be the `recordName` of the domain
 - Two endpoints of the same domain can't publish the same IP address or hostname
-- With Azure DNS, the `recordName` of a domain with a `cname` endpoint can't be the apex of the zone, such as `example.com`
 
 These providers can publish CNAME records:
 
