@@ -81,6 +81,8 @@ curl -fsSLO "https://github.com/italypaleale/ddup/releases/download/v${VERSION}/
 sha256sum --check --ignore-missing checksums.txt
 ```
 
+Each archive also has a [CycloneDX](https://cyclonedx.org) SBOM listing the Go modules compiled into the binary and the npm packages of the dashboard it embeds, named `ddup-<version>-<platform>.cdx.json`. The SBOMs are covered by `checksums.txt` too.
+
 Put the configuration in `/etc/ddup/config.yaml` (see [where ddup looks for the configuration](/docs/configuration#configuration-file)), then start ddup:
 
 ```sh

@@ -99,131 +99,36 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      # Lists the production dependencies of the dashboard, which scripts/build-binaries.sh merges into the SBOM of the binary that embeds it
+      # The spec version must match the one cyclonedx-gomod writes, or the merge fails
+      - name: Generate dashboard SBOM
+        working-directory: dashboard
+        run: |
+          pnpm sbom \
+            --prod \
+            --sbom-format cyclonedx \
+            --sbom-spec-version 1.6 \
+            --sbom-type application \
+            --out "${RUNNER_TEMP}/dashboard.cdx.json"
+          echo "DASHBOARD_SBOM=${RUNNER_TEMP}/dashboard.cdx.json" >> "$GITHUB_ENV"
+
+      # Used by scripts/build-binaries.sh to write a CycloneDX SBOM for each release binary to .out, before the checksum and attestation steps, so both cover them too
+      - name: Install cyclonedx-gomod
+        env:
+          # Pinned to an exact release that is at least a week old
+          # `go install pkg@version` ignores this repo's go.mod and verifies the downloaded modules against sum.golang.org
+          CYCLONEDX_GOMOD_VERSION: "v1.12.0"
+        run: |
+          GOBIN="${RUNNER_TEMP}/bin" go install "github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@${CYCLONEDX_GOMOD_VERSION}"
+          echo "CYCLONEDX_GOMOD=${RUNNER_TEMP}/bin/cyclonedx-gomod" >> "$GITHUB_ENV"
+
       - name: Build for all platforms
         env:
           CGO_ENABLED: "0"
         run: |
-          mkdir -p .bin .out
-
-          echo -e "\n###\nBuilding linux/amd64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-linux-amd64
-          GOOS=linux GOARCH=amd64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-linux-amd64/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-linux-amd64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-linux-amd64
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-linux-amd64.tar.gz ddup-${{ env.BUILD_ID }}-linux-amd64)
-
-          echo -e "\n###\nBuilding linux/386\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-linux-386
-          GOOS=linux GOARCH=386 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-linux-386/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-linux-386
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-linux-386
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-linux-386.tar.gz ddup-${{ env.BUILD_ID }}-linux-386)
-
-          echo -e "\n###\nBuilding linux/arm64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-linux-arm64
-          GOOS=linux GOARCH=arm64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-linux-arm64/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-linux-arm64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-linux-arm64
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-linux-arm64.tar.gz ddup-${{ env.BUILD_ID }}-linux-arm64)
-
-          echo -e "\n###\nBuilding linux/armv7\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-linux-armv7
-          GOOS=linux GOARCH=arm GOARM=7 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-linux-armv7/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-linux-armv7
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-linux-armv7
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-linux-armv7.tar.gz ddup-${{ env.BUILD_ID }}-linux-armv7)
-
-          echo -e "\n###\nBuilding darwin/amd64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-macos-x64
-          GOOS=darwin GOARCH=amd64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-macos-x64/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-macos-x64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-macos-x64
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-macos-x64.tar.gz ddup-${{ env.BUILD_ID }}-macos-x64)
-
-          echo -e "\n###\nBuilding darwin/arm64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-macos-arm64
-          GOOS=darwin GOARCH=arm64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-macos-arm64/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-macos-arm64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-macos-arm64
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-macos-arm64.tar.gz ddup-${{ env.BUILD_ID }}-macos-arm64)
-
-          echo -e "\n###\nBuilding windows/amd64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-windows-x64
-          GOOS=windows GOARCH=amd64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-windows-x64/ddup.exe \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-windows-x64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-windows-x64
-          (cd .bin/ddup-${{ env.BUILD_ID }}-windows-x64 && zip -r ../../.out/ddup-${{ env.BUILD_ID }}-windows-x64.zip .)
-
-          echo -e "\n###\nBuilding windows/arm64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-windows-arm64
-          GOOS=windows GOARCH=arm64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-windows-arm64/ddup.exe \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-windows-arm64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-windows-arm64
-          (cd .bin/ddup-${{ env.BUILD_ID }}-windows-arm64 && zip -r ../../.out/ddup-${{ env.BUILD_ID }}-windows-arm64.zip .)
-
-          echo -e "\n###\nBuilding freebsd/amd64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-freebsd-amd64
-          GOOS=freebsd GOARCH=amd64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-freebsd-amd64/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-freebsd-amd64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-freebsd-amd64
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-freebsd-amd64.tar.gz ddup-${{ env.BUILD_ID }}-freebsd-amd64)
-
-          echo -e "\n###\nBuilding freebsd/arm64\n"
-          mkdir .bin/ddup-${{ env.BUILD_ID }}-freebsd-arm64
-          GOOS=freebsd GOARCH=arm64 \
-            go build \
-              -ldflags "${{ env.BUILD_LDFLAGS }}" \
-              -o .bin/ddup-${{ env.BUILD_ID }}-freebsd-arm64/ddup \
-              -trimpath \
-              ./cmd/ddup
-          cp LICENSE.md .bin/ddup-${{ env.BUILD_ID }}-freebsd-arm64
-          cp -r README.md .bin/ddup-${{ env.BUILD_ID }}-freebsd-arm64
-          (cd .bin && tar -czvf ../.out/ddup-${{ env.BUILD_ID }}-freebsd-arm64.tar.gz ddup-${{ env.BUILD_ID }}-freebsd-arm64)
+          for target in linux-amd64 linux-386 linux-arm64 linux-armv7 macos-x64 macos-arm64 windows-x64 windows-arm64 freebsd-amd64 freebsd-arm64; do
+            ./scripts/build-binaries.sh "${target}"
+          done
 
           echo -e "\n###\nLinks for Docker buildx\n"
           (
@@ -243,7 +148,7 @@ jobs:
         working-directory: .out
         run: |
           shopt -s nullglob
-          files=(ddup-*.tar.gz ddup-*.zip)
+          files=(ddup-*.tar.gz ddup-*.zip ddup-*.cdx.json)
           if [[ ${#files[@]} -eq 0 ]]; then
             echo "::error::No release archives found in .out"
             exit 1
@@ -265,7 +170,7 @@ jobs:
           file: Dockerfile
           push: true
 
-     # A single attestation covering every file attached to the release: the archives plus checksums.txt
+      # A single attestation covering every file attached to the release: the archives, their SBOMs, and checksums.txt
       - name: Attestation for release archives
         id: attest-archives
         uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # 4.2.1

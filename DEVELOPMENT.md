@@ -141,6 +141,7 @@ When a test fails, Playwright keeps its trace in `dashboard/test-results`.
 
 ```sh
 make lint           # golangci-lint run, needs dashboard/dist
+make vulncheck      # govulncheck, needs dashboard/dist
 make lint-dashboard # Type check, ESLint and Prettier on the dashboard
 ```
 
@@ -151,13 +152,14 @@ make lint-dashboard # Type check, ESLint and Prettier on the dashboard
 1. `go tool gomod-age`: checks that the Go dependencies are old enough (see [`.gomod-age.json`](./.gomod-age.json))
 2. `make dashboard`: builds the dashboard
 3. `make lint`: golangci-lint
-4. `make test-race`: Go tests with the race detector
-5. `make lint-dashboard`: dashboard type check, ESLint and Prettier
-6. `make test-e2e`: the Playwright tests
+4. `make vulncheck`: [govulncheck](https://go.dev/doc/tutorial/govulncheck), which reports known vulnerabilities in the code reachable from ddup
+5. `make test-race`: Go tests with the race detector
+6. `make lint-dashboard`: dashboard type check, ESLint and Prettier
+7. `make test-e2e`: the Playwright tests
 
-CI runs steps 1 to 4 in one job and step 6 in another.
+CI runs steps 1 to 5 in one job and step 7 in another.
 The dashboard build in step 2 runs `tsc`, so CI type-checks the app, but it doesn't run `pnpm lint`, `pnpm format:check` or the extra `tsc -p scripts` of `pnpm type-check`.
-Step 5 runs them, so please do too: it keeps the dashboard code consistent.
+Step 6 runs them, so please do too: it keeps the dashboard code consistent.
 See [`.github/workflows/ci.yaml`](./.github/workflows/ci.yaml).
 
 ## Opening a pull request
