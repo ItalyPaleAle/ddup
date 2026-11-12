@@ -23,8 +23,9 @@ Use it to set up [round-robin DNS](https://en.wikipedia.org/wiki/Round-robin_DNS
 
 - Health checks over HTTP or HTTPS, with your choice of method, expected status code, timeout, and number of attempts
 - Round-robin across all healthy endpoints, or [priorities](/docs/failover-priorities) that keep backup servers out of DNS until the main ones fail
-- A records for IPv4 addresses, and AAAA records for IPv6
+- A records for IPv4 addresses, AAAA records for IPv6, and [CNAME records](/docs/configuration#cname-records) with supported providers
 - A dashboard and an API with the health of every domain and endpoint
+- [Notifications](/docs/notifications) by webhook or email when DNS changes, an update fails, or a domain has no healthy endpoint
 
 ## Supported DNS providers
 

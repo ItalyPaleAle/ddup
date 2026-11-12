@@ -3,7 +3,7 @@ title: "Configuration"
 weight: 30
 ---
 
-ddup reads its configuration from a YAML file, usually named `config.yaml` (or `config.yml`).
+ddup reads its configuration from a YAML file named `config.yaml`.
 
 ## Configuration file
 
@@ -14,7 +14,9 @@ ddup looks for the configuration file in this order:
 3. `~/.ddup/config.yaml`
 4. `/etc/ddup/config.yaml`
 
-> When running ddup in a container, mount the folder that contains `config.yaml` at `/etc/ddup`.
+If none of these exist, ddup looks for `config.yml` in the same folders.
+
+When running ddup in a container, mount the folder that contains `config.yaml` at `/etc/ddup`.
 
 ## Example
 
@@ -116,6 +118,7 @@ Durations are written as a number and a unit, such as `500ms`, `30s`, `1m`, or `
 | `domains` | list | **required** | The domains to manage, see [`domains`](#domains) |
 | `providers` | map | **required** | The DNS providers, see [`providers`](#providers) |
 | `server` | object | | The dashboard and API, see [`server`](#server) |
+| `notifications` | object | | Messages about DNS changes and failures, see [`notifications`](#notifications) |
 | `logs` | object | | Logging options, see [`logs`](#logs) |
 
 ### `domains`
@@ -152,22 +155,22 @@ Each endpoint is a server that can serve the domain.
 | `ip` | string | | IP address to publish when the endpoint is healthy. IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. Each endpoint sets exactly one of `ip` and `cname`. |
 | `cname` | string | | Hostname to publish in a CNAME record when the endpoint is healthy, as an alternative to `ip`. See [CNAME records](#cname-records). |
 | `name` | string | The URL | Name of the endpoint, shown in logs and metrics |
-| `priority` | number | `0` | Lower values are preferred: only the healthy endpoints with the lowest value are published. See [Failover with priorities](/docs/failover-priorities). |
+| `priority` | number | `0` | Lower values are preferred: only the healthy endpoints with the lowest value are published. It can't be negative. See [Failover with priorities](/docs/failover-priorities). |
 | `host` | string | | Host name to send in the request, when `url` contains an IP address or a different host name. It's also used for TLS. See [Checking a server by IP](/docs/health-checks#checking-a-server-by-ip). |
-| `providerOptions` | object | | Settings that apply only with a specific DNS provider, under a key named after the provider. Using one with a domain whose provider is different is a configuration error. Currently, only `cloudflare` is available. |
+| `providerOptions` | object | | Settings for a specific DNS provider, under a key named after it. Currently, the only key is `cloudflare`. Setting it for a domain that uses another provider is a configuration error. |
 
 #### CNAME records
 
-By default, ddup publishes A and AAAA records that point to the `ip` of each healthy endpoint. An endpoint can set `cname` instead, to publish a CNAME record pointing to a hostname.
+By default, ddup publishes A and AAAA records that point to the `ip` of each healthy endpoint. An endpoint can set `cname` instead, to publish a CNAME record that points to a hostname.
 
-This is useful for a target that is only reachable by hostname, such as via [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) (e.g. `<tunnel-id>.cfargotunnel.com`).
+Use it for a target that you can reach only by its hostname, such as a [Cloudflare Tunnel](/providers/cloudflare#proxied-records-and-cloudflare-tunnel) (`<tunnel-id>.cfargotunnel.com`).
 
-The example below publishes the VPS endpoints as A records, and falls back to a CNAME record only when all of them are unhealthy:
+This example publishes the two VPS endpoints as A records, and falls back to a CNAME record only when neither of them is healthy:
 
 ```yaml
 domains:
   - recordName: "app.example.com"
-    provider: "my-cloudflare"
+    provider: "cloudflare-main"
     endpoints:
       - name: "vps-us"
         url: "https://vps-us.example.com/health"
@@ -181,29 +184,28 @@ domains:
         priority: 1
 ```
 
-The rules, which ddup checks when it starts:
+ddup checks these rules when it starts:
 
-- A CNAME record can't coexist with other records at the same name, so an endpoint with `cname` must be the only one with its `priority`. Use a different `priority` from the other endpoints, as in the example
-- `cname` must be a hostname and can't be the `recordName` of the domain
-- Two endpoints of the same domain can't publish the same IP address or hostname
+- A CNAME record can't coexist with other records with the same name, so an endpoint with `cname` must be the only one with its `priority`. Give it a different `priority` from the other endpoints, as in the example.
+- `cname` must be a hostname, not an IP address, and it can't be the `recordName` of the domain.
+- Two endpoints of the same domain can't publish the same IP address or hostname.
 
-Currently, only these providers can publish CNAME records:
+Only some providers can publish CNAME records:
 
 | Provider | Supports `cname` |
-|----------|------------------|
-| AWS Route53 | No |
+| --- | --- |
+| AWS Route 53 | No |
 | Azure DNS | No |
-| Cloudflare DNS | Yes |
+| Cloudflare | Yes |
 | Google Cloud DNS | No |
-| OVH | No |
-
+| OVHcloud | No |
 
 ### `providers`
 
 A map of DNS providers. Each key is a name of your choice, which domains use in their `provider` option. Each value contains the settings for exactly one provider:
 
 | Key | Provider |
-|-----|----------|
+| --- | --- |
 | `awsRoute53` | [AWS Route 53](/providers/aws-route53) |
 | `azure` | [Azure DNS](/providers/azure-dns) |
 | `cloudflare` | [Cloudflare](/providers/cloudflare) |
@@ -231,7 +233,7 @@ See each provider's page for its options.
 The server hosts the [dashboard and API](/docs/dashboard).
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `enabled` | boolean | `false` | Start the server |
 | `bind` | string | `127.0.0.1` | Address to listen on. Use `0.0.0.0` to listen on all interfaces, which is needed in a container. |
 | `port` | number | `7401` | Port to listen on |
@@ -241,22 +243,22 @@ The server hosts the [dashboard and API](/docs/dashboard).
 
 ### `notifications`
 
-Send a message to webhooks or by email when the DNS records of a domain change, an update fails, or no endpoint is healthy. See [Notifications](/docs/notifications) for the options.
+Sends a message to webhooks or by email when the DNS records of a domain change, an update fails, or no endpoint is healthy. See [Notifications](/docs/notifications) for the options.
 
 ### `logs`
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `level` | string | `info` | Minimum level of the messages to log: `debug`, `info`, `warn`, or `error` |
 | `json` | boolean | `false` | Write logs as JSON, one object per line, instead of text |
 
-See [Logs and metrics](/docs/observability) for logs and metrics.
+See [Logs and metrics](/docs/observability) for more about logs and metrics.
 
 ## Environment variables
 
 | Variable | Description |
-|----------|-------------|
+| --- | --- |
 | `DDUP_CONFIG` | Path to the configuration file |
 | `OTEL_*` | OpenTelemetry options for exporting logs and metrics, see [Logs and metrics](/docs/observability) |
 
-Some providers may support authenticating with environmental variables too. See the documentation for each provider for more info.
+With [AWS Route 53](/providers/aws-route53#default-credential-chain), [Azure DNS](/providers/azure-dns#default-credentials), and [Google Cloud DNS](/providers/google-cloud-dns#application-default-credentials), ddup can also read the credentials from environment variables, such as `AWS_ACCESS_KEY_ID`, `AZURE_CLIENT_SECRET`, or `GOOGLE_APPLICATION_CREDENTIALS`.

@@ -18,8 +18,9 @@ ddup isn't a DNS server. It changes the records in the DNS service that already 
 
 - Health checks multiple apps over HTTP or HTTPS
 - Round-robin across all healthy endpoints, or priorities that keep backup servers out of DNS until the main ones fail
-- A records for IPv4 addresses, and AAAA records for IPv6
+- A records for IPv4 addresses, AAAA records for IPv6, and CNAME records with supported providers
 - A dashboard and an API with the health of every domain and endpoint
+- Notifications by webhook or email when DNS changes, an update fails, or a domain has no healthy endpoint
 
 ## Supported DNS providers
 

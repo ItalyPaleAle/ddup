@@ -43,10 +43,10 @@ If you prefer to install them yourself:
 ## How the repository is laid out
 
 - `cmd/ddup`: the `main` package. `main_dashboarddev.go` is only built with the `dashboarddev` tag, and replaces the health checker with static sample data
-- `pkg/`: the Go code (config, DNS providers, health checks, the HTTP server, metrics)
+- `pkg/`: the Go code (config, DNS providers, health checks, notifications, the HTTP server, metrics)
 - `dashboard/`: the web dashboard, a React app built with Vite. `dashboard/e2e` has its Playwright tests
-- `config.sample.yaml`: a sample config, documenting every option
-- `docs/`: the documentation site at [ddup.italypaleale.me](https://ddup.italypaleale.me), built with Hugo. It's a separate Go module, which `go.work` adds to the workspace with the root module
+- `config.sample.yaml`: a sample config, with comments on the main options. The [configuration reference](https://ddup.italypaleale.me/docs/configuration) lists all of them
+- `docs/`: the documentation site at [ddup.italypaleale.me](https://ddup.italypaleale.me), built with Hugo. It's a separate Go module, with its own `go.mod`
 
 ## Building
 

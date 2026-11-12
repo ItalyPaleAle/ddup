@@ -77,19 +77,19 @@ The response has `"success": true` if both are right.
 
 ## CDN Proxying and Cloudflare Tunnel
 
-Records in Cloudflare can be configured in one of two modes:
+Each record in Cloudflare is either:
 
-- DNS only ("gray cloud"): the default option. Cloudflare responds to DNS queries with the IP of your server.
-- Proxying ("orange cloud"): in this mode, traffic gets proxied through Cloudflare and visitors never hit your server directly.
+- DNS only (the gray cloud): Cloudflare answers DNS queries with the IP address of your server. This is what ddup publishes by default.
+- Proxied (the orange cloud): Cloudflare answers DNS queries with its own IP addresses, and forwards the traffic to your server, so clients never connect to your server directly.
 
-Proxying can be enabled per endpoint with `providerOptions.cloudflare.proxied` (default `false`), and works with both `ip` and `cname`.
+To publish an endpoint as a proxied record, set `providerOptions.cloudflare.proxied: true`. It works with both `ip` and [`cname`](/docs/configuration#cname-records).
 
 A [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) can only be reached through the proxy, so it needs both `cname` and `proxied`:
 
 ```yaml
 domains:
   - recordName: "app.example.com"
-    provider: "my-cloudflare"
+    provider: "cloudflare-main"
     endpoints:
       - name: "vps-us"
         url: "https://vps-us.example.com/health"
@@ -103,11 +103,11 @@ domains:
             proxied: true
 ```
 
-A set of records is either all proxied or all DNS-only, so all endpoints with the same `priority` must use the same value for `proxied`. Endpoints with different priorities can differ, as in the example, because only one priority is published at a time
+The records published together must be all proxied or all DNS only, so all endpoints with the same `priority` must use the same value for `proxied`. Endpoints with different priorities can use different values, as in the example, because ddup publishes only one priority at a time.
 
-> Proxied records use Cloudflare's automatic TTL, so the domain's `ttl` is ignored for them
+> Proxied records always use Cloudflare's automatic TTL, so the domain's `ttl` doesn't apply to them.
 
 ## Things to know
 
 - Cloudflare doesn't accept a `ttl` lower than 60 seconds, or 30 seconds on Enterprise plans.
-- A and AAAA records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).
+- A, AAAA, and CNAME records with the domain's name that don't belong to a published endpoint are deleted, including records you created in the dashboard. See [How ddup manages records](/providers#how-ddup-manages-records).

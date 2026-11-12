@@ -69,17 +69,17 @@ Use `!file` or `!envfile` to keep credentials out of the configuration file. See
 
 ## How ddup manages records
 
-You don't need to create the records in advance: ddup creates them on its first check. ddup owns all the A and AAAA records with the name in `recordName`:
+You don't need to create the records in advance: ddup creates them on its first check. ddup owns all the A and AAAA records with the name in `recordName`, and with supported proviers, the CNAME record too:
 
-- It creates a record for each endpoint it publishes, and deletes the other A and AAAA records with that name, **including records you created by hand**.
-- IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. If a domain has endpoints of both types, ddup manages both.
+- It creates a record for each endpoint it publishes, and deletes the other records of those types with that name, **including records you created by hand**.
+- IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. If a domain has endpoints of both types, ddup manages both. Endpoints with [`cname`](/docs/configuration#cname-records) are published as a CNAME record.
 - Other types of records with the same name, such as TXT or MX, aren't changed.
 - If no endpoint is healthy, ddup leaves the records as they are.
 
-ddup writes to DNS when it starts, and when the set of endpoints to publish changes.  If you change the records by hand while ddup is running, ddup doesn't notice until the next time the set of endpoints changes, or until it restarts.
+ddup writes to DNS when it starts, and when the set of endpoints to publish changes. If you change the records by hand while ddup is running, ddup doesn't notice until the next time the set of endpoints changes, or until it restarts.
 
 ### Record names
 
 - `recordName` is the full name, such as `app.example.com`, and must be in the provider's zone. For the zone `example.com`, use names like `app.example.com` or `api.eu.example.com`.
 - To manage the records at the apex of the zone, use the zone name itself, such as `example.com`.
-- The name can't have a CNAME record: DNS doesn't allow a CNAME record next to other records with the same name.
+- With providers other than Cloudflare, the name can't have a CNAME record: DNS doesn't allow a CNAME record next to other records with the same name. With Cloudflare, ddup replaces an existing CNAME record with the records it publishes.

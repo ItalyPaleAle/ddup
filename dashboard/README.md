@@ -1,15 +1,9 @@
-# React + Vite
+# ddup dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The web dashboard of ddup, a React app built with Vite and Tailwind CSS.
+The ddup binary embeds the build output in `dist/`, so run `make dashboard` from the root of the repository after changing the dashboard.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+To build, lint, and test the dashboard, see [Working on the dashboard](../DEVELOPMENT.md#working-on-the-dashboard).
 
 ## Icons
 
@@ -23,4 +17,4 @@ After changing them, regenerate the PNGs, `public/favicon.svg` (the icon without
 pnpm run build:favicons
 ```
 
-The script needs Node.js 24 and Chrome or Chromium: set `CHROME_BIN` if it's not in the PATH as `google-chrome`, `chromium` or `chromium-browser`.
+The script needs Node.js 24 and Chrome or Chromium: set `CHROME_BIN` if it's not in the PATH as `google-chrome`, `google-chrome-stable`, `chromium` or `chromium-browser`.

@@ -31,14 +31,14 @@ By default, ddup listens only on `127.0.0.1`, so the dashboard can't be reached 
 The top of the page counts the domains in each state:
 
 | State | Meaning |
-|-------|---------|
+| --- | --- |
 | Healthy | All endpoints of the domain are healthy |
 | Warning | Some endpoints are unhealthy |
 | Unhealthy | No endpoint is healthy, or the last attempt to update DNS failed |
 
-Each domain has a card showing its state and the list of endpoints. For each endpoint, it shows whether it's healthy, its IP, and how many checks it failed in a row. An endpoint can be healthy and have failures: it failed fewer than `attempts` checks, so it's still in DNS.
+Each domain has a card showing its state and the list of endpoints. For each endpoint, it shows whether it's healthy, its IP address or hostname, and how many checks it failed in a row. An endpoint can be healthy and have failures: it failed fewer than `attempts` checks, so ddup still treats it as healthy.
 
-The history button, at the end of the line with the domain name, opens the history of the endpoints.
+The history button, at the end of the line with the domain name, opens the history of the domain's endpoints.
 
 ## API
 
@@ -58,31 +58,56 @@ Returns an object with one key for each domain:
     "lastUpdated": "2026-10-13T08:15:30.123456789Z",
     "provider": "my-dns",
     "endpoints": [
-      { "healthy": true, "target": "192.0.2.10" },
-      { "healthy": true, "target": "192.0.2.11", "failureCount": 1 },
-      { "healthy": false, "target": "192.0.2.12", "failureCount": 4 }
+      {
+        "healthy": true,
+        "target": "192.0.2.10",
+        "type": "A",
+        "since": "2026-10-13T06:00:00.123456789Z",
+        "sinceStart": true
+      },
+      {
+        "healthy": true,
+        "target": "192.0.2.11",
+        "type": "A",
+        "failureCount": 1,
+        "since": "2026-10-13T06:00:00.123456789Z",
+        "sinceStart": true,
+        "lastFailure": "2026-10-13T08:15:30.123456789Z",
+        "lastError": "status code 503",
+        "firstFailure": "2026-10-13T08:15:30.123456789Z"
+      },
+      {
+        "healthy": false,
+        "target": "192.0.2.12",
+        "type": "A",
+        "failureCount": 4,
+        "since": "2026-10-13T08:14:30.123456789Z",
+        "lastFailure": "2026-10-13T08:15:30.123456789Z",
+        "lastError": "HTTP request failed: Get \"http://192.0.2.12/healthz\": context deadline exceeded",
+        "firstFailure": "2026-10-13T08:14:00.123456789Z"
+      }
     ]
   }
 }
 ```
 
 | Field | Description |
-|-------|-------------|
+| --- | --- |
 | `lastUpdated` | Time of the last check |
 | `provider` | Name of the DNS provider, from the configuration |
 | `error` | Only present when the last attempt to update DNS failed: the error message |
-| `endpoints[].target` | IP address of the endpoint, or the hostname for an endpoint with `cname` |
-| `endpoints[].type` | Type of the DNS record of the endpoint: `A`, `AAAA` or `CNAME` |
-| `endpoints[].proxied` | `true` if the record is proxied by Cloudflare. Omitted otherwise |
 | `endpoints[].healthy` | Whether the endpoint is healthy, with the same meaning as in the dashboard |
+| `endpoints[].target` | IP address of the endpoint, or the hostname for an endpoint with `cname` |
+| `endpoints[].type` | Type of the DNS record of the endpoint: `A`, `AAAA`, or `CNAME` |
+| `endpoints[].proxied` | `true` if the record is proxied by the CDN (e.g. Cloudflare). Omitted otherwise. |
 | `endpoints[].failureCount` | Number of failed checks in a row. Omitted when it's 0. |
-| `endpoints[].since` | When the endpoint last changed between healthy and unhealthy. Omitted when not known |
-| `endpoints[].sinceStart` | `true` when `since` is only the time of the first check after ddup started, because the real time is not known |
-| `endpoints[].lastFailure` | Last time a check of the endpoint failed. Kept after the endpoint recovers |
+| `endpoints[].since` | When the endpoint last changed between healthy and unhealthy. Omitted when not known. |
+| `endpoints[].sinceStart` | `true` when `since` is only the time of the first check after ddup started, because the real time is not known. Omitted otherwise. |
+| `endpoints[].lastFailure` | Last time a check of the endpoint failed. Kept after the endpoint recovers. |
 | `endpoints[].lastError` | Error of the last failed check |
-| `endpoints[].firstFailure` | Time of the first failed check of the current run of failures. Omitted once a check passes again |
+| `endpoints[].firstFailure` | Time of the first failed check of the current run of failures. Omitted once a check passes again. |
 
-These times and errors show why an endpoint is in the warning state, where some checks failed but the endpoint is still healthy. They are kept in memory, so they start again when ddup restarts.
+These times and errors show why a healthy endpoint has failures, which the history in the dashboard shows as a warning. ddup keeps them in memory, so they start again when ddup restarts.
 
 For example, to list the unhealthy endpoints with [jq](https://jqlang.org):
 

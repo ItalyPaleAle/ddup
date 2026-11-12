@@ -12,10 +12,13 @@ Whichever way you choose, ddup needs a [configuration file](/docs/configuration)
 Container images are published on GitHub Container Registry as `ghcr.io/italypaleale/ddup`, for Linux on amd64, arm64, and armv7.
 
 | Tag | Description |
-|-----|-------------|
+| --- | --- |
 | `v0` | The latest 0.x release |
-| `v0.6` | The latest 0.6.x release |
-| `v0.6.0` | A specific release |
+| `v0.7` | The latest 0.7.x release |
+| `v0.7.1` | A specific release |
+| `edge` | The latest commit on the `main` branch, which can include changes that aren't released yet |
+
+Each release tag is also published without the `v`, such as `0.7.1`.
 
 ddup follows [semantic versioning](https://semver.org). There is no `latest` tag: use `v0` to get updates within the 0.x releases.
 
@@ -68,7 +71,7 @@ Download the archive for your platform from the [releases page](https://github.c
 For example, on Linux amd64:
 
 ```sh
-VERSION="0.6.0"
+VERSION="0.7.1"
 curl -fsSLO "https://github.com/italypaleale/ddup/releases/download/v${VERSION}/ddup-${VERSION}-linux-amd64.tar.gz"
 tar -xzf "ddup-${VERSION}-linux-amd64.tar.gz"
 sudo install "ddup-${VERSION}-linux-amd64/ddup" /usr/local/bin/ddup
@@ -81,7 +84,7 @@ curl -fsSLO "https://github.com/italypaleale/ddup/releases/download/v${VERSION}/
 sha256sum --check --ignore-missing checksums.txt
 ```
 
-Each archive also has a [CycloneDX](https://cyclonedx.org) SBOM listing the Go modules compiled into the binary and the npm packages of the dashboard it embeds, named `ddup-<version>-<platform>.cdx.json`. The SBOMs are covered by `checksums.txt` too.
+Releases also include a [CycloneDX](https://cyclonedx.org) SBOM for each archive, named `ddup-<version>-<platform>.cdx.json`. It lists the Go modules compiled into the binary, and the npm packages of the dashboard it embeds.
 
 Put the configuration in `/etc/ddup/config.yaml` (see [where ddup looks for the configuration](/docs/configuration#configuration-file)), then start ddup:
 

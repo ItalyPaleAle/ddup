@@ -82,7 +82,7 @@ providers:
 
 # Notifications (optional)
 notifications:
-  # Webhooks, with the format "plain" (default), "slack", "discord", or "ntfy"
+  # Webhooks, with the format "plain" (default), "slack", "discord", "teams", "googlechat", "telegram", or "ntfy"
   webhooks:
     - name: "chat"
       format: "slack"
@@ -95,7 +95,7 @@ notifications:
       # Optional token, sent as "Bearer <token>"
       token: "your-ntfy-token"
       events: ["dns_updated", "dns_update_failed", "all_unhealthy"]
-      # Allow sending to private addresses, such as a ntfy server in your LAN or cluster (default: false)
+      # Allow sending to private addresses, such as an ntfy server in your LAN or cluster (default: false)
       allowPrivateDestinations: true
       # Optional delivery settings. Defaults: timeout 20s, maxAttempts 3 (including the first), retryInterval 20s
       timeout: "10s"

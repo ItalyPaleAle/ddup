@@ -147,12 +147,12 @@ This policy allows changing every record in the zone. To allow only the names an
     {
       "Effect": "Allow",
       "Action": "route53:ListResourceRecordSets",
-      "Resource": "arn:aws:route53:::hostedzone/Z0123456789ABCDEFGHIJ"
+      "Resource": "arn:aws:route53:::hostedzone/<your-zone-id>"
     },
     {
       "Effect": "Allow",
       "Action": "route53:ChangeResourceRecordSets",
-      "Resource": "arn:aws:route53:::hostedzone/Z0123456789ABCDEFGHIJ",
+      "Resource": "arn:aws:route53:::hostedzone/<your-zone-id>",
       "Condition": {
         "ForAllValues:StringEquals": {
           "route53:ChangeResourceRecordSetsNormalizedRecordNames": [
