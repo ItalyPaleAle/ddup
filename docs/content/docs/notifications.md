@@ -3,14 +3,14 @@ title: "Notifications"
 weight: 65
 ---
 
-ddup can send you a message when it changes the DNS records of a domain, when an update fails, or when a domain has no healthy endpoint. It sends them to webhooks (including Slack, Discord, or ntfy) and by email.
+ddup can send you a message when it changes the DNS records of a domain, when an update fails, or when a domain has no healthy endpoint. It sends them by email, and to webhooks such as Slack, Discord, Microsoft Teams, Google Chat, Telegram, and ntfy.
 
 Notifications are off until you add a `notifications` section to the configuration.
 
 ## Events
 
 | Event | Sent when |
-|-------|-----------|
+| --- | --- |
 | `dns_updated` | ddup changed the DNS records of a domain. The message lists the addresses published now and the ones that were in DNS before. |
 | `dns_update_failed` | Updating the DNS records of a domain failed. The message includes the error. ddup tries again at every check, but doesn't send the event again while the error stays the same. |
 | `all_unhealthy` | A domain has no healthy endpoint, so ddup leaves its DNS records as they are. The event is sent once when the domain enters this state. |
@@ -24,11 +24,11 @@ Each destination receives every event by default. To receive only some, list the
 Each entry in `notifications.webhooks` sends a POST request to a URL.
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `name` | string | **required** | Name of the destination, shown in logs. It must be unique among the webhooks. |
 | `url` | string | **required** | URL to send the request to |
-| `format` | string | `plain` | Format of the message: `plain`, `slack`, `discord`, or `ntfy` |
-| `token` | string | | Token sent in the `Authorization: Bearer <token>` header, for example to publish to a protected ntfy topic. Some webhook formats, including Slack and Discord, don't need it. |
+| `format` | string | `plain` | Format of the message: `plain`, `slack`, `discord`, `teams`, `googlechat`, `telegram`, or `ntfy` |
+| `token` | string | | Token sent in the `Authorization: Bearer <token>` header, for example to publish to a protected ntfy topic. The `slack`, `discord`, `teams`, `googlechat`, and `telegram` formats don't need it, because their URLs contain the secret. |
 | `events` | list | All events | Events to send, see [Events](#events) |
 | `timeout` | duration | `20s` | Timeout of each request |
 | `maxAttempts` | number | `3` | Number of attempts to send each message, including the first. Set it to `1` to turn off retries. |
@@ -40,13 +40,16 @@ The formats are:
 - `plain` sends the message as plain text.
 - `slack` sends a message for a Slack incoming webhook, or for another service that accepts Slack's format.
 - `discord` sends a message for a Discord webhook.
-- `ntfy` publishes to an ntfy topic, with a title, a priority, and tags. See [Messages](#messages).
+- `teams` sends a message for a Microsoft Teams webhook created with the Workflows app, such as with the "Send webhook alerts to a channel" template.
+- `googlechat` sends a message for a Google Chat webhook. The URL must contain the space and the `key` and `token` parameters, as in `https://chat.googleapis.com/v1/spaces/<space>/messages?key=<key>&token=<token>`.
+- `telegram` sends a message with a Telegram bot. Set `url` to `https://api.telegram.org/bot<bot-token>/sendMessage?chat_id=<chat-id>`, where `<chat-id>` is the numeric ID of the chat or a channel's `@username`. To post in a topic of a group that has topics, add `&message_thread_id=<topic-id>`.
+- `ntfy` publishes to an ntfy topic, with a title, a priority, and tags. The URL must include the topic, such as `https://ntfy.sh/my-topic`. See [Messages](#messages).
 
-ddup retries a request after a network error, or a `408` or `5xx` response.
+ddup retries a request after a network error, or a `408`, `429`, or `5xx` response. When a `429` response has a `Retry-After` header, ddup waits for that time, up to 60 seconds, instead of `retryInterval`.
 
 ### Private destinations
 
-By default, ddup refuses to send webhooks to private and non-routable addresses, e.g. `10.0.0.0/8` or `192.168.0.0/16`.
+By default, ddup refuses to send webhooks to private and non-routable addresses, such as `localhost`, `10.0.0.0/8`, or `192.168.0.0/16`.
 
 If the destination is on a network you trust, such as an ntfy server in your LAN or cluster, set `allowPrivateDestinations: true`.
 
@@ -83,7 +86,7 @@ notifications:
 Each entry in `notifications.emails` sends an email to one or more addresses.
 
 | Option | Type | Default | Description |
-|--------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `name` | string | **required** | Name of the destination, shown in logs. It must be unique among the emails. |
 | `connectionString` | string | **required** | Email provider and sender, see [Connection strings](#connection-strings) |
 | `to` | list | **required** | Addresses to send the email to |
@@ -96,15 +99,22 @@ Emails are sent once, without retries.
 The connection string picks the email provider and sets the sender:
 
 | Provider | Connection string |
-|----------|-------------------|
+| --- | --- |
 | Resend | `resend://<api-key>?fromAddress=<address>&fromName=<name>` |
 | SMTP | `smtp://<username>:<password>@<host>:<port>?fromAddress=<address>&fromName=<name>&tls=<mode>` |
 | AWS SES | `awsses://<access-key-id>:<secret-access-key>@<region>?fromAddress=<address>&fromName=<name>` |
 | SendGrid | `sendgrid://<api-key>?fromAddress=<address>&fromName=<name>` |
 
-`fromName` is optional. For SMTP, `tls` is `auto` (the default), `starttls`, `implicit`, or `none`.
+`fromName` is optional. The connection string is a URL, so percent-encode characters such as `@`, `:`, or `/` in passwords and keys.
 
-[go-kit's documentation](https://github.com/ItalyPaleAle/go-kit/tree/main/emailer) lists all the options.
+For SMTP:
+
+- `tls` is `auto` (the default), `starttls`, `implicit`, or `none`.
+- The port is optional. It defaults to 587, or to 465 when `tls` is `implicit`.
+- The username and password are optional, for servers that don't require authentication.
+- `insecureSkipVerify=true` accepts any certificate from the server. Use it only for testing.
+
+For AWS SES, add `sessionToken=<token>` to use temporary credentials.
 
 ### Email example
 
@@ -134,7 +144,7 @@ Every message has a title and a body, and ddup uses them the same way for each k
 
 - An email has the title as its subject, and the body as its text
 - An ntfy notification has the title as its title, and the body as its message
-- Plain text, Slack, and Discord messages contain the title, an empty line, and the body
+- Messages in the other formats contain the title, an empty line, and the body
 
 The `Status` line of the body is `healthy` when all endpoints of the domain are healthy, `warning` when only some are, and `unhealthy` when none are or the update failed.
 
@@ -178,7 +188,7 @@ Endpoints:
   server3 (192.0.2.12): UNHEALTHY
 ```
 
-An `all_unhealthy` event sent to Slack or Discord:
+An `all_unhealthy` event sent to Slack, or with any other webhook format except `ntfy`:
 
 ```text
 No healthy endpoints for example.com

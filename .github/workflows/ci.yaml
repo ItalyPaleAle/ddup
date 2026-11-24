@@ -53,6 +53,10 @@ jobs:
         with:
           version-file: '.golangci-lint-version'
 
+      - name: Check for known vulnerabilities
+        run: |
+          make vulncheck
+
       - name: Test with race detector
         run: |
           make test-race

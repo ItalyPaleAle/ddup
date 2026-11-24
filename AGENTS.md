@@ -20,7 +20,7 @@ val, ok := something.(string)
 if ok { ... }
 ```
 
-If you modify `pkg/config.Config` or any struct referenced from it, always run `make gen-config` before finishing the task.
+If you modify `pkg/config.Config` or any struct referenced from it, update `config.sample.yaml` and the configuration reference in `docs/content/docs/configuration.md` to match.
 
 The Go build tag `unit` is meant for files that contain helpers for unit tests. It should never be included in a Go test file (ending in `_test.go`).
 
@@ -30,7 +30,7 @@ Tests for the functions defined in `<file>.go` go in `<file>_test.go`, next to t
 
 ### Package management
 
-The client project uses **pnpm** (NOT `npm`) for all package operations in the `client/` directory.
+The dashboard uses **pnpm** (NOT `npm`) for all package operations in the `dashboard/` directory.
 
 ### Braces
 
@@ -101,10 +101,10 @@ go test -tags unit ./...
 The linter is pinned to a specific version (included in `.golangci-lint-version`), which must be installed from the pre-compiled binary: builds from package managers are compiled with an older Go and refuse this module's Go version.
 
 ```sh
-VERSION="2.x.x" # From .golangci-lint-version
+VERSION="$(cat .golangci-lint-version)" # Includes the leading "v", such as "v2.14.0"
 PLATFORM="linux-amd64"
-curl -sSL https://github.com/golangci/golangci-lint/releases/download/v${VERSION}/golangci-lint-${VERSION}-${PLATFORM}.tar.gz | tar -xz -C /tmp
-install /tmp/golangci-lint-${VERSION}-${PLATFORM}/golangci-lint /usr/local/bin
+curl -sSL "https://github.com/golangci/golangci-lint/releases/download/${VERSION}/golangci-lint-${VERSION#v}-${PLATFORM}.tar.gz" | tar -xz -C /tmp
+install "/tmp/golangci-lint-${VERSION#v}-${PLATFORM}/golangci-lint" /usr/local/bin
 make lint
 ```
 

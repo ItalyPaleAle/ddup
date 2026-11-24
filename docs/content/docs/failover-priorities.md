@@ -8,7 +8,7 @@ By default, ddup publishes every healthy endpoint of a domain, so clients spread
 
 ## How priorities work
 
-Each endpoint has a `priority`, a number that is `0` unless you set it. Lower values are preferred.
+Each endpoint has a `priority`, a whole number that is `0` unless you set it, and can't be negative. Lower values are preferred.
 
 On every check, ddup looks at the healthy endpoints and publishes only those with the lowest priority value:
 

@@ -69,15 +69,14 @@ Use `!file` or `!envfile` to keep credentials out of the configuration file. See
 
 ## How ddup manages records
 
-You don't need to create the records in advance: ddup creates them on its first check. ddup owns all the A and AAAA records with the name in `recordName`, and the CNAME records too with the providers that support [`cname`](/docs/configuration#cname-records):
+You don't need to create the records in advance: ddup creates them on its first check. ddup owns all the A and AAAA records with the name in `recordName`, and with supported proviers, the CNAME record too:
 
 - It creates a record for each endpoint it publishes, and deletes the other records of those types with that name, **including records you created by hand**.
-- IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. If a domain has endpoints of both types, ddup manages both.
-- Endpoints with `cname` are published as CNAME records. When ddup publishes a CNAME record, it deletes the A and AAAA records with that name, and the other way around.
+- IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. If a domain has endpoints of both types, ddup manages both. Endpoints with [`cname`](/docs/configuration#cname-records) are published as a CNAME record.
 - Other types of records with the same name, such as TXT or MX, aren't changed.
 - If no endpoint is healthy, ddup leaves the records as they are.
 
-ddup writes to DNS when it starts, and when the set of endpoints to publish changes.  If you change the records by hand while ddup is running, ddup doesn't notice until the next time the set of endpoints changes, or until it restarts.
+ddup writes to DNS when it starts, and when the set of endpoints to publish changes. If you change the records by hand while ddup is running, ddup doesn't notice until the next time the set of endpoints changes, or until it restarts.
 
 ### Record names
 

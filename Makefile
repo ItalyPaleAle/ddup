@@ -10,6 +10,11 @@ test-race:
 lint:
 	golangci-lint run
 
+# Scans for known vulnerabilities in the code that is reachable from ddup, so it needs dashboard/dist
+.PHONY: vulncheck
+vulncheck:
+	go tool govulncheck ./...
+
 # The Go code embeds dashboard/dist, so the dashboard must be built before building, linting or running the Go code
 .PHONY: dashboard
 dashboard:
@@ -41,6 +46,7 @@ check:
 	go tool gomod-age
 	$(MAKE) dashboard
 	$(MAKE) lint
+	$(MAKE) vulncheck
 	$(MAKE) test-race
 	$(MAKE) lint-dashboard
 	$(MAKE) test-e2e

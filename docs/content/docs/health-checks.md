@@ -14,7 +14,7 @@ For each endpoint, ddup sends a request to its `url`:
 - Method is `GET` (default) or `HEAD`
 - `User-Agent` header is `ddup/1.0`
 - Redirects are not followed: a 3xx response is a failure, unless `expectStatus` is set to that code
-- For HTTPS URLs, the server's certificate must be valid for the host name; checks of servers with self-signed or expired certificates fail
+- For HTTPS URLs, the server's certificate must be valid for the host name: the value of [`host`](#checking-a-server-by-ip) if set, or the host in `url`. Checks of servers with self-signed or expired certificates fail.
 
 The endpoint passes the check if it responds within `timeout` (3 seconds by default) with the [expected status code](#expected-status-code). Anything else is a failure: an error connecting, a timeout, a TLS error, or a different status code.
 
@@ -36,12 +36,12 @@ ddup changes DNS only when the set of endpoints to publish changes. If an update
 
 ## How long failover takes
 
-After a server goes down, clients can keep getting its IP for up to `interval` times `attempts`, plus `ttl`. With the default settings, that's 30 seconds times 2, plus 120 seconds, for a total of 3 minutes. If the checks fail because of a timeout, add up to `timeout` for each check.
+After a server goes down, clients can keep getting its IP for up to `interval` times `attempts`, plus `ttl`. With the default settings, that's 30 seconds times 2, plus 120 seconds, for a total of 3 minutes. If the checks fail because of a timeout, add up to `timeout`, which is how long the last check waits before it fails.
 
 To fail over sooner:
 
 - Lower `interval`, so failures are detected sooner. Every check sends a request to each endpoint, so a lower interval means more requests.
-- Lower `ttl`, so clients ask for the records again sooner. Many providers don't accept TTLs below 60 seconds.
+- Lower `ttl`, so clients ask for the records again sooner. Some providers, such as Cloudflare, don't accept TTLs below 60 seconds.
 - Lower `attempts`. With `attempts: 1`, a single failed check removes a server, so keep it at 2 or more unless your servers respond reliably.
 
 Keep `timeout` well below `interval`.
