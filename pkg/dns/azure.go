@@ -41,7 +41,8 @@ func NewAzureProvider(name string, cfg *config.AzureConfig, metrics *appmetrics.
 	if cfg.ResourceGroupName == "" {
 		return nil, errors.New("resource group name is required")
 	}
-	if cfg.ZoneName == "" {
+	zoneName := canonicalizeHostname(cfg.ZoneName)
+	if zoneName == "" {
 		return nil, errors.New("zone name is required")
 	}
 
@@ -93,7 +94,7 @@ func NewAzureProvider(name string, cfg *config.AzureConfig, metrics *appmetrics.
 		name:              name,
 		subscriptionID:    cfg.SubscriptionID,
 		resourceGroupName: cfg.ResourceGroupName,
-		zoneName:          cfg.ZoneName,
+		zoneName:          zoneName,
 		credential:        credential,
 		metrics:           metrics,
 		httpClient:        http.DefaultClient,
@@ -115,13 +116,17 @@ func (a *AzureProvider) HasCNAME() bool {
 	return true
 }
 
-// ValidateProviderOptions checks the provider options of the endpoints of a domain
+// ValidateProviderOptions checks the domain and provider options of its endpoints
 // The provider has no options, so it rejects all of them
-// It also rejects endpoints with cname at the apex of the zone, where Azure DNS doesn't allow CNAME records
+// It also checks that the domain is in the provider's zone, and rejects endpoints with cname at the apex of the zone, where Azure DNS doesn't allow CNAME records
 func (a *AzureProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
 	err := rejectProviderOptions(d, a.ProviderType())
 	if err != nil {
 		return err
+	}
+
+	if !a.inZone(d.RecordName) {
+		return fmt.Errorf("domain %s is invalid: recordName is not in zone %q of provider '%s' (%s)", d.RecordName, canonicalizeHostname(a.zoneName), d.Provider, a.ProviderType())
 	}
 
 	// CNAME records cannot be set for the apex domain
@@ -144,6 +149,10 @@ func (a *AzureProvider) ValidateProviderOptions(d *config.ConfigDomain) error {
 // Normally, record sets are created or updated before the others are deleted, so the name is never left without records
 // When there's a CNAME record set before or after the update, the record sets that are not desired anymore are deleted first, which leaves the name without records for a moment
 func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
+	if !a.inZone(domain) {
+		return UpdateResult{}, fmt.Errorf("domain %s is not in zone %q", domain, canonicalizeHostname(a.zoneName))
+	}
+
 	desired, err := recordSetsFromTargets(a.name, targets)
 	if err != nil {
 		return UpdateResult{}, err
@@ -151,21 +160,30 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 
 	// Read all record types before making changes
 	current := make([][]string, len(desired))
-	var hasCNAME bool
+	exists := make([]bool, len(desired))
+	var (
+		hasCNAME         bool
+		hasDesiredValues bool
+	)
 	for i, rs := range desired {
-		current[i], err = a.getExistingValues(ctx, domain, rs.Type)
+		if len(rs.Values) > 0 {
+			hasDesiredValues = true
+		}
+
+		current[i], exists[i], err = a.getExistingRecordSet(ctx, domain, rs.Type)
 		switch {
 		case err != nil && rs.Type == recordTypeCNAME && len(rs.Values) == 0 && isAzureForbidden(err):
 			// Identities with a custom role that only allows managing A and AAAA records, as documented before ddup supported CNAME records with Azure DNS, can't read them
 			// When no CNAME is desired, we assume there's none: if there is one, creating the other records fails
 			slog.DebugContext(ctx, "Not allowed to read CNAME records, assuming there are none", slog.String("domain", domain))
 			current[i] = nil
+			exists[i] = false
 		case err != nil:
 			return UpdateResult{}, fmt.Errorf("error getting existing %s records: %w", rs.Type, err)
 		}
 		result.Previous = append(result.Previous, current[i]...)
 
-		if rs.Type == recordTypeCNAME && (len(rs.Values) > 0 || len(current[i]) > 0) {
+		if rs.Type == recordTypeCNAME && (len(rs.Values) > 0 || exists[i]) {
 			hasCNAME = true
 		}
 	}
@@ -182,7 +200,9 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 			if (len(rs.Values) > 0) != wantValues {
 				continue
 			}
-			changed, err := a.updateRecordType(ctx, domain, rs.Type, ttl, rs.Values, current[i])
+			// An empty record set still blocks a CNAME (or is blocked by one), so delete it when switching record types
+			deleteIfEmpty := exists[i] && hasCNAME && hasDesiredValues
+			changed, err := a.updateRecordType(ctx, domain, rs.Type, ttl, rs.Values, current[i], deleteIfEmpty)
 			if err != nil {
 				return UpdateResult{}, err
 			}
@@ -194,11 +214,11 @@ func (a *AzureProvider) UpdateRecords(ctx context.Context, domain string, ttl in
 }
 
 // updateRecordType makes the record set for the type match the values, and returns true if it had to write anything
-func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, values []string, currentValues []string) (bool, error) {
+func (a *AzureProvider) updateRecordType(ctx context.Context, domain string, recordType string, ttl int, values []string, currentValues []string, deleteIfEmpty bool) (bool, error) {
 	recordName := a.getRecordName(domain)
 
 	if len(values) == 0 {
-		if len(currentValues) == 0 {
+		if len(currentValues) == 0 && !deleteIfEmpty {
 			return false, nil
 		}
 
@@ -266,17 +286,23 @@ type azureCNAMERecord struct {
 	CNAME string `json:"cname"`
 }
 
+// azureSubResource is a reference to another Azure resource, set on alias record sets
+type azureSubResource struct {
+	ID string `json:"id,omitempty"`
+}
+
 // azureRecordProperties represents a record's properties from the Azure DNS API
 //
 //nolint:tagliatelle
 type azureRecordProperties struct {
-	TTL         int               `json:"TTL"`
-	ARecords    []azureARecord    `json:"ARecords,omitempty"`
-	AAAARecords []azureAAAARecord `json:"AAAARecords,omitempty"`
-	CNAMERecord *azureCNAMERecord `json:"CNAMERecord,omitempty"`
+	TTL            int               `json:"TTL"`
+	ARecords       []azureARecord    `json:"ARecords,omitempty"`
+	AAAARecords    []azureAAAARecord `json:"AAAARecords,omitempty"`
+	CNAMERecord    *azureCNAMERecord `json:"CNAMERecord,omitempty"`
+	TargetResource *azureSubResource `json:"targetResource,omitempty"`
 }
 
-// azureRecord represents a DNS record from Azure DNS API
+// azureRecord represents a DNS record set from the Azure DNS API
 type azureRecord struct {
 	Name       string                `json:"name"`
 	Properties azureRecordProperties `json:"properties"`
@@ -285,11 +311,6 @@ type azureRecord struct {
 // azureRecordSet represents a record set for creating/updating records
 type azureRecordSet struct {
 	Properties azureRecordProperties `json:"properties"`
-}
-
-// azureRecordsResponse represents the response from listing records
-type azureRecordsResponse struct {
-	Value []azureRecord `json:"value"`
 }
 
 // azureHTTPError is returned when the Azure API responds with a status code that is not successful
@@ -309,17 +330,27 @@ func isAzureForbidden(err error) bool {
 	return errors.As(err, &httpErr) && httpErr.StatusCode == http.StatusForbidden
 }
 
+// inZone returns true if the domain is the provider's zone or a subdomain of it
+func (a *AzureProvider) inZone(domain string) bool {
+	domain = canonicalizeHostname(domain)
+	zoneName := canonicalizeHostname(a.zoneName)
+	return zoneName != "" && (domain == zoneName || strings.HasSuffix(domain, "."+zoneName))
+}
+
 func (a *AzureProvider) getRecordName(domain string) string {
-	// Trim the ending dot if present
-	domain = strings.TrimSuffix(domain, ".")
+	domain = canonicalizeHostname(domain)
+	zoneName := canonicalizeHostname(a.zoneName)
+	if zoneName == "" {
+		return domain
+	}
 
 	// Extract subdomain from full domain
-	if domain == a.zoneName {
+	if domain == zoneName {
 		// Root domain
 		return "@"
 	}
-	if strings.HasSuffix(domain, "."+a.zoneName) {
-		return domain[:(len(domain) - len(a.zoneName) - 1)]
+	if strings.HasSuffix(domain, "."+zoneName) {
+		return domain[:len(domain)-len(zoneName)-1]
 	}
 
 	// If domain doesn't match zone, return as-is (might be an error case)
@@ -342,16 +373,19 @@ func (a *AzureProvider) getAccessToken(parentCtx context.Context) (string, error
 	return token.Token, nil
 }
 
-// getExistingValues returns the canonical values of the record set with the domain's name and the type: IP addresses for A and AAAA records, and the hostname for CNAME records
-func (a *AzureProvider) getExistingValues(ctx context.Context, domain string, recordType string) ([]string, error) {
+// getExistingRecordSet fetches the record set with the domain's name and the type, returning its canonical values and whether the record set exists
+func (a *AzureProvider) getExistingRecordSet(ctx context.Context, domain string, recordType string) ([]string, bool, error) {
+	recordName := a.getRecordName(domain)
+	zoneName := canonicalizeHostname(a.zoneName)
+
 	start := time.Now()
 	var success bool
 	if a.metrics != nil {
 		defer func() {
 			a.metrics.RecordAPICall("azure", http.MethodGet,
 				fmt.Sprintf(
-					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s",
-					a.subscriptionID, a.resourceGroupName, a.zoneName, recordType,
+					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s/%s",
+					a.subscriptionID, a.resourceGroupName, zoneName, recordType, recordName,
 				),
 				success, time.Since(start))
 		}()
@@ -360,91 +394,85 @@ func (a *AzureProvider) getExistingValues(ctx context.Context, domain string, re
 	// Get access token
 	accessToken, err := a.getAccessToken(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting access token: %w", err)
+		return nil, false, fmt.Errorf("error getting access token: %w", err)
 	}
 
-	recordName := a.getRecordName(domain)
-	baseURL := fmt.Sprintf(
-		"https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s",
+	requestURL := fmt.Sprintf(
+		"https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s/%s?api-version=2018-05-01",
 		a.subscriptionID,
 		a.resourceGroupName,
-		a.zoneName,
+		zoneName,
 		recordType,
+		url.PathEscape(recordName),
 	)
-
-	// Add query parameters
-	// We filter for the specific record we want
-	params := url.Values{}
-	params.Set("api-version", "2018-05-01")
-	params.Set("$recordsetnamesuffix", recordName)
 
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL+"?"+params.Encode(), nil)
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, requestURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("error creating request: %w", err)
+		return nil, false, fmt.Errorf("error creating request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
 	res, err := a.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request error: %w", err)
+		return nil, false, fmt.Errorf("request error: %w", err)
 	}
 	defer res.Body.Close() //nolint:errcheck
 
+	if res.StatusCode == http.StatusNotFound {
+		success = true
+		return nil, false, nil
+	}
+
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		body, _ := io.ReadAll(res.Body)
-		return nil, azureHTTPError{StatusCode: res.StatusCode, Body: string(body)}
+		return nil, false, azureHTTPError{StatusCode: res.StatusCode, Body: string(body)}
 	}
 
-	var response azureRecordsResponse
-	err = json.NewDecoder(res.Body).Decode(&response)
+	var record azureRecord
+	err = json.NewDecoder(res.Body).Decode(&record)
 	if err != nil {
-		return nil, fmt.Errorf("error decoding response: %w", err)
+		return nil, false, fmt.Errorf("error decoding response: %w", err)
 	}
 
-	// Get the values of the record set
+	if record.Properties.TargetResource != nil && record.Properties.TargetResource.ID != "" {
+		return nil, false, fmt.Errorf("record set %s (%s) uses an Azure alias target, which is not supported", domain, recordType)
+	}
+
 	var values []string
-	for _, record := range response.Value {
-		if record.Name != recordName {
-			continue
+	switch recordType {
+	case recordTypeA:
+		for _, item := range record.Properties.ARecords {
+			values = append(values, item.IPv4Address)
 		}
-
-		switch recordType {
-		case recordTypeA:
-			for _, item := range record.Properties.ARecords {
-				values = append(values, item.IPv4Address)
-			}
-		case recordTypeAAAA:
-			for _, item := range record.Properties.AAAARecords {
-				values = append(values, item.IPv6Address)
-			}
-		case recordTypeCNAME:
-			// A CNAME record set can exist without a value
-			if record.Properties.CNAMERecord != nil && record.Properties.CNAMERecord.CNAME != "" {
-				values = append(values, canonicalizeHostname(record.Properties.CNAMERecord.CNAME))
-			}
+	case recordTypeAAAA:
+		for _, item := range record.Properties.AAAARecords {
+			values = append(values, item.IPv6Address)
 		}
-	}
-
-	if recordType == recordTypeCNAME {
+	case recordTypeCNAME:
+		// A CNAME record set can exist without a value
+		if record.Properties.CNAMERecord != nil && record.Properties.CNAMERecord.CNAME != "" {
+			values = append(values, canonicalizeHostname(record.Properties.CNAMERecord.CNAME))
+		}
 		success = true
-		return values, nil
+		return values, true, nil
 	}
 
 	canonicalIPs, err := canonicalizeIPs(values)
 	if err != nil {
-		return nil, fmt.Errorf("invalid IP address in existing %s record: %w", recordType, err)
+		return nil, false, fmt.Errorf("invalid IP address in existing %s record: %w", recordType, err)
 	}
 
 	success = true
-	return canonicalIPs, nil
+	return canonicalIPs, true, nil
 }
 
 // createOrUpdateRecord creates or replaces the record set with the values
 // A CNAME record set must have exactly one value
 func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName string, recordType string, values []string, ttl int) error {
+	zoneName := canonicalizeHostname(a.zoneName)
 	start := time.Now()
 	var success bool
 	if a.metrics != nil {
@@ -455,7 +483,7 @@ func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName str
 					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s/%s",
 					a.subscriptionID,
 					a.resourceGroupName,
-					a.zoneName,
+					zoneName,
 					recordType,
 					recordName,
 				),
@@ -474,9 +502,9 @@ func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName str
 		"https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s/%s?api-version=2018-05-01",
 		a.subscriptionID,
 		a.resourceGroupName,
-		a.zoneName,
+		zoneName,
 		recordType,
-		recordName,
+		url.PathEscape(recordName),
 	)
 
 	properties := azureRecordProperties{
@@ -549,6 +577,7 @@ func (a *AzureProvider) createOrUpdateRecord(ctx context.Context, recordName str
 }
 
 func (a *AzureProvider) deleteRecord(ctx context.Context, recordName string, recordType string) error {
+	zoneName := canonicalizeHostname(a.zoneName)
 	start := time.Now()
 	var success bool
 	if a.metrics != nil {
@@ -558,7 +587,7 @@ func (a *AzureProvider) deleteRecord(ctx context.Context, recordName string, rec
 					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s/%s",
 					a.subscriptionID,
 					a.resourceGroupName,
-					a.zoneName,
+					zoneName,
 					recordType,
 					recordName,
 				),
@@ -577,9 +606,9 @@ func (a *AzureProvider) deleteRecord(ctx context.Context, recordName string, rec
 		"https://management.azure.com/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Network/dnsZones/%s/%s/%s?api-version=2018-05-01",
 		a.subscriptionID,
 		a.resourceGroupName,
-		a.zoneName,
+		zoneName,
 		recordType,
-		recordName,
+		url.PathEscape(recordName),
 	)
 
 	reqCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
@@ -598,8 +627,8 @@ func (a *AzureProvider) deleteRecord(ctx context.Context, recordName string, rec
 	}
 	defer res.Body.Close() //nolint:errcheck
 
-	// Azure returns 200 for successful deletion or 404 if record doesn't exist
-	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNotFound {
+	// Azure returns 200 when a record set is deleted, or 204 if it does not exist
+	if res.StatusCode != http.StatusOK && res.StatusCode != http.StatusNoContent && res.StatusCode != http.StatusNotFound {
 		body, _ := io.ReadAll(res.Body)
 		return fmt.Errorf("invalid response status code HTTP %d; response: %s", res.StatusCode, string(body))
 	}

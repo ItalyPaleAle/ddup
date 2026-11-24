@@ -38,13 +38,11 @@ func TestAzureProvider(t *testing.T) {
 			httpClient:        mockClient,
 		}
 
-		// Mock response for getting existing records (empty response)
-		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=%40&api-version=2018-05-01", &MockResponse{
-			StatusCode: 200,
-			Body: `{
-				"value": []
-			}`,
-			Headers: map[string]string{"Content-Type": "application/json"},
+		// Mock response for getting existing records (not found)
+		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/@?api-version=2018-05-01", &MockResponse{
+			StatusCode: http.StatusNotFound,
+			Body:       `{}`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
 		setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "@")
 
@@ -75,7 +73,7 @@ func TestAzureProvider(t *testing.T) {
 		// Verify the GET request
 		getReq := requests[0]
 		assert.Equal(t, http.MethodGet, getReq.Method)
-		assert.Contains(t, getReq.URL.Path, "/A")
+		assert.Contains(t, getReq.URL.Path, "/A/@")
 		assert.Equal(t, "Bearer mock-123", getReq.Header.Get("Authorization"))
 
 		// Verify the PUT request
@@ -101,22 +99,10 @@ func TestAzureProvider(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
 		// Mock response for getting existing records (has one record)
-		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=www&api-version=2018-05-01", &MockResponse{
+		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/www?api-version=2018-05-01", &MockResponse{
 			StatusCode: 200,
-			Body: `{
-				"value": [
-					{
-						"name": "www",
-						"properties": {
-							"TTL": 300,
-							"ARecords": [
-								{"ipv4Address": "1.2.3.4"}
-							]
-						}
-					}
-				]
-			}`,
-			Headers: map[string]string{"Content-Type": "application/json"},
+			Body:       `{"name":"www","properties":{"TTL":300,"ARecords":[{"ipv4Address":"1.2.3.4"}]}}`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
 		setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "www")
 
@@ -145,21 +131,11 @@ func TestAzureProvider(t *testing.T) {
 	t.Run("Does not delete record if already empty", func(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
-		// Mock response for getting existing records (has one record)
-		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=www&api-version=2018-05-01", &MockResponse{
+		// Mock response for getting existing record set with empty ARecords
+		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/www?api-version=2018-05-01", &MockResponse{
 			StatusCode: 200,
-			Body: `{
-				"value": [
-					{
-						"name": "www",
-						"properties": {
-							"TTL": 300,
-							"ARecords": []
-						}
-					}
-				]
-			}`,
-			Headers: map[string]string{"Content-Type": "application/json"},
+			Body:       `{"name":"www","properties":{"TTL":300,"ARecords":[]}}`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
 		setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "www")
 
@@ -180,22 +156,10 @@ func TestAzureProvider(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
 		// Mock response for getting existing records (has one record with different IP)
-		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=api&api-version=2018-05-01", &MockResponse{
+		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/api?api-version=2018-05-01", &MockResponse{
 			StatusCode: 200,
-			Body: `{
-			"value": [
-				{
-					"name": "api",
-					"properties": {
-						"TTL": 300,
-						"ARecords": [
-							{"ipv4Address": "1.2.3.4"}
-						]
-					}
-				}
-			]
-		}`,
-			Headers: map[string]string{"Content-Type": "application/json"},
+			Body:       `{"name":"api","properties":{"TTL":300,"ARecords":[{"ipv4Address":"1.2.3.4"}]}}`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
 		setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "api")
 
@@ -243,23 +207,10 @@ func TestAzureProvider(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 
 		// Mock response for getting existing records (has one record with different IP)
-		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=api&api-version=2018-05-01", &MockResponse{
+		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/api?api-version=2018-05-01", &MockResponse{
 			StatusCode: 200,
-			Body: `{
-			"value": [
-				{
-					"name": "api",
-					"properties": {
-						"TTL": 300,
-						"ARecords": [
-							{"ipv4Address": "9.8.7.6"},
-							{"ipv4Address": "1.2.3.4"}
-						]
-					}
-				}
-			]
-		}`,
-			Headers: map[string]string{"Content-Type": "application/json"},
+			Body:       `{"name":"api","properties":{"TTL":300,"ARecords":[{"ipv4Address":"9.8.7.6"},{"ipv4Address":"1.2.3.4"}]}}`,
+			Headers:    map[string]string{"Content-Type": "application/json"},
 		})
 		setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "api")
 
@@ -360,6 +311,18 @@ func TestAzureProvider(t *testing.T) {
 				zoneName: "example.com",
 				expected: "",
 			},
+			{
+				name:     "mixed-case root domain and zone with trailing dot",
+				domain:   "Example.COM",
+				zoneName: "EXAMPLE.com.",
+				expected: "@",
+			},
+			{
+				name:     "mixed-case subdomain",
+				domain:   "App.Example.COM.",
+				zoneName: "example.com.",
+				expected: "app",
+			},
 		}
 
 		for _, tt := range tests {
@@ -389,6 +352,7 @@ func TestNewAzureProvider(t *testing.T) {
 		{name: "missing subscription ID", mutate: func(c *config.AzureConfig) { c.SubscriptionID = "" }, expectErr: "subscription ID is required"},
 		{name: "missing resource group", mutate: func(c *config.AzureConfig) { c.ResourceGroupName = "" }, expectErr: "resource group name is required"},
 		{name: "missing zone name", mutate: func(c *config.AzureConfig) { c.ZoneName = "" }, expectErr: "zone name is required"},
+		{name: "dot-only zone name", mutate: func(c *config.AzureConfig) { c.ZoneName = "." }, expectErr: "zone name is required"},
 	}
 
 	for _, tc := range requiredTests {
@@ -403,6 +367,7 @@ func TestNewAzureProvider(t *testing.T) {
 
 	t.Run("service principal", func(t *testing.T) {
 		cfg := valid()
+		cfg.ZoneName = "Example.COM."
 		cfg.ClientID = "client"
 		cfg.ClientSecret = "secret"
 		p, err := NewAzureProvider("az", cfg, nil)
@@ -447,9 +412,9 @@ func TestNewAzureProvider(t *testing.T) {
 
 func TestAzureProviderDeleteError(t *testing.T) {
 	setExistingA := func(mockTransport *MockHTTPTransport) {
-		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=www&api-version=2018-05-01", &MockResponse{
+		mockTransport.SetResponse(http.MethodGet, "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/www?api-version=2018-05-01", &MockResponse{
 			StatusCode: http.StatusOK,
-			Body:       `{"value":[{"name":"www","properties":{"TTL":300,"ARecords":[{"ipv4Address":"1.2.3.4"}]}}]}`,
+			Body:       `{"name":"www","properties":{"TTL":300,"ARecords":[{"ipv4Address":"1.2.3.4"}]}}`,
 		})
 		setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "www")
 	}
@@ -472,8 +437,8 @@ func TestAzureProviderDeleteError(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 		setExistingA(mockTransport)
 		mockTransport.SetResponse(http.MethodDelete, deletePath, &MockResponse{
-			StatusCode: http.StatusNotFound,
-			Body:       `{}`,
+			StatusCode: http.StatusNoContent,
+			Body:       ``,
 		})
 
 		res, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets())
@@ -513,11 +478,11 @@ func setAzureEmptyAAAAAndCNAMEResponses(mockTransport *MockHTTPTransport, record
 	for _, recordType := range []string{recordTypeAAAA, recordTypeCNAME} {
 		mockTransport.SetResponse(
 			http.MethodGet,
-			"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/"+recordType+"?%24recordsetnamesuffix="+
-				url.QueryEscape(recordName)+"&api-version=2018-05-01",
+			"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/"+recordType+"/"+
+				url.PathEscape(recordName)+"?api-version=2018-05-01",
 			&MockResponse{
-				StatusCode: http.StatusOK,
-				Body:       `{"value":[]}`,
+				StatusCode: http.StatusNotFound,
+				Body:       `{}`,
 				Headers:    map[string]string{"Content-Type": "application/json"},
 			},
 		)
@@ -529,8 +494,8 @@ func TestAzureProviderIPv6(t *testing.T) {
 
 	mockTransport.SetResponse(
 		http.MethodGet,
-		"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A?%24recordsetnamesuffix=ipv6&api-version=2018-05-01",
-		&MockResponse{StatusCode: 200, Body: `{"value":[]}`},
+		"/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/A/ipv6?api-version=2018-05-01",
+		&MockResponse{StatusCode: http.StatusNotFound, Body: `{}`},
 	)
 
 	setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "ipv6")
@@ -597,18 +562,26 @@ func (f *fakeAzureDNSAPI) RoundTrip(req *http.Request) (*http.Response, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
+	if !strings.HasPrefix(req.URL.Path, fakeAzureZonePath) {
+		return fakeAzureResponse(http.StatusNotFound, `{}`), nil
+	}
+
 	parts := strings.Split(strings.TrimPrefix(req.URL.Path, fakeAzureZonePath), "/")
-	switch {
-	case req.Method == http.MethodGet && len(parts) == 1:
-		return f.list(parts[0], req.URL.Query().Get("$recordsetnamesuffix")), nil
-	case req.Method == http.MethodPut && len(parts) == 2:
-		return f.put(req, fakeAzureRecordSetKey{recordType: parts[0], name: parts[1]}), nil
-	case req.Method == http.MethodDelete && len(parts) == 2:
-		key := fakeAzureRecordSetKey{recordType: parts[0], name: parts[1]}
+	if len(parts) != 2 {
+		return fakeAzureResponse(http.StatusNotFound, `{}`), nil
+	}
+
+	key := fakeAzureRecordSetKey{recordType: parts[0], name: strings.ToLower(parts[1])}
+	switch req.Method {
+	case http.MethodGet:
+		return f.get(key), nil
+	case http.MethodPut:
+		return f.put(req, key), nil
+	case http.MethodDelete:
 		f.ops = append(f.ops, "DELETE "+key.recordType+" "+key.name)
 		_, ok := f.recordSets[key]
 		if !ok {
-			return fakeAzureResponse(http.StatusNotFound, `{}`), nil
+			return fakeAzureResponse(http.StatusNoContent, ``), nil
 		}
 		delete(f.recordSets, key)
 		return fakeAzureResponse(http.StatusOK, `{}`), nil
@@ -617,19 +590,17 @@ func (f *fakeAzureDNSAPI) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 }
 
-func (f *fakeAzureDNSAPI) list(recordType string, name string) *http.Response {
-	res := azureRecordsResponse{Value: []azureRecord{}}
+func (f *fakeAzureDNSAPI) get(target fakeAzureRecordSetKey) *http.Response {
 	for key, props := range f.recordSets {
-		if key.recordType == recordType && key.name == name {
-			res.Value = append(res.Value, azureRecord{Name: key.name, Properties: props})
+		if key.recordType == target.recordType && strings.EqualFold(key.name, target.name) {
+			body, err := json.Marshal(azureRecord{Name: key.name, Properties: props})
+			if err != nil {
+				return fakeAzureResponse(http.StatusInternalServerError, `{}`)
+			}
+			return fakeAzureResponse(http.StatusOK, string(body))
 		}
 	}
-
-	body, err := json.Marshal(res)
-	if err != nil {
-		return fakeAzureResponse(http.StatusInternalServerError, `{}`)
-	}
-	return fakeAzureResponse(http.StatusOK, string(body))
+	return fakeAzureResponse(http.StatusNotFound, `{}`)
 }
 
 func (f *fakeAzureDNSAPI) put(req *http.Request, key fakeAzureRecordSetKey) *http.Response {
@@ -640,9 +611,14 @@ func (f *fakeAzureDNSAPI) put(req *http.Request, key fakeAzureRecordSetKey) *htt
 		return fakeAzureResponse(http.StatusBadRequest, `{}`)
 	}
 
+	if key.recordType == recordTypeCNAME && key.name == "@" {
+		f.ops = append(f.ops, "PUT "+key.recordType+" "+key.name+" (rejected)")
+		return fakeAzureResponse(http.StatusBadRequest, `{"error":{"code":"BadRequest","message":"CNAME record sets cannot be created at the zone apex"}}`)
+	}
+
 	// A CNAME record set can't coexist with other record sets
 	for existing := range f.recordSets {
-		if existing.name != key.name || existing.recordType == key.recordType {
+		if !strings.EqualFold(existing.name, key.name) || existing.recordType == key.recordType {
 			continue
 		}
 		if existing.recordType == recordTypeCNAME || key.recordType == recordTypeCNAME {
@@ -652,6 +628,12 @@ func (f *fakeAzureDNSAPI) put(req *http.Request, key fakeAzureRecordSetKey) *htt
 	}
 
 	f.ops = append(f.ops, "PUT "+key.recordType+" "+key.name)
+	// Replace any existing record set whose name matches case-insensitively
+	for existing := range f.recordSets {
+		if existing.recordType == key.recordType && strings.EqualFold(existing.name, key.name) {
+			delete(f.recordSets, existing)
+		}
+	}
 	f.recordSets[key] = rs.Properties
 	return fakeAzureResponse(http.StatusOK, string(raw))
 }
@@ -783,7 +765,7 @@ func TestAzureProviderCNAME(t *testing.T) {
 		assert.Empty(t, api.state())
 	})
 
-	t.Run("an empty CNAME record set is not deleted", func(t *testing.T) {
+	t.Run("an empty CNAME record set is not deleted when no targets are desired", func(t *testing.T) {
 		api := newFakeAzureDNSAPI().
 			set("CNAME", "app", `{"TTL":120}`)
 		provider := newAzureTestProviderWithFake(api)
@@ -791,6 +773,51 @@ func TestAzureProviderCNAME(t *testing.T) {
 		res, err := provider.UpdateRecords(t.Context(), "app.example.com", 120, nil)
 		require.NoError(t, err)
 		assert.False(t, res.Changed)
+		assert.Empty(t, api.ops)
+	})
+
+	t.Run("an empty CNAME record set is deleted before creating A records", func(t *testing.T) {
+		api := newFakeAzureDNSAPI().
+			set("CNAME", "app", `{"TTL":120}`)
+		provider := newAzureTestProviderWithFake(api)
+
+		res, err := provider.UpdateRecords(t.Context(), "app.example.com", 120, testTargets("192.0.2.10"))
+		require.NoError(t, err)
+		assert.True(t, res.Changed)
+		assert.Empty(t, res.Previous)
+		assert.Equal(t, []string{"DELETE CNAME app", "PUT A app"}, api.ops)
+		assert.Equal(t, []string{"A app ttl=120 192.0.2.10"}, api.state())
+	})
+
+	t.Run("an empty A record set is deleted before creating a CNAME", func(t *testing.T) {
+		api := newFakeAzureDNSAPI().
+			set("A", "app", `{"TTL":120}`)
+		provider := newAzureTestProviderWithFake(api)
+
+		res, err := provider.UpdateRecords(t.Context(), "app.example.com", 120, []Target{tunnel})
+		require.NoError(t, err)
+		assert.True(t, res.Changed)
+		assert.Empty(t, res.Previous)
+		assert.Equal(t, []string{"DELETE A app", "PUT CNAME app"}, api.ops)
+		assert.Equal(t, []string{"CNAME app ttl=120 0a1b2c3d.cfargotunnel.com"}, api.state())
+	})
+
+	t.Run("alias records are not supported", func(t *testing.T) {
+		api := newFakeAzureDNSAPI().
+			set("CNAME", "app", `{"TTL":120,"targetResource":{"id":"/subscriptions/sub/resourceGroups/rg/providers/Microsoft.Network/trafficManagerProfiles/tm"}}`)
+		provider := newAzureTestProviderWithFake(api)
+
+		_, err := provider.UpdateRecords(t.Context(), "app.example.com", 120, testTargets("192.0.2.10"))
+		require.ErrorContains(t, err, "uses an Azure alias target, which is not supported")
+		assert.Empty(t, api.ops)
+	})
+
+	t.Run("domain outside the zone is rejected", func(t *testing.T) {
+		api := newFakeAzureDNSAPI()
+		provider := newAzureTestProviderWithFake(api)
+
+		_, err := provider.UpdateRecords(t.Context(), "app.other.com", 120, testTargets("192.0.2.10"))
+		require.ErrorContains(t, err, `domain app.other.com is not in zone "example.com"`)
 		assert.Empty(t, api.ops)
 	})
 
@@ -810,9 +837,9 @@ func TestAzureProviderCNAME(t *testing.T) {
 
 	t.Run("an error deleting the A records stops before creating the CNAME", func(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
-		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"A?%24recordsetnamesuffix=app&api-version=2018-05-01", &MockResponse{
+		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"A/app?api-version=2018-05-01", &MockResponse{
 			StatusCode: http.StatusOK,
-			Body:       `{"value":[{"name":"app","properties":{"TTL":120,"ARecords":[{"ipv4Address":"192.0.2.10"}]}}]}`,
+			Body:       `{"name":"app","properties":{"TTL":120,"ARecords":[{"ipv4Address":"192.0.2.10"}]}}`,
 		})
 		setAzureEmptyAAAAAndCNAMEResponses(mockTransport, "app")
 		mockTransport.SetResponse(http.MethodDelete, fakeAzureZonePath+"A/app?api-version=2018-05-01", &MockResponse{
@@ -830,15 +857,15 @@ func TestAzureProviderCNAME(t *testing.T) {
 
 	t.Run("identities that can't read CNAME records can still publish A records", func(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
-		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"A?%24recordsetnamesuffix=app&api-version=2018-05-01", &MockResponse{
-			StatusCode: http.StatusOK,
-			Body:       `{"value":[]}`,
+		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"A/app?api-version=2018-05-01", &MockResponse{
+			StatusCode: http.StatusNotFound,
+			Body:       `{}`,
 		})
-		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"AAAA?%24recordsetnamesuffix=app&api-version=2018-05-01", &MockResponse{
-			StatusCode: http.StatusOK,
-			Body:       `{"value":[]}`,
+		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"AAAA/app?api-version=2018-05-01", &MockResponse{
+			StatusCode: http.StatusNotFound,
+			Body:       `{}`,
 		})
-		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"CNAME?%24recordsetnamesuffix=app&api-version=2018-05-01", &MockResponse{
+		mockTransport.SetResponse(http.MethodGet, fakeAzureZonePath+"CNAME/app?api-version=2018-05-01", &MockResponse{
 			StatusCode: http.StatusForbidden,
 			Body:       `{"error":{"code":"AuthorizationFailed"}}`,
 		})
@@ -894,6 +921,24 @@ func TestAzureProviderValidateProviderOptions(t *testing.T) {
 			recordName: "example.com.",
 			endpoints:  []*config.ConfigEndpoint{cnameEndpoint},
 			expectErr:  "cname can't be used at the apex of the zone",
+		},
+		{
+			name:       "cname at the apex with mixed case",
+			recordName: "Example.COM",
+			endpoints:  []*config.ConfigEndpoint{cnameEndpoint},
+			expectErr:  "cname can't be used at the apex of the zone",
+		},
+		{
+			name:       "domain not in zone",
+			recordName: "app.other.com",
+			endpoints:  []*config.ConfigEndpoint{ipEndpoint},
+			expectErr:  `domain app.other.com is invalid: recordName is not in zone "example.com" of provider 'az' (azure)`,
+		},
+		{
+			name:       "partial suffix match not in zone",
+			recordName: "notexample.com",
+			endpoints:  []*config.ConfigEndpoint{ipEndpoint},
+			expectErr:  `domain notexample.com is invalid: recordName is not in zone "example.com" of provider 'az' (azure)`,
 		},
 		{
 			name:       "provider options",

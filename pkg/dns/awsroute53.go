@@ -102,8 +102,8 @@ func (r *AWSRoute53Provider) ValidateProviderOptions(d *config.ConfigDomain) err
 
 // UpdateRecords updates the A, AAAA and CNAME record sets for the given domain so they point to the targets
 //
-// All changes are sent in a single change batch, which AWS Route53 applies atomically, so the name is never left without records, even when going to or from a CNAME.
-// Deletions go first in the batch, because a CNAME record set can't coexist with other record sets: the ones it replaces, or that replace it, must be deleted before.
+// All changes are sent in a single change batch, which AWS Route53 applies atomically, so the name is never left without records, even when going to or from a CNAME
+// Deletions go first in the batch, because a CNAME record set can't coexist with other record sets: the ones it replaces, or that replace it, must be deleted before
 func (r *AWSRoute53Provider) UpdateRecords(ctx context.Context, domain string, ttl int, targets []Target) (result UpdateResult, err error) {
 	desired, err := recordSetsFromTargets(r.name, targets)
 	if err != nil {
@@ -167,13 +167,15 @@ type awsRoute53ResourceRecord struct {
 // awsRoute53ResourceRecordSet represents a record set in the AWS Route53 API
 // Fields are in alphabetical order, which is the order the AWS SDK serializes them in
 type awsRoute53ResourceRecordSet struct {
-	// Only used to detect alias records, which are not supported
-	AliasTarget     *struct{}                  `xml:"AliasTarget"`
-	Name            string                     `xml:"Name"`
-	ResourceRecords []awsRoute53ResourceRecord `xml:"ResourceRecords>ResourceRecord"`
-	SetIdentifier   string                     `xml:"SetIdentifier,omitempty"`
-	TTL             int                        `xml:"TTL,omitempty"`
-	Type            string                     `xml:"Type"`
+	// Only used to detect alias, health-checked, or non-simple record sets, which are not supported
+	AliasTarget             *struct{}                  `xml:"AliasTarget"`
+	HealthCheckID           string                     `xml:"HealthCheckId,omitempty"`
+	Name                    string                     `xml:"Name"`
+	ResourceRecords         []awsRoute53ResourceRecord `xml:"ResourceRecords>ResourceRecord"`
+	SetIdentifier           string                     `xml:"SetIdentifier,omitempty"`
+	TTL                     *int                       `xml:"TTL"`
+	TrafficPolicyInstanceID string                     `xml:"TrafficPolicyInstanceId,omitempty"`
+	Type                    string                     `xml:"Type"`
 }
 
 func newAWSRoute53ResourceRecordSet(recordName string, recordType string, ttl int, values []string) awsRoute53ResourceRecordSet {
@@ -185,7 +187,7 @@ func newAWSRoute53ResourceRecordSet(recordName string, recordType string, ttl in
 	return awsRoute53ResourceRecordSet{
 		Name:            recordName,
 		ResourceRecords: records,
-		TTL:             ttl,
+		TTL:             aws.Int(ttl),
 		Type:            recordType,
 	}
 }
@@ -258,9 +260,9 @@ func (r *AWSRoute53Provider) getExistingRecordSet(ctx context.Context, recordNam
 		return awsRoute53ResourceRecordSet{}, nil
 	}
 
-	// ddup can only manage record sets with a simple routing policy
-	if rs.AliasTarget != nil || rs.SetIdentifier != "" {
-		return awsRoute53ResourceRecordSet{}, fmt.Errorf("record set %s uses an alias or a routing policy other than simple, which is not supported", recordName)
+	// ddup can only manage plain record sets with a simple routing policy
+	if rs.AliasTarget != nil || rs.SetIdentifier != "" || rs.HealthCheckID != "" || rs.TrafficPolicyInstanceID != "" {
+		return awsRoute53ResourceRecordSet{}, fmt.Errorf("record set %s uses an alias, health check, or a routing policy other than simple, which is not supported", recordName)
 	}
 
 	return rs, nil

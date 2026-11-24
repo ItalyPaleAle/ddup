@@ -170,6 +170,11 @@ func TestRecordSetsFromTargets(t *testing.T) {
 		_, err := recordSetsFromTargets("test", []Target{CNAMETarget("tunnel.example.net", false), {Type: "A", Value: "192.0.2.10"}})
 		require.ErrorContains(t, err, "a CNAME target can't be published together with other targets")
 	})
+
+	t.Run("empty CNAME hostname", func(t *testing.T) {
+		_, err := recordSetsFromTargets("test", []Target{{Type: "CNAME", Value: "."}})
+		require.ErrorContains(t, err, "CNAME target hostname is empty")
+	})
 }
 
 func TestProviderTypeAndCNAME(t *testing.T) {

@@ -66,7 +66,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		assert.Equal(t, "UPSERT", changes[0].Action)
 		assert.Equal(t, "www.example.com.", changes[0].ResourceRecordSet.Name)
 		assert.Equal(t, recordTypeA, changes[0].ResourceRecordSet.Type)
-		assert.Equal(t, 300, changes[0].ResourceRecordSet.TTL)
+		assert.Equal(t, aws.Int(300), changes[0].ResourceRecordSet.TTL)
 		assert.Equal(t, []string{"1.1.1.1", "2.2.2.2"}, awsRoute53Values(changes[0].ResourceRecordSet))
 	})
 
@@ -124,7 +124,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 		assert.Equal(t, "DELETE", changes[0].Action)
 		assert.Equal(t, "www.example.com.", changes[0].ResourceRecordSet.Name)
 		assert.Equal(t, recordTypeA, changes[0].ResourceRecordSet.Type)
-		assert.Equal(t, 600, changes[0].ResourceRecordSet.TTL)
+		assert.Equal(t, aws.Int(600), changes[0].ResourceRecordSet.TTL)
 		assert.Equal(t, []string{"9.8.7.6", "1.2.3.4"}, awsRoute53Values(changes[0].ResourceRecordSet))
 	})
 
@@ -183,12 +183,12 @@ func TestAWSRoute53Provider(t *testing.T) {
 		// Deletions go first in the batch
 		assert.Equal(t, "DELETE", changes[0].Action)
 		assert.Equal(t, recordTypeAAAA, changes[0].ResourceRecordSet.Type)
-		assert.Equal(t, 300, changes[0].ResourceRecordSet.TTL)
+		assert.Equal(t, aws.Int(300), changes[0].ResourceRecordSet.TTL)
 		assert.Equal(t, []string{"2001:db8::1"}, awsRoute53Values(changes[0].ResourceRecordSet))
 
 		assert.Equal(t, "UPSERT", changes[1].Action)
 		assert.Equal(t, recordTypeA, changes[1].ResourceRecordSet.Type)
-		assert.Equal(t, 60, changes[1].ResourceRecordSet.TTL)
+		assert.Equal(t, aws.Int(60), changes[1].ResourceRecordSet.TTL)
 		assert.Equal(t, []string{"1.2.3.4", "5.6.7.8"}, awsRoute53Values(changes[1].ResourceRecordSet))
 	})
 
@@ -223,6 +223,16 @@ func TestAWSRoute53Provider(t *testing.T) {
 				recordSet: `<ResourceRecordSet><Name>www.example.com.</Name><SetIdentifier>primary</SetIdentifier><TTL>300</TTL>` +
 					`<Type>A</Type><Weight>10</Weight><ResourceRecords><ResourceRecord><Value>1.2.3.4</Value></ResourceRecord></ResourceRecords></ResourceRecordSet>`,
 			},
+			{
+				name: "health check",
+				recordSet: `<ResourceRecordSet><HealthCheckId>hc-123</HealthCheckId><Name>www.example.com.</Name><TTL>300</TTL>` +
+					`<Type>A</Type><ResourceRecords><ResourceRecord><Value>1.2.3.4</Value></ResourceRecord></ResourceRecords></ResourceRecordSet>`,
+			},
+			{
+				name: "traffic policy instance",
+				recordSet: `<ResourceRecordSet><Name>www.example.com.</Name><TrafficPolicyInstanceId>tpi-123</TrafficPolicyInstanceId>` +
+					`<TTL>300</TTL><Type>A</Type></ResourceRecordSet>`,
+			},
 		}
 
 		for _, tc := range tests {
@@ -231,7 +241,7 @@ func TestAWSRoute53Provider(t *testing.T) {
 				setAWSRoute53ListResponse(mockTransport, "www.example.com.", recordTypeA, awsRoute53ListBody(tc.recordSet))
 
 				_, err := provider.UpdateRecords(t.Context(), "www.example.com", 300, testTargets("1.2.3.4"))
-				require.ErrorContains(t, err, "uses an alias or a routing policy other than simple")
+				require.ErrorContains(t, err, "uses an alias, health check, or a routing policy other than simple")
 				assert.Len(t, mockTransport.GetRequests(), 1)
 			})
 		}
@@ -501,6 +511,17 @@ func newFakeAWSRoute53API(recordSets ...awsRoute53ResourceRecordSet) *fakeAWSRou
 	return &fakeAWSRoute53API{recordSets: recordSets}
 }
 
+func awsRoute53SameRecordName(a string, b string) bool {
+	return strings.EqualFold(awsRoute53UnescapeName(a), awsRoute53UnescapeName(b))
+}
+
+func awsRoute53SameTTL(a *int, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 func (f *fakeAWSRoute53API) RoundTrip(req *http.Request) (*http.Response, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
@@ -511,12 +532,12 @@ func (f *fakeAWSRoute53API) RoundTrip(req *http.Request) (*http.Response, error)
 
 	switch req.Method {
 	case http.MethodGet:
-		// Only exact matches are returned, which is enough for the provider
+		// Exact name and type match, with Route53's case-insensitive and octal-escaped DNS names
 		name := req.URL.Query().Get("name")
 		recordType := req.URL.Query().Get("type")
 		for _, rs := range f.recordSets {
-			if rs.Name == name && rs.Type == recordType {
-				return fakeAWSRoute53Response(http.StatusOK, awsRoute53ListBody(awsRoute53RecordSetXML(rs.Name, rs.Type, rs.TTL, awsRoute53Values(rs)...))), nil
+			if awsRoute53SameRecordName(rs.Name, name) && rs.Type == recordType {
+				return fakeAWSRoute53Response(http.StatusOK, awsRoute53ListBody(awsRoute53RecordSetXML(rs.Name, rs.Type, aws.ToInt(rs.TTL), awsRoute53Values(rs)...))), nil
 			}
 		}
 		return fakeAWSRoute53Response(http.StatusOK, awsRoute53ListBody()), nil
@@ -553,13 +574,13 @@ func (f *fakeAWSRoute53API) apply(changes []awsRoute53Change) ([]awsRoute53Resou
 	for _, c := range changes {
 		rs := c.ResourceRecordSet
 		idx := slices.IndexFunc(recordSets, func(e awsRoute53ResourceRecordSet) bool {
-			return e.Name == rs.Name && e.Type == rs.Type
+			return awsRoute53SameRecordName(e.Name, rs.Name) && e.Type == rs.Type
 		})
 
 		switch c.Action {
 		case "DELETE":
-			// Deletions must match the existing record set exactly
-			if idx < 0 || recordSets[idx].TTL != rs.TTL || !slices.Equal(awsRoute53Values(recordSets[idx]), awsRoute53Values(rs)) {
+			// Deletions must match the existing record set exactly, including TTL and raw record values
+			if idx < 0 || !awsRoute53SameTTL(recordSets[idx].TTL, rs.TTL) || !slices.Equal(awsRoute53Values(recordSets[idx]), awsRoute53Values(rs)) {
 				return nil, fmt.Errorf("record set %s %s not found", rs.Type, rs.Name)
 			}
 			recordSets = slices.Delete(recordSets, idx, idx+1)
@@ -570,11 +591,17 @@ func (f *fakeAWSRoute53API) apply(changes []awsRoute53Change) ([]awsRoute53Resou
 			return nil, fmt.Errorf("unsupported action %s", c.Action)
 		}
 
-		if rs.Type == recordTypeCNAME && rs.Name == fakeAWSRoute53Apex {
+		if rs.TTL == nil || len(rs.ResourceRecords) == 0 {
+			return nil, fmt.Errorf("record set %s %s is missing TTL or values", rs.Type, rs.Name)
+		}
+		if rs.Type == recordTypeCNAME && len(rs.ResourceRecords) != 1 {
+			return nil, fmt.Errorf("CNAME record set %s must have exactly one value", rs.Name)
+		}
+		if rs.Type == recordTypeCNAME && awsRoute53SameRecordName(rs.Name, fakeAWSRoute53Apex) {
 			return nil, fmt.Errorf("CNAME record set %s is not permitted at apex", rs.Name)
 		}
 		for _, e := range recordSets {
-			if e.Name == rs.Name && e.Type != rs.Type && (e.Type == recordTypeCNAME || rs.Type == recordTypeCNAME) {
+			if awsRoute53SameRecordName(e.Name, rs.Name) && e.Type != rs.Type && (e.Type == recordTypeCNAME || rs.Type == recordTypeCNAME) {
 				return nil, fmt.Errorf("record set %s %s conflicts with the existing %s record set", rs.Type, rs.Name, e.Type)
 			}
 		}
@@ -593,7 +620,7 @@ func (f *fakeAWSRoute53API) apply(changes []awsRoute53Change) ([]awsRoute53Resou
 func (f *fakeAWSRoute53API) state() []string {
 	res := make([]string, len(f.recordSets))
 	for i, rs := range f.recordSets {
-		res[i] = fmt.Sprintf("%s %s ttl=%d %s", rs.Type, rs.Name, rs.TTL, strings.Join(awsRoute53Values(rs), ","))
+		res[i] = fmt.Sprintf("%s %s ttl=%d %s", rs.Type, rs.Name, aws.ToInt(rs.TTL), strings.Join(awsRoute53Values(rs), ","))
 	}
 	slices.Sort(res)
 	return res
@@ -731,8 +758,32 @@ func TestAWSRoute53ProviderCNAME(t *testing.T) {
 		))
 
 		_, err := provider.UpdateRecords(t.Context(), "app.example.com", 120, []Target{tunnel})
-		require.ErrorContains(t, err, "uses an alias or a routing policy other than simple")
+		require.ErrorContains(t, err, "uses an alias, health check, or a routing policy other than simple")
 		assert.Len(t, mockTransport.GetRequests(), 3)
+	})
+
+	t.Run("deleting a CNAME preserves raw value and zero TTL", func(t *testing.T) {
+		api := newFakeAWSRoute53API(newAWSRoute53ResourceRecordSet("app.example.com.", recordTypeCNAME, 0, []string{"0A1B2C3D.cfargotunnel.com."}))
+		provider := newAWSRoute53TestProviderWithFake(api)
+
+		res, err := provider.UpdateRecords(t.Context(), "app.example.com", 120, testTargets("192.0.2.10"))
+		require.NoError(t, err)
+		assert.True(t, res.Changed)
+		assert.Equal(t, []string{"0a1b2c3d.cfargotunnel.com"}, res.Previous)
+		assert.Equal(t, []string{"DELETE CNAME app.example.com., UPSERT A app.example.com."}, api.batches)
+		assert.Equal(t, []string{"A app.example.com. ttl=120 192.0.2.10"}, api.state())
+	})
+
+	t.Run("escaped wildcard transitions between A and CNAME", func(t *testing.T) {
+		api := newFakeAWSRoute53API(newAWSRoute53ResourceRecordSet(`\052.example.com.`, recordTypeA, 300, []string{"192.0.2.10"}))
+		provider := newAWSRoute53TestProviderWithFake(api)
+
+		res, err := provider.UpdateRecords(t.Context(), "*.example.com", 120, []Target{tunnel})
+		require.NoError(t, err)
+		assert.True(t, res.Changed)
+		assert.Equal(t, []string{"192.0.2.10"}, res.Previous)
+		assert.Equal(t, []string{`DELETE A \052.example.com., UPSERT CNAME *.example.com.`}, api.batches)
+		assert.Equal(t, []string{"CNAME *.example.com. ttl=120 0a1b2c3d.cfargotunnel.com"}, api.state())
 	})
 
 	t.Run("proxied targets are not supported", func(t *testing.T) {

@@ -148,7 +148,20 @@ func TestValidateConfig(t *testing.T) {
 				Endpoints:  []*config.ConfigEndpoint{plainEndpoint, cnameEndpoint},
 			}},
 		}
-		require.ErrorContains(t, ValidateConfig(cfg, providers), "domain example.com endpoint 1 (tunnel) is invalid: cname can't be used at the apex of the zone with provider 'azure' (azure)")
+		err := ValidateConfig(cfg, providers)
+		require.EqualError(t, err, "domain example.com endpoint 1 (tunnel) is invalid: cname can't be used at the apex of the zone with provider 'azure' (azure)")
+	})
+
+	t.Run("domain outside an Azure zone", func(t *testing.T) {
+		cfg := &config.Config{
+			Domains: []config.ConfigDomain{{
+				RecordName: "app.other.com",
+				Provider:   "azure",
+				Endpoints:  []*config.ConfigEndpoint{plainEndpoint},
+			}},
+		}
+		err := ValidateConfig(cfg, providers)
+		require.EqualError(t, err, `domain app.other.com is invalid: recordName is not in zone "example.com" of provider 'azure' (azure)`)
 	})
 
 	t.Run("provider that does not exist", func(t *testing.T) {

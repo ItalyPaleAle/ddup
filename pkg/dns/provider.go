@@ -77,8 +77,8 @@ type Provider interface {
 	ProviderType() string
 	// HasCNAME returns true if the provider can publish CNAME records
 	HasCNAME() bool
-	// ValidateProviderOptions checks the `providerOptions` of the endpoints of a domain that uses this provider
-	// It rejects the options meant for other providers, and applies the rules that are specific to this provider
+	// ValidateProviderOptions checks the domain and `providerOptions` of its endpoints for this provider
+	// It rejects options meant for other providers, and applies the rules that are specific to this provider
 	ValidateProviderOptions(d *config.ConfigDomain) error
 	// UpdateRecords updates DNS records for the given domain so they point to the targets
 	// Providers only write the difference with the existing records, and report whether there was any
@@ -146,6 +146,9 @@ func canonicalizeTargets(targets []Target) ([]Target, error) {
 		case recordTypeCNAME:
 			hasCNAME = true
 			t.Value = canonicalizeHostname(t.Value)
+			if t.Value == "" {
+				return nil, errors.New("CNAME target hostname is empty")
+			}
 		default:
 			return nil, fmt.Errorf("%w: unknown record type %q", ErrUnsupportedTarget, t.Type)
 		}

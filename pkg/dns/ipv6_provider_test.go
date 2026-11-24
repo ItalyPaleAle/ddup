@@ -76,22 +76,22 @@ func TestProvidersCanonicalizeIPv6BeforeComparison(t *testing.T) {
 		provider, mockTransport := newAzureTestProviderWithMock("example.com")
 		mockTransport.SetResponse(
 			http.MethodGet,
-			azureListURL+"A?%24recordsetnamesuffix=canonical&api-version=2018-05-01",
-			&MockResponse{StatusCode: http.StatusOK, Body: `{"value":[]}`},
+			azureListURL+"A/canonical?api-version=2018-05-01",
+			&MockResponse{StatusCode: http.StatusNotFound, Body: `{}`},
 		)
 		mockTransport.SetResponse(
 			http.MethodGet,
-			azureListURL+"AAAA?%24recordsetnamesuffix=canonical&api-version=2018-05-01",
+			azureListURL+"AAAA/canonical?api-version=2018-05-01",
 			&MockResponse{
 				StatusCode: http.StatusOK,
-				Body: `{"value":[{"name":"canonical","properties":{"TTL":60,` +
-					`"AAAARecords":[{"ipv6Address":"` + canonicalIP + `"}]}}]}`,
+				Body: `{"name":"canonical","properties":{"TTL":60,` +
+					`"AAAARecords":[{"ipv6Address":"` + canonicalIP + `"}]}}`,
 			},
 		)
 		mockTransport.SetResponse(
 			http.MethodGet,
-			azureListURL+"CNAME?%24recordsetnamesuffix=canonical&api-version=2018-05-01",
-			&MockResponse{StatusCode: http.StatusOK, Body: `{"value":[]}`},
+			azureListURL+"CNAME/canonical?api-version=2018-05-01",
+			&MockResponse{StatusCode: http.StatusNotFound, Body: `{}`},
 		)
 
 		_, err := provider.UpdateRecords(t.Context(), domain, 60, testTargets(expandedIP))
@@ -191,22 +191,22 @@ func TestProvidersCreateBeforeDelete(t *testing.T) {
 		baseURL := "/subscriptions/test-sub/resourceGroups/test-rg/providers/Microsoft.Network/dnsZones/example.com/"
 		mockTransport.SetResponse(
 			http.MethodGet,
-			baseURL+"A?%24recordsetnamesuffix=migration&api-version=2018-05-01",
+			baseURL+"A/migration?api-version=2018-05-01",
 			&MockResponse{
 				StatusCode: http.StatusOK,
-				Body: `{"value":[{"name":"migration","properties":{"TTL":60,` +
-					`"ARecords":[{"ipv4Address":"192.0.2.1"}]}}]}`,
+				Body: `{"name":"migration","properties":{"TTL":60,` +
+					`"ARecords":[{"ipv4Address":"192.0.2.1"}]}}`,
 			},
 		)
 		mockTransport.SetResponse(
 			http.MethodGet,
-			baseURL+"AAAA?%24recordsetnamesuffix=migration&api-version=2018-05-01",
-			&MockResponse{StatusCode: http.StatusOK, Body: `{"value":[]}`},
+			baseURL+"AAAA/migration?api-version=2018-05-01",
+			&MockResponse{StatusCode: http.StatusNotFound, Body: `{}`},
 		)
 		mockTransport.SetResponse(
 			http.MethodGet,
-			baseURL+"CNAME?%24recordsetnamesuffix=migration&api-version=2018-05-01",
-			&MockResponse{StatusCode: http.StatusOK, Body: `{"value":[]}`},
+			baseURL+"CNAME/migration?api-version=2018-05-01",
+			&MockResponse{StatusCode: http.StatusNotFound, Body: `{}`},
 		)
 		mockTransport.SetResponse(
 			http.MethodPut,
