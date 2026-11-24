@@ -25,7 +25,7 @@ func ValidateConfig(cfg *config.Config, providers map[string]Provider) error {
 
 		err := provider.ValidateProviderOptions(d)
 		if err != nil {
-			return fmt.Errorf("invalid provider options: %w", err)
+			return err //nolint:wrapcheck
 		}
 	}
 

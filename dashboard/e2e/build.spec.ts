@@ -211,11 +211,15 @@ test.describe('reload when the server is upgraded', () => {
         await expect.poll(() => status.requests).toBe(2)
 
         // Each auto-refresh is at least 30 seconds after the last reload, so it can reload again until the limit
-        for (const documents of [3, 4, 4]) {
-            const requests = status.requests
+        // Wait for each reloaded page to finish its initial status request before advancing the clock again
+        for (const [documents, requests] of [
+            [3, 4],
+            [4, 6],
+            [4, 7],
+        ]) {
             await page.clock.fastForward('01:00')
-            await expect.poll(() => status.requests).toBeGreaterThan(requests)
             await expect.poll(() => served.documents).toBe(documents)
+            await expect.poll(() => status.requests).toBe(requests)
         }
 
         // The page is still working
@@ -249,11 +253,23 @@ test.describe('reload when the server is upgraded', () => {
         const status = await mockStatus(page, newerBuild)
         await page.goto('/')
         await expect.poll(() => served.documents).toBe(2)
+        await expect.poll(() => status.requests).toBe(2)
+
+        for (const [documents, requests] of [
+            [3, 4],
+            [4, 6],
+            [4, 7],
+        ]) {
+            await page.clock.fastForward('01:00')
+            await expect.poll(() => served.documents).toBe(documents)
+            await expect.poll(() => status.requests).toBe(requests)
+        }
 
         // A different server build starts a new count
         status.build = '1.2.5|build-44|0000000000000000'
         await page.clock.fastForward('01:00')
-        await expect.poll(() => served.documents).toBe(3)
+        await expect.poll(() => served.documents).toBe(5)
+        await expect.poll(() => status.requests).toBe(9)
     })
 
     test('never reloads when the session storage is not available', async ({ page }) => {

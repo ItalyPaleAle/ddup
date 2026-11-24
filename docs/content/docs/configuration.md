@@ -163,7 +163,7 @@ Each endpoint is a server that can serve the domain.
 
 By default, ddup publishes A and AAAA records that point to the `ip` of each healthy endpoint. An endpoint can set `cname` instead, to publish a CNAME record that points to a hostname.
 
-Use it for a target that you can reach only by its hostname, such as a [Cloudflare Tunnel](/providers/cloudflare#proxied-records-and-cloudflare-tunnel) (`<tunnel-id>.cfargotunnel.com`).
+Use it for a target that you can reach only by its hostname, such as a [Cloudflare Tunnel](/providers/cloudflare#cdn-proxying-and-cloudflare-tunnel) (`<tunnel-id>.cfargotunnel.com`).
 
 This example publishes the two VPS endpoints as A records, and falls back to a CNAME record only when neither of them is healthy:
 
@@ -194,11 +194,13 @@ Only some providers can publish CNAME records:
 
 | Provider | Supports `cname` |
 | --- | --- |
-| AWS Route 53 | No |
-| Azure DNS | No |
+| AWS Route 53 | Yes |
+| Azure DNS | Yes |
 | Cloudflare | Yes |
 | Google Cloud DNS | No |
 | OVHcloud | No |
+
+With [AWS Route 53](/providers/aws-route53#things-to-know) and [Azure DNS](/providers/azure-dns#things-to-know), `cname` can't be used at the apex of the zone, such as `example.com`.
 
 ### `providers`
 

@@ -69,7 +69,7 @@ Use `!file` or `!envfile` to keep credentials out of the configuration file. See
 
 ## How ddup manages records
 
-You don't need to create the records in advance: ddup creates them on its first check. ddup owns all the A and AAAA records with the name in `recordName`, and with supported proviers, the CNAME record too:
+You don't need to create the records in advance: ddup creates them on its first check. ddup owns all the A and AAAA records with the name in `recordName`, and with supported providers, the CNAME record too:
 
 - It creates a record for each endpoint it publishes, and deletes the other records of those types with that name, **including records you created by hand**.
 - IPv4 addresses are published as A records, and IPv6 addresses as AAAA records. If a domain has endpoints of both types, ddup manages both. Endpoints with [`cname`](/docs/configuration#cname-records) are published as a CNAME record.
@@ -82,4 +82,4 @@ ddup writes to DNS when it starts, and when the set of endpoints to publish chan
 
 - `recordName` is the full name, such as `app.example.com`, and must be in the provider's zone. For the zone `example.com`, use names like `app.example.com` or `api.eu.example.com`.
 - To manage the records at the apex of the zone, use the zone name itself, such as `example.com`.
-- With providers other than Cloudflare, the name can't have a CNAME record: DNS doesn't allow a CNAME record next to other records with the same name. With Cloudflare, ddup replaces an existing CNAME record with the records it publishes.
+- With Google Cloud DNS and OVHcloud, the name can't have a CNAME record: DNS doesn't allow a CNAME record next to other records with the same name. With AWS Route 53, Azure DNS and Cloudflare, ddup replaces an existing CNAME record with the records it publishes.
